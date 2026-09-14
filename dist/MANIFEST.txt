@@ -1,0 +1,24 @@
+XRayXL 0.1.0
+
+tag        : v0.1.0  (on the commit that adds this folder)
+commit     : 1fd2839eaa21ad2b560bc246285fe32f8ac1d246
+             the SOURCE commit this was built and swept from. The commit that
+             ADDS this folder is its child, and the tag is on that child.
+built      : 2026-09-15 00:58:56 +01:00
+sweep      : PASS (XRayXL-release-0.1.0-20260915-005027)
+verified   : the sweep's recorded SHA256 for XRayXL64.xll matches the file shipped here
+
+This folder is assembled only by tools\release.ps1. A normal build does
+not write it, so between releases it lags the source it sits beside.
+
+SHA256:
+  7e7cd40ef7accdb3e1adae44ba64d2059d8bb41088cbe5442e0c218d3ca7764c  demo\01_CalcChain.xlsm
+  66773c325b01b4384ea46ab95605e322f7247609804781a08434394d969a25c1  demo\02_Events.xlsm
+  bf5333e28f64accdcbdf4c9bf0b6c8199b472466b900a4f7a25f52dfa210369c  demo\03_Errors.xlsm
+  33f152d2facc259479e2aff76365e979944df379487569aacd0233aecb91af3a  demo\04_Advanced.xlsm
+  ed37b3c863ee4eaf3e0abd9f89e444c3d32e25a43b19bff645769f523e750c94  demo\DemoBehaviors64.xll
+  0dcfdb05107d3d220c19e8e45cb01bc1d400881320ec4bb35048624a0b7191d3  demo\DemoFinance64.xll
+  7802aad2a2e5b5514c882bb6a5839e99c4530e4465040e0c94478dd12b4cc2ab  demo\README.md
+  3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986  LICENSE
+  7b5106d4007fd5f98bf136db63e124b5015fe0b85419d93b14d5f83b022560e1  THIRD-PARTY-NOTICES.txt
+  f11c0a10cf8c9e83d3433ae93fd11a033adcfaec2a8312f78d5ee65a66ec08be  XRayXL64.xll
