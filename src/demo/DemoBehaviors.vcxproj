@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <ProjectGuid>{4D1C9E00-0001-4A00-9000-00000000C002}</ProjectGuid>
+    <RootNamespace>DemoBehaviors</RootNamespace>
+    <Keyword>Win32Proj</Keyword>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)'=='Debug'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='Release'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <PropertyGroup>
+    <!-- Two levels up from demo\src is the repo root; see the note in
+         XRayXL.vcxproj about why this is not $(SolutionDir).
+         Output goes under build\ with every other project. The folder handed
+         to someone whole (add-ins, workbooks and walkthrough together) is
+         dist\demo\, which tools\release.ps1 assembles from here. -->
+    <XRayRoot>$(MSBuildProjectDirectory)\..\..\</XRayRoot>
+    <OutDir>$(XRayRoot)build\$(Platform)\$(Configuration)\DemoBehaviors\</OutDir>
+    <IntDir>$(XRayRoot)build\obj\$(Platform)\$(Configuration)\DemoBehaviors\</IntDir>
+    <!-- The bitness is in the name, as for XRayXL. -->
+    <AddinBits Condition="'$(Platform)'=='Win32'">32</AddinBits>
+    <AddinBits Condition="'$(Platform)'!='Win32'">64</AddinBits>
+    <TargetName>DemoBehaviors$(AddinBits)</TargetName>
+    <TargetExt>.xll</TargetExt>
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <!-- Shared by both configurations; optimisation and runtime library are set per configuration below. -->
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <WarningLevel>Level4</WarningLevel>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <SDLCheck>false</SDLCheck>
+      <ConformanceMode>true</ConformanceMode>
+      <PreprocessorDefinitions>UNICODE;_UNICODE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <!-- for xlcall.h -->
+      <AdditionalIncludeDirectories>$(XRayRoot)src\third_party;$(XRayRoot)tests\xll_common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <!-- The PDB is named without this machine's build path. -->
+      <AdditionalOptions>/PDBALTPATH:%25_PDB%25 %(AdditionalOptions)</AdditionalOptions>
+      <!-- release.ps1 copies the .xll out of OutDir into dist\demo\, so keep
+           OutDir to just that: the linker's byproducts go to IntDir. -->
+      <ImportLibrary>$(IntDir)$(TargetName).lib</ImportLibrary>
+      <ProgramDatabaseFile>$(IntDir)$(TargetName).pdb</ProgramDatabaseFile>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <!-- Edit-and-continue needs incremental linking, which is off. -->
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Release'">
+    <ClCompile>
+      <Optimization>MaxSpeed</Optimization>
+      <!-- Static CRT: dist\demo\ ships to machines without the VC++ Redistributable. -->
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="DemoBehaviors.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="demo_xll_common.h" />
+    <ClInclude Include="..\..\tests\xll_common\plain_xll.h" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

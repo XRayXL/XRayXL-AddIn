@@ -1,0 +1,72 @@
+EXPORTS
+    xlAutoOpen
+    xlAutoClose
+    xlAutoFree12
+
+; argument shapes
+    TxB
+    TxStackArgs
+    TxA
+    TxI
+    TxJ
+    TxC
+    TxD
+    TxCw
+    TxDw
+    TxE
+    TxM
+    TxN
+    TxK
+    TxKw
+    TxOw
+    TxP
+    TxQ
+    TxMixed
+    TxOptional
+    TxJumpAdd
+    TxJumpStr
+    TxCallsBack
+    TxCallsBack2
+    TxMany
+    TxMacro
+    TxMacroCalls
+    TxNoArgs
+    TxRaises
+    TxDivZero
+    TxSlow
+    TxThreadSafe
+    TxRowCol
+    TxRowColQ
+    TxRefU
+    TxRefR
+
+; return shapes
+    TxRetB
+    TxRetI
+    TxRetJ
+    TxRetC
+    TxRetD
+    TxRetCw
+    TxRetDw
+    TxRetE
+    TxRetKw
+    TxRetP
+    TxRetQNum
+    TxRetQStr
+    TxRetQBool
+    TxRetQErr
+    TxRetQArray
+
+; an add-in thread calling its own export
+    TxHammered
+    TxHammerStart
+    TxHammerStop
+    TxHammerCalls
+
+; registered only after the tracer armed
+    TxLateNoResult
+    TxRegisterNoResult
+    TxRegisterLongName
+    TxCallsPrefix
+    TxPrefix_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx=TxPrefixImpl
+    TxPrefix_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxTail=TxLongImpl

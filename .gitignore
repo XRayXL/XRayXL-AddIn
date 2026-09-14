@@ -1,0 +1,22 @@
+# Build output
+build/
+
+[Bb]in/
+[Oo]bj/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+
+# Test / local artifacts. The tracer writes XRayXL_Trace_<id>_<pid>.csv and
+# XRayXL_crash_<pid>.txt; both normally land under %TEMP% or an -OutDir, so
+# these patterns only catch a copy pulled into the repo to look at.
+*.xll.log
+XRayXL_*.csv
+XRayXL_crash*.txt
+XRayXL_exec_fault.dmp
+
+# Python bytecode
+__pycache__/
+*.pyc

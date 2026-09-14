@@ -1,0 +1,141 @@
+# Trace options — controlling what gets recorded
+
+Everything XRayXL captures is set through registered functions, all called
+through `Application.Run`; the setters refuse a cell. This document is the
+reference for those settings and for the add-in's own log. What the resulting
+rows *mean* is [TraceRowModel.md](./TraceRowModel.md).
+
+| Function | Does |
+|---|---|
+| `XRayXL_SetTraceParam(Source, Name, Value)` | Sets one setting |
+| `XRayXL_GetTraceParam(Source, Name)` | Reads it back — omit either argument to get a table |
+| `XRayXL_GetTraceSummary(Filter)` | Lists what has been traced, with live call counts |
+| `XRayXL_IsArmed()` | `TRUE` while either source is armed |
+
+`XRayXL_Arm` and `XRayXL_Disarm` start and stop a recording; `XRayXL_Disarm`
+returns the number of rows dropped.
+
+Everything is on by default. If you are after the most accurate timings, set
+`ARGS`, `RETVAL` and `OBJECTS` to `FALSE` — each one costs work inside the call
+being measured. The calling cell is always resolved and is not a setting: the VBA
+tracer needs it to tell an error that escapes into a cell from one that propagates.
+
+## Per-source settings
+
+`Source` is `"XLL"` or `"VBA"`; omit it to address both at once. The two
+sources are **independent** -- each holds its own value for every setting
+below, and each is armed by its own value alone. Turning one off says
+nothing about the other.
+
+| `Name` | `Value` | Default | Meaning |
+|---|---|---|---|
+| `DEPTH` | `OFF` / `TOP` / `ALL` | `ALL` | Applies to **that source alone**: don't trace it / trace only the outermost call, the one Excel itself initiated / follow nested calls too |
+| `ARGS` | `TRUE` / `FALSE` | `TRUE` | Capture argument values |
+| `RETVAL` | `TRUE` / `FALSE` | `TRUE` | Capture return values |
+| `OBJECTS` | `TRUE` / `FALSE` | `TRUE` | Name an object argument or result, and describe a `Range`, `Worksheet` or `Workbook`. The one setting that calls Excel's object model from inside a traced call; `FALSE` renders every object as its address |
+
+**`DEPTH` changes which rows appear, never their shape.** Under `TOP` the
+totals still count every frame, so the disarm report and
+`XRayXL_GetTraceSummary` stay complete even when the file is deliberately thin.
+
+## Settings for the recording as a whole
+
+These take no `Source`.
+
+| `Name` | `Value` | Default | Meaning |
+|---|---|---|---|
+| `BUFFERSIZE` | MB, e.g. `64` | `64` | Size of the ring buffer between the calculation thread and the writer; `0` writes every row synchronously |
+| `BUFFERWHENFULL` | `PAUSE` / `DROP` | `PAUSE` | What a full ring does — make the calculation wait until it is half empty, or drop rows |
+| `LOGLEVEL` | `DEBUG`/`INFO`/`WARNING`/`ERROR` | `INFO` | The log's level (see [The log](#the-log)) |
+
+The ring keeps file I/O off the calculation thread, so tracing disturbs the
+timings as little as possible. The defaults suit most sessions.
+
+- **`PAUSE`** keeps every row. When the ring fills, the traced threads wait
+  until the writer has emptied it to half, so the calculation resumes with room
+  for a burst rather than stalling again at once. The waits are counted as
+  *hot-path pauses* on the disarm line.
+- **`DROP`** never makes the calculation wait, and loses rows when the ring
+  fills instead. It shows where through holes in the trace's `input` column;
+  the count comes back from `XRayXL_Disarm` and appears on the disarm log line
+  — the file itself carries no marker row. A dropped entry does not take its
+  exit with it, so an exit row can appear with no entry.
+- **`BUFFERSIZE=0`** writes each row the moment it happens. That is what you
+  want when hunting the exact function that was running at a crash, because
+  everything up to the crash is already on disk.
+
+`BUFFERSIZE` accepts a unit — bare or `M`/`MB` is megabytes, `K`/`KB`
+kilobytes. A ring below 16 KB is refused. A row that cannot fit in the ring at
+all — rows can reach 256 KB — is dropped and counted, even under `PAUSE`.
+
+## When settings can change
+
+**Every setting is refused while armed** — disarm, set, re-arm — so a recording
+can never change shape halfway through. `LOGLEVEL` is the one exception: it
+affects only logging, never the trace, so it can be changed at any time.
+
+The setters also refuse when called from a cell. A trace setting changed
+mid-calculation, or written by a formula, would no longer describe the run it
+is attached to.
+
+Both getters are volatile, so they can live in cells and keep up as you go:
+
+```
+=XRayXL_GetTraceParam()            ' every setting, both sources
+=XRayXL_GetTraceSummary("*.xll")   ' Source | Module | Function | Calls
+```
+
+## The log
+
+Alongside the trace, `%TEMP%\XRayXL\Logs\XRayXL_<pid>.log` records what the
+*add-in* did — a different question from what your spreadsheet did. It is a
+levelled log in the familiar Log4Net line format: timestamp, thread, level,
+message.
+
+```
+2026-09-07 10:53:07,123 [ 4812] INFO  - armed 46 of 53 registered; declined 7 [module 0, proc 0, typetext 0, ours 7, detour 0, space 0]
+2026-09-07 10:53:07,124 [ 4812] INFO  - arm cost: total 5ms = enumerate 0ms + name resolution 1ms + hook install 3ms
+```
+
+| Set it | How |
+|---|---|
+| At startup | `XRAYXL_LOGLEVEL=DEBUG` (or `WARNING`, `ERROR`) before launching Excel |
+| Live | `Application.Run "XRayXL_SetTraceParam", "LOGLEVEL", "DEBUG"` — settable while armed |
+| Developer detail | `XRAYXL_DIAG=1` before launching Excel, which adds diagnostics to the disarm report |
+
+**Note the declines.** Every path where the tracer chose *not* to trace
+something is counted and named — `module`, `proc`, `typetext`, `ours`,
+`detour`, `space` in the line above. A tool that quietly skips things will
+report a broken spreadsheet as a healthy one, so "we never looked" and "we
+looked and found nothing" are never allowed to read as the same sentence.
+
+## Environment switches
+
+Read when Excel loads the add-in, so set them before launching Excel.
+
+| Variable | Effect |
+|---|---|
+| `XRAYXL_LOGLEVEL` | Starting log level (see [The log](#the-log)) |
+| `XRAYXL_OUTPUT_DIR` | Root for `Logs` and `TraceFiles` (see below) |
+| `XRAYXL_CRASHDUMP=1` | Write a full minidump on a crash, as well as the text report |
+| `XRAYXL_DIAG=1` | Diagnostics in the disarm report, and registers `XRayXL_FaultProbe`, which faults on purpose to test the crash handler |
+| `XRAYXL_NOREGWATCH=1` | Do not watch for functions registered after arming; only functions registered at arm time are traced |
+
+While `%TEMP%\XRayXL\inert.on` exists, the add-in loads and does nothing at all —
+no log, no commands, no hooks — which tells a crash caused by what it does from
+one caused by its presence.
+
+## Where the files go
+
+| | |
+|---|---|
+| Trace | `%TEMP%\XRayXL\TraceFiles\XRayXL_Trace_<id>_<pid>.csv` — one per arm |
+| Log | `%TEMP%\XRayXL\Logs\XRayXL_<pid>.log` |
+
+XRayXL never deletes these. Each Excel process adds one log, each arm one trace
+file, and each crash one report, so clear the folder yourself when you no longer
+need them.
+
+`XRAYXL_OUTPUT_DIR` moves all of it: set it before launching Excel and the
+`Logs` and `TraceFiles` folders are created under that root instead of
+`%TEMP%`. The test suites use this to keep each session's output separate.

@@ -1,0 +1,11 @@
+# LF checkouts, whatever core.autocrlf says, so a clone matches the index.
+* text=auto eol=lf
+# Visual Studio rewrites these as CRLF.
+*.sln text eol=crlf
+*.vcxproj text eol=crlf
+*.props text eol=crlf
+*.xll binary
+*.xlsm binary
+*.pdb binary
+# dist\ is checked out exactly as release.ps1 wrote and hashed it.
+dist/** -text

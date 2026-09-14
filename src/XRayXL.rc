@@ -1,0 +1,113 @@
+// THE XLL'S VERSION RESOURCE.
+//
+// So a stray copy of this file can be identified without a build
+// log: right-click > Properties > Details, or
+// [Diagnostics.FileVersionInfo]::GetVersionInfo(<path>) from PowerShell.
+// That matters more here than for most add-ins, because the deployed file
+// keeps a STABLE name across versions (version.props explains why), so this
+// resource is the only thing that says which build is installed.
+//
+// THE NUMBERS ARRIVE AS THREE NUMERIC DEFINES from version.props, routed
+// through XRayXL.vcxproj's ResourceCompile item, and the version STRING is
+// composed here rather than passed in. That is not a stylistic choice: a
+// define whose value is a quoted string does not survive the resource
+// compiler's command line, and the failure is silent and total. Passed as
+// /DXRAY_VER_STR="0.1.0" the quotes are stripped, rc still exits 0, and EVERY
+// string in the block below comes out EMPTY -- including the ones that are
+// hard-coded here. Numeric defines plus stringize is the shape that works.
+//
+// The fallbacks exist only so a hand-run rc.exe still produces something, and
+// they are deliberately an OBVIOUS non-version: a resource reading 0.0.0
+// means the define plumbing broke, which is louder than a plausible number.
+
+#include <winver.h>
+
+#ifndef XRAY_VER_MAJOR
+#define XRAY_VER_MAJOR 0
+#endif
+#ifndef XRAY_VER_MINOR
+#define XRAY_VER_MINOR 0
+#endif
+#ifndef XRAY_VER_PATCH
+#define XRAY_VER_PATCH 0
+#endif
+
+#define XRAY_STR2(x) #x
+#define XRAY_STR(x)  XRAY_STR2(x)
+#define XRAY_VERSION_TEXT \
+    XRAY_STR(XRAY_VER_MAJOR) "." XRAY_STR(XRAY_VER_MINOR) "." XRAY_STR(XRAY_VER_PATCH)
+
+// WHICH CONFIGURATION THIS WAS BUILT AS. Arrives as a NUMBER for the same
+// reason the version does -- a define whose value is a quoted string does not
+// survive rc.exe's command line -- and version.props derives it from
+// $(Configuration) so there is one source for it.
+//
+// This is NOT taken from _DEBUG. _DEBUG says what MSBuild happened to hand the
+// resource compiler; this says what we were asked to build. They are usually
+// the same and the difference is the whole point: the suites load the tracer
+// from build\addin\, a path that names no configuration, and both
+// configurations carry the SAME version number, so the resource is the only
+// thing that can tell a Debug XLL from a Release one.
+//
+// Anything but 0 or 1 means the define never arrived. Like the 0.0.0 version
+// fallback, that reads as an obvious non-answer rather than a plausible wrong
+// one, and it is marked debug so nothing mistakes it for a shippable build.
+#ifndef XRAY_BUILD_DEBUG
+#define XRAY_BUILD_DEBUG 2
+#endif
+
+#if   XRAY_BUILD_DEBUG == 0
+#define XRAY_CONFIG_TEXT  "Release"
+#define XRAY_CONFIG_FLAGS 0x0L
+#elif XRAY_BUILD_DEBUG == 1
+#define XRAY_CONFIG_TEXT  "Debug"
+#define XRAY_CONFIG_FLAGS VS_FF_DEBUG
+#else
+#define XRAY_CONFIG_TEXT  "UNKNOWN"
+#define XRAY_CONFIG_FLAGS VS_FF_DEBUG
+#endif
+
+// One file name per bitness; XRAY_BITS comes from the project.
+#if defined(XRAY_BITS) && XRAY_BITS == 32
+#define XRAY_FILE_NAME "XRayXL32.xll"
+#else
+#define XRAY_FILE_NAME "XRayXL64.xll"
+#endif
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION    XRAY_VER_MAJOR,XRAY_VER_MINOR,XRAY_VER_PATCH,0
+ PRODUCTVERSION XRAY_VER_MAJOR,XRAY_VER_MINOR,XRAY_VER_PATCH,0
+ FILEFLAGSMASK  VS_FFI_FILEFLAGSMASK
+ FILEFLAGS      XRAY_CONFIG_FLAGS
+ FILEOS         VOS_NT_WINDOWS32
+ FILETYPE       VFT_DLL
+ FILESUBTYPE    VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"                 // US English, Unicode
+        BEGIN
+            VALUE "ProductName",      "XRayXL"
+            VALUE "FileDescription",  "XRayXL, Excel calculation diagnostics"
+            VALUE "CompanyName",      "Andrew Lockhart"
+            VALUE "LegalCopyright",   "Copyright (c) 2026 Andrew Lockhart. GPL-3.0."
+            VALUE "InternalName",     "XRayXL"
+            // The name it is BUILT as, and the name it ships as -- no copy
+            // carries the version in its filename, because Excel stores the
+            // add-in's PATH. This field is what identifies a stray copy.
+            VALUE "OriginalFilename", XRAY_FILE_NAME
+            VALUE "FileVersion",      XRAY_VERSION_TEXT
+            VALUE "ProductVersion",   XRAY_VERSION_TEXT
+            // Debug and Release carry the same FileVersion, so this is what
+            // separates them by eye. Tools should read the VS_FF_DEBUG flag
+            // above instead -- [Diagnostics.FileVersionInfo]::GetVersionInfo()
+            // exposes it as .IsDebug, where a custom string like this one
+            // needs VerQueryValue to reach.
+            VALUE "BuildConfig",      XRAY_CONFIG_TEXT
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 0x04B0
+    END
+END

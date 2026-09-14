@@ -1,0 +1,240 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <ProjectGuid>{4D1C9E00-0001-4A00-9000-00000000A001}</ProjectGuid>
+    <RootNamespace>XRayXL</RootNamespace>
+    <Keyword>Win32Proj</Keyword>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <!-- THE PRODUCT VERSION AND BUILD CONFIGURATION, from the repo's single
+       source. They feed the VERSIONINFO resource (XRayXL.rc) and compiler
+       defines so the running add-in can log what it is, and nothing else. The
+       FILENAME deliberately carries neither; version.props explains why.
+
+       Imported AFTER Microsoft.Cpp.Default.props, which is what establishes
+       $(Configuration) when this project is built on its own rather than
+       through the solution. Imported before it, a bare
+       "msbuild src\XRayXL.vcxproj" would read an empty configuration and stamp
+       the binary UNKNOWN while actually building Debug. -->
+  <Import Project="$(MSBuildProjectDirectory)\..\version.props" />
+  <PropertyGroup Condition="'$(Configuration)'=='Debug'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)'=='Release'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.props" />
+  </ImportGroup>
+  <PropertyGroup>
+    <!-- Build output always goes to the REPO's build folder, however this
+         project is built. Deliberately NOT $(SolutionDir): building the
+         .vcxproj on its own defines that as the PROJECT directory rather than
+         the solution's, which quietly scattered the XLL into the project's own
+         build folder, where tools\deploy.ps1 does not look. The project sits
+         one level below the repo root by construction. -->
+    <XRayRoot>$(MSBuildProjectDirectory)\..\</XRayRoot>
+    <OutDir>$(XRayRoot)build\$(Platform)\$(Configuration)\XRayXL\</OutDir>
+    <IntDir>$(XRayRoot)build\obj\$(Platform)\$(Configuration)\XRayXL\</IntDir>
+    <!-- Stable across versions, so Excel's stored add-in path survives a
+         version bump; the bitness is in the name so 32- and 64-bit copies can
+         sit side by side. -->
+    <XRayBits Condition="'$(Platform)'=='Win32'">32</XRayBits>
+    <XRayBits Condition="'$(Platform)'!='Win32'">64</XRayBits>
+    <TargetName>XRayXL$(XRayBits)</TargetName>
+    <TargetExt>.xll</TargetExt>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <WarningLevel>Level4</WarningLevel>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <SDLCheck>true</SDLCheck>
+      <ConformanceMode>true</ConformanceMode>
+      <!-- No /guard:cf: calls through MinHook's generated trampolines would fail its checks. -->
+      <!-- The version arrives as three NUMERIC defines, never a quoted
+           string: a string-valued define does not survive to rc.exe and fails
+           silently there. The text form is composed by stringize at the point
+           of use (XRayXL.rc, dllmain.cpp). -->
+      <PreprocessorDefinitions>UNICODE;_UNICODE;XRAY_VER_MAJOR=$(XRayVersionMajor);XRAY_VER_MINOR=$(XRayVersionMinor);XRAY_VER_PATCH=$(XRayVersionPatch);XRAY_BUILD_DEBUG=$(XRayBuildDebugFlag);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)third_party;$(ProjectDir)third_party\minhook\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>XRAY_BITS=$(XRayBits);XRAY_VER_MAJOR=$(XRayVersionMajor);XRAY_VER_MINOR=$(XRayVersionMinor);XRAY_VER_PATCH=$(XRayVersionPatch);XRAY_BUILD_DEBUG=$(XRayBuildDebugFlag);%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ResourceCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <ModuleDefinitionFile>XRayXL.def</ModuleDefinitionFile>
+      <!-- Linker by-products go to IntDir, leaving OutDir with just the .xll. -->
+      <ImportLibrary>$(IntDir)$(TargetName).lib</ImportLibrary>
+      <ProgramDatabaseFile>$(IntDir)$(TargetName).pdb</ProgramDatabaseFile>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <!-- The PDB is named without this machine's build path. -->
+      <AdditionalOptions>/PDBALTPATH:%25_PDB%25 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalDependencies>version.lib;oleacc.lib;oleaut32.lib;ole32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)'=='Release'">
+    <ClCompile>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+    </ClCompile>
+    <Link>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="dllmain.cpp" />
+    <ClCompile Include="core\excel_api.cpp" />
+    <ClCompile Include="core\excel_om.cpp" />
+    <ClCompile Include="core\crashlog.cpp" />
+    <ClCompile Include="core\log.cpp" />
+    <ClCompile Include="core\tracemodes.cpp" />
+    <ClCompile Include="xll\xlltypeplan.cpp" />
+    <ClCompile Include="xll\xlldecode.cpp" />
+    <ClCompile Include="xll\xllregistry.cpp" />
+    <ClCompile Include="xll\xllregister_watch.cpp" />
+    <ClCompile Include="xll\xllhook.cpp" />
+    <ClCompile Include="xll\xlltrace.cpp" />
+    <ClCompile Include="core\caller.cpp" />
+    <ClCompile Include="app\commands.cpp" />
+    <ClCompile Include="app\session.cpp" />
+    <ClCompile Include="app\traceparam.cpp" />
+    <ClCompile Include="app\summary.cpp" />
+    <ClCompile Include="xll\xllarm.cpp" />
+    <ClCompile Include="emit\csv.cpp" />
+    <ClCompile Include="emit\ring.cpp" />
+    <ClCompile Include="emit\rowcsv.cpp" />
+    <ClCompile Include="app\paramparse.cpp" />
+    <ClCompile Include="vba\vbaproctable.cpp" />
+    <ClCompile Include="vba\vbaderive.cpp" />
+    <ClCompile Include="vba\vbapatch.cpp" />
+    <ClCompile Include="vba\vbaboundary.cpp" />
+    <ClCompile Include="vba\vbatrace.cpp" />
+    <ClCompile Include="vba\vbareport.cpp" />
+    <ClCompile Include="vba\vbaidentity.cpp" />
+    <ClCompile Include="vba\vbaargs.cpp" />
+    <ClCompile Include="vba\vbapcode.cpp" />
+    <ClCompile Include="vba\vbaobject.cpp" />
+    <ClCompile Include="vba\vbaretdecode.cpp" />
+    <ClCompile Include="third_party\minhook\src\buffer.c">
+      <ObjectFileName>$(IntDir)minhook_%(Filename).obj</ObjectFileName>
+      <WarningLevel>Level3</WarningLevel>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <SDLCheck>false</SDLCheck>
+    </ClCompile>
+    <ClCompile Include="third_party\minhook\src\hook.c">
+      <ObjectFileName>$(IntDir)minhook_%(Filename).obj</ObjectFileName>
+      <WarningLevel>Level3</WarningLevel>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <SDLCheck>false</SDLCheck>
+    </ClCompile>
+    <ClCompile Include="third_party\minhook\src\trampoline.c">
+      <ObjectFileName>$(IntDir)minhook_%(Filename).obj</ObjectFileName>
+      <WarningLevel>Level3</WarningLevel>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <SDLCheck>false</SDLCheck>
+    </ClCompile>
+    <ClCompile Include="third_party\minhook\src\hde\hde64.c">
+      <ObjectFileName>$(IntDir)minhook_%(Filename).obj</ObjectFileName>
+      <WarningLevel>Level3</WarningLevel>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <SDLCheck>false</SDLCheck>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="third_party\xlcall.h" />
+    <ClInclude Include="core\excel_api.h" />
+    <ClInclude Include="core\clock.h" />
+    <ClInclude Include="core\caller.h" />
+    <ClInclude Include="core\render.h" />
+    <ClInclude Include="core\text.h" />
+    <ClInclude Include="core\safemem.h" />
+    <ClInclude Include="core\moduleid.h" />
+    <ClInclude Include="app\session.h" />
+    <ClInclude Include="app\exports.h" />
+    <ClInclude Include="app\paramparse.h" />
+    <ClInclude Include="app\xlgrid.h" />
+    <ClInclude Include="core\crashlog.h" />
+    <ClInclude Include="core\log.h" />
+    <ClInclude Include="core\tracemodes.h" />
+    <ClInclude Include="xll\xlltypeplan.h" />
+    <ClInclude Include="xll\xlldecode.h" />
+    <ClInclude Include="xll\xllregs.h" />
+    <ClInclude Include="xll\xllregistry.h" />
+    <ClInclude Include="vba\vbaderive.h" />
+    <ClInclude Include="vba\vbapatch.h" />
+    <ClInclude Include="vba\vbaboundary.h" />
+    <ClInclude Include="vba\vbaregs.h" />
+    <ClInclude Include="vba\vbatrailer.h" />
+    <ClInclude Include="vba\vbatrace.h" />
+    <ClInclude Include="vba\vbatrace_internal.h" />
+    <ClInclude Include="vba\vbaidentity.h" />
+    <ClInclude Include="vba\vbaargs.h" />
+    <ClInclude Include="vba\vbapcode.h" />
+    <ClInclude Include="vba\vbapcode_tables.h" />
+    <ClInclude Include="vba\vbaobject.h" />
+    <ClInclude Include="vba\vbaretdecode.h" />
+    <ClInclude Include="xll\xllhook.h" />
+    <ClInclude Include="xll\xllregister_watch.h" />
+    <ClInclude Include="xll\xlltrace.h" />
+    <ClInclude Include="emit\csv.h" />
+    <ClInclude Include="emit\ring.h" />
+    <ClInclude Include="emit\rowcsv.h" />
+    <ClInclude Include="vba\vbaproctable.h" />
+      <ClInclude Include="core\ascii.h" />
+    <ClInclude Include="core\excel_om.h" />
+    <ClInclude Include="core\excelerr.h" />
+    <ClInclude Include="core\execpage.h" />
+    <ClInclude Include="core\hash.h" />
+    <ClInclude Include="core\xltype.h" />
+    <ClInclude Include="vba\vbaoleaut.h" />
+    <ClInclude Include="vba\vbaslots.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <MASM Include="xll\xllthunk.asm" />
+    <MASM Include="vba\vbathunk.asm" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="XRayXL.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="XRayXL.def" />
+    <None Include="..\version.props" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+    <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.targets" />
+  </ImportGroup>
+</Project>

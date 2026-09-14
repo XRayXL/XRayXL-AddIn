@@ -1,0 +1,164 @@
+// Finding VBE7's p-code dispatch table, and the slots we would patch. This
+// header derives and verifies; it patches NOTHING.
+//
+// SAFE TO RUN AT ALL, because the derivation is pure static analysis of a module
+// image -- no probe executed, no stack walked, no automation. The stack-walk
+// hazard -- 64-bit Office registers a dynamic function table whose callback
+// terminates the process -- lives on that path, and this route never goes
+// there.
+//
+// SLOT INDICES ARE CONSTANTS AND NOT A HARDCODING BUG: every address here is
+// derived, and an index is not an address. The dispatch table is an interface,
+// and index N means the same opcode on every build -- measured across 41 VBE7
+// binaries from 2012 to 2026, where the two beginning-of-statement slots agree
+// 41/41 and all 25 exit slots hold one handler per repeat-group 41/41.
+//
+// AN Image ABSTRACTION, because the consumer reads VBE7 as loaded in this
+// process and the evidence harness reads it as a file across a corpus. Both go
+// through the same derivation: a verification exercising different code from the
+// thing that ships proves nothing about the thing that ships
+// (docs/Implementation.md, Part 2).
+#pragma once
+#include <cstdint>
+#include <cstddef>
+#include <string>
+#include <vector>
+
+namespace vba
+{
+    // Counted, never merged: an instrument that cannot tell "never looked" from
+    // "looked and found nothing" reports the second as the first.
+    enum class Decline
+    {
+        ModuleNotLoaded,
+        ImageUnreadable,        // a page of the module faulted while scanning
+        HeaderUnreadable,
+        NotPe64,
+        NoExecutableSection,
+        NoCandidateRun,
+        NoCandidateAgreedOnBos,
+        WrongSlotCount,
+        ExitGroupNotUniform,
+        BosSlotsDiffer,
+        ExitSharesBosHandler,
+        Count_
+    };
+
+    // A PE addressed in RVA space, whether mapped by the loader or read off
+    // disk. Read() must fail rather than fault on a bad range.
+    class Image
+    {
+    public:
+        virtual ~Image() = default;
+        virtual bool                 Read(std::uint32_t rva, void* dst, std::size_t n) const = 0;
+        virtual const std::uint8_t*  Scan(std::uint32_t rva, std::size_t n) const = 0;
+        virtual std::uint64_t        Base() const = 0;          // VA this image is based at
+        virtual std::uint32_t        SizeOfImage() const = 0;
+        virtual std::uint32_t        CodeLoRva() const = 0;
+        virtual std::uint32_t        CodeHiRva() const = 0;
+        virtual bool                 Ok() const = 0;
+
+        // WHY it is not usable, when Ok() is false. Without it the caller could
+        // only say "VBE7 is not loaded", which is a lie when the module IS
+        // loaded and merely failed to parse -- and sends the user to the VB
+        // editor, which cannot help.
+        virtual Decline              WhyNotOk() const { return Decline::ModuleNotLoaded; }
+    };
+
+    const char* DeclineName(Decline d);
+
+    struct PatchSite
+    {
+        std::uint32_t slot = 0;         // index into the dispatch table
+        std::uint32_t handlerRva = 0;   // what the slot currently holds
+        const char*   role = "";        // "bos", "exit", "raise" or "end"
+    };
+
+    struct SlotSet
+    {
+        bool          found = false;      // a table was located
+        bool          verified = false;   // ...and every structural check passed
+        std::uint32_t tableRva = 0;
+        std::uint32_t slots = 0;
+        std::uint32_t distinctHandlers = 0;
+        std::uint32_t runnerUpSlots = 0;  // longest rival run -- the margin
+        std::uint32_t bosHandlerRva = 0;
+        // THE SHARED INVALID-OPCODE HANDLER. Slots pointing at it are not instructions, so a walk that LANDS on one is
+        // not meeting an unknown opcode: it is already lost, and the step that
+        // got there used a WRONG length -- a much sharper signal than "an opcode
+        // with no length".
+        std::uint32_t invalidHandlerRva = 0;
+        std::uint32_t invalidSlots = 0;   // how many point at it
+        // THE OPCODE SET'S OWN FINGERPRINT: for every slot, the index of the
+        // lowest slot sharing its handler, hashed. It names no address, so it
+        // is the same number wherever VBE7 loaded and whatever moved inside it,
+        // and it is identical on both measured builds. It is what says the
+        // table we locked onto is the opcode set `kSigLength` was measured
+        // against -- the one thing a slot count and a margin cannot say.
+        std::uint64_t partitionHash = 0;
+        bool          partitionOk = false;   // ...and it matched the pinned one
+        // THE RAISE SLOT and whether it verified. Error attribution needs it
+        // and ordinary tracing does not, so a failed check DEGRADES that one
+        // feature rather than refusing the whole arm: losing every VBA row
+        // because an error opcode moved would be the wrong trade.
+        bool          raiseOk = false;
+        // THE `End` SLOT, on the same terms as the raise slot: one feature, not
+        // the product. `End` tears the VBA session down firing no exit opcode,
+        // and this is the only signal that its frames are dead. A failed check
+        // costs the depth and parentage of whatever runs after an `End` -- the
+        // behaviour before this slot was hooked -- and nothing else.
+        bool          endOk = false;
+        int           exitGroups = 0;
+        std::uint32_t declines[static_cast<int>(Decline::Count_)] = {};
+        std::vector<PatchSite> sites;     // the slots to patch
+        std::string   detail;
+    };
+
+    // Derive and verify. Never writes to the image.
+    SlotSet Derive(const Image& img);
+
+    // One of the procedure-exit opcodes? Exposed so a p-code walk can treat
+    // the end of a procedure as a clean stop, not a failure to decode.
+    bool IsExitSlot(std::uint32_t slot);
+
+    // THE SAME QUESTION, ASKED PROPERLY: does this opcode END the procedure?
+    // Not every member of the exit family does: GoSub `Return` and the pre-exit
+    // cleanups (vbaslots.h) do not, and a walk that stops on one reads nothing.
+    bool IsProcTerminatorSlot(std::uint32_t slot);
+
+    // Does leaving through this exit mean the LAST argument slot is the
+    // function's result rather than a parameter? True for the class/form
+    // `[out, retval]` exits.
+    bool ExitHasTrailingResultSlot(std::uint32_t slot);
+
+    // Every VBA statement starts with one, which makes it a known-good
+    // instruction boundary -- the anchor a walk resynchronises on.
+    bool IsBosSlot(std::uint32_t slot);
+
+    // A one-line-per-fact report for the action log and the dialog.
+    std::string Describe(const SlotSet& s);
+
+
+
+    // VBE7 as loaded in this process. Ok() is false when VBA has not loaded.
+    class LoadedVbe7 : public Image
+    {
+    public:
+        LoadedVbe7();
+        bool                Read(std::uint32_t rva, void* dst, std::size_t n) const override;
+        const std::uint8_t* Scan(std::uint32_t rva, std::size_t n) const override;
+        std::uint64_t       Base() const override        { return m_base; }
+        std::uint32_t       SizeOfImage() const override  { return m_size; }
+        std::uint32_t       CodeLoRva() const override    { return m_codeLo; }
+        std::uint32_t       CodeHiRva() const override    { return m_codeHi; }
+        bool                Ok() const override           { return m_ok; }
+        Decline             WhyNotOk() const override     { return m_why; }
+    private:
+        const std::uint8_t* m_p = nullptr;
+        std::uint64_t m_base = 0;
+        std::uint32_t m_size = 0, m_codeLo = 0, m_codeHi = 0;
+        bool m_ok = false;
+        Decline m_why = Decline::ModuleNotLoaded;
+    };
+
+}
