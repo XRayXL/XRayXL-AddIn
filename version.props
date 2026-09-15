@@ -3,7 +3,7 @@
   <PropertyGroup>
     <XRayVersionMajor>0</XRayVersionMajor>
     <XRayVersionMinor>1</XRayVersionMinor>
-    <XRayVersionPatch>0</XRayVersionPatch>
+    <XRayVersionPatch>1</XRayVersionPatch>
   </PropertyGroup>
 
   <!-- THE CONFIGURATION THE BINARY WAS BUILT AS, carried into its VERSIONINFO.
