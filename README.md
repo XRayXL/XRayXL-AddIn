@@ -169,8 +169,8 @@ msbuild XRayXL.sln /p:Configuration=Release /p:Platform=x64
 tools\deploy.ps1        # copies the XLL to build\addin\
 ```
 
-That builds four projects into `build\x64\Release\`: the add-in itself, the
-`TracedAddin` the suites need, and the two demo add-ins. A normal build never
+That builds into `build\x64\Release\`: the add-in itself, the `TracedAddin` the
+suites need, the two demo add-ins, and the unit tests under `tests\sweep\unit\`. A normal build never
 writes `dist\` — only `tools\release.ps1` does that, after a green sweep.
 
 The output is one native DLL — `build\x64\Release\XRayXL\XRayXL64.xll` — with no
@@ -244,7 +244,7 @@ manager written for this project and kept independently useful. They need
 
 ```powershell
 msbuild XRayXL.sln /p:Configuration=Release /p:Platform=x64
-.\StretchXL\StretchXL.ps1 -Parallel 8 -Path .\suites -OutDir <any folder>
+.\StretchXL\StretchXL.ps1 -Parallel 8 -Path .\tests\sweep -OutDir <any folder>
 ```
 
 Every asserted formula lives in a workbook the test **saved, closed and
@@ -253,7 +253,7 @@ triggered* — F9, an edit, a button, opening the file. Neither is fussiness:
 a formula loaded from a file and one assigned in memory are different things
 inside Excel's calculation engine, and so are the ways a recalculation starts.
 [docs/Testing.md](./docs/Testing.md) has the prerequisites, how to read a run,
-and the principles behind that; [suites/README.md](./suites/README.md) is the
+and the principles behind that; [tests/sweep/README.md](./tests/sweep/README.md) is the
 inventory of what each suite defends.
 
 ## Where to go next
@@ -266,7 +266,7 @@ inventory of what each suite defends.
 | [docs/VBATracing.md](./docs/VBATracing.md) | A layered walkthrough of VBA tracing — what is patched, the shadow stack, return values and error outcomes, for a general programmer |
 | [docs/TraceRowModel.md](./docs/TraceRowModel.md) | The trace file's contract, in full |
 | [docs/Testing.md](./docs/Testing.md) | How the tests are run, and the principles that decide whether a suite is worth running |
-| [suites/README.md](./suites/README.md) | What each suite defends, and how to add a test |
+| [tests/sweep/README.md](./tests/sweep/README.md) | What each suite defends, and how to add a test |
 
 
 ## Acknowledgements

@@ -6,7 +6,7 @@ repeated from the documents it points at.
 
 | | |
 |---|---|
-| [`suites/README.md`](../suites/README.md) | **The suites.** Layout and conventions, the inventory of what each suite defends, and the rules every driver keeps. Read before writing a test. |
+| [`tests/sweep/README.md`](../tests/sweep/README.md) | **The suites.** Layout and conventions, the inventory of what each suite defends, and the rules every driver keeps. Read before writing a test. |
 | [`StretchXL/StretchXL.md`](../StretchXL/StretchXL.md) | **The manager.** Excel lifecycles, session modes, deadlines, the dialog watchdog, measured close, dumps and exit codes. Read before touching the harness. |
 | [`TraceRowModel.md`](./TraceRowModel.md) | **The contract the tests assert against**, enforced by the suites' single reader, which throws on any violation. |
 
@@ -29,8 +29,12 @@ repeated from the documents it points at.
   it along with everything else, or on its own:
 
 ```powershell
-msbuild tests\TracedAddin\TracedAddin.vcxproj /p:Configuration=Release /p:Platform=x64
+msbuild tests\fixtures\TracedAddin\TracedAddin.vcxproj /p:Configuration=Release /p:Platform=x64
 ```
+
+- **The unit tests, built.** `msbuild XRayXL.sln` builds them too, into
+  `build\x64\Release\unit\`; the `unit` suite will not run an exe older than
+  the source it came from.
 
 The harness starts and closes Excel processes of its own throughout a run. It
 kills only the ones it created, by process id — but do not run a sweep on a
@@ -40,19 +44,22 @@ machine where you are also working in Excel.
 
 ```powershell
 # everything
-.\StretchXL\StretchXL.ps1 -Parallel 8 -Path .\suites -OutDir <any folder>
+.\StretchXL\StretchXL.ps1 -Parallel 8 -Path .\tests\sweep -OutDir <any folder>
 
 # the control: no -Path, so no tests -- proves the harness clean on its own
 .\StretchXL\StretchXL.ps1 -Parallel 8 -OutDir <any folder>
 
 # one suite, one trigger family, one test -- the folder is the selection
-.\StretchXL\StretchXL.ps1 -Parallel 8 -Path .\suites\stress\change -OutDir <any folder>
+.\StretchXL\StretchXL.ps1 -Parallel 8 -Path .\tests\sweep\stress\change -OutDir <any folder>
 
 # the order-dependency soak: dirty reused sessions, shuffled, replayable by seed
-.\StretchXL\StretchXL.ps1 -Parallel 8 -Runs 20 -SessionMode Reuse -RandomOrder -Path .\suites -OutDir <any folder>
+.\StretchXL\StretchXL.ps1 -Parallel 8 -Runs 20 -SessionMode Reuse -RandomOrder -Path .\tests\sweep -OutDir <any folder>
+
+# (tests that load the same add-ins are kept together, so each session lives through
+#  its group; -NoGroupBySession mixes every test into every session instead)
 
 # the close-down regression: the interactive (X click) arm, warmed up first
-.\StretchXL\StretchXL.ps1 -Parallel 8 -Path .\suites -OutDir <any folder> -CloseWithX -Warmup
+.\StretchXL\StretchXL.ps1 -Parallel 8 -Path .\tests\sweep -OutDir <any folder> -CloseWithX -Warmup
 ```
 
 `-Parallel` is mandatory; `-OutDir` is created if it does not exist. The
@@ -98,7 +105,7 @@ on formulas it just assigned **will report a broken tool as healthy** — that
 happened here, for months. So every asserted formula lives in a workbook that
 was saved and reopened (**`AsLoaded`**), and the triggers are covered as
 first-class cases: F9, `CalculateFull`, edit-and-enter, open, buttons, events,
-ActiveX, selection. `suites/stress/` is grouped by trigger kind for exactly this
+ActiveX, selection. `tests/sweep/stress/` is grouped by trigger kind for exactly this
 reason.
 
 **2. A degraded rung is normal for the product and fatal for a test run.** The
@@ -136,7 +143,7 @@ are where the XLL decoder has been wrong before: a `%` string, a `K%` array, an
 `$case = @{...}` literal and a call into its suite's `_driver.ps1` — so the
 directory listing *is* the inventory: there is nothing to regenerate and no way
 for a case to silently not exist. Files whose names start with `_` are never
-discovered as tests. [`suites/README.md`](../suites/README.md) has the layout,
+discovered as tests. [`tests/sweep/README.md`](../tests/sweep/README.md) has the layout,
 the per-suite configuration and what each suite is defending.
 
 **A test binds to the session it is given, by window handle, and does exactly
@@ -144,8 +151,21 @@ one thing.** It never starts, closes, kills or times an Excel — the manager ow
 every lifecycle, and that is what makes `-Parallel` safe and a hang
 distinguishable from a crash.
 
-Everything under `suites/` is a test. `tests/` holds what is not: `TracedAddin/`,
-the add-in above; `xll_common/`, the header it shares with the demo add-ins;
-and two long-running instruments kept outside `suites/` so a sweep never runs
-them — `vbahammer/`, a crash hunt that may kill its Excel, and `tracesoak/`, a
-leak and cost measurement — with `_instrument.ps1` holding what they share.
+**A unit test is a folder under `tests/sweep/unit/`.** It holds a C++ program
+that prints `[PASS]`/`[FAIL]` lines and exits non-zero on a failure, a
+`.vcxproj` that imports `..\UnitTest.props` and compiles the product sources it
+tests, and a two-line `.test.ps1` that calls `Invoke-UnitTest`. Add the project
+to the `unit` folder of `XRayXL.sln`, and its exe to `RequireNotOlderThan` in
+`unit/suite.psd1`.
+
+**`tests/` is organised by how each thing runs.**
+
+| Folder | What it holds |
+|---|---|
+| `tests/sweep/` | Every test, including `unit/`, which runs the product's own code with no Excel. A sweep runs all of it, and `tools\release.ps1` will not publish unless it is green. |
+| `tests/instruments/` | Long-running measurements, run one at a time and never in a sweep: `vbahammer/`, a crash hunt that may kill its Excel, and `tracesoak/`, a leak and cost measurement, with `_instrument.ps1` holding what they share. |
+| `tests/fixtures/` | What the tests load but are not tests: `TracedAddin/`, the add-in above, and `xll_common/`, the header it shares with the demo add-ins. |
+
+The instruments sit outside `tests/sweep/` because StretchXL runs every
+`*.test.ps1` under the folder it is given; the folder a file is in is what decides
+whether a sweep runs it.

@@ -6,7 +6,7 @@ anyone writing a reader, a test, or a change to the writer. The settings that
 decide what gets recorded are in [TraceOptions.md](./TraceOptions.md). The
 writer is `src/emit/csv.cpp` and `src/emit/rowcsv.cpp`, plus the two row builders
 (`src/xll/xlltrace.cpp` and `src/vba/vbatrace.cpp`); the
-enforcing reader is `Read-TraceFile` in `suites/_xray_common.ps1`.
+enforcing reader is `Read-TraceFile` in `tests/sweep/_xray_common.ps1`.
 If the code and this document disagree, the disagreement is **loud** — the
 reader refuses the file — and the fix updates both in the same change.
 
@@ -119,7 +119,9 @@ group and count by, which is why it is a column: a substring match on free text
 can only approximate one. One of `returned`, `threw`,
 `unwound`, `handled`, `abandoned`, `unhandled` on every `exit` row. A chain reads outwards from the
 throw: the frame that raised says `threw`, each frame the error passed through
-without handling says `unwound`, and the frame that resumed says `handled`.
+without handling says `unwound`, and the frame that resumed says `handled`. A frame
+that caught an error and then raised one that left it says `threw`, and the frame
+that catches that one says `handled` in turn.
 `returned` is written explicitly, never omitted, so a clean call cannot be
 confused with an older writer's silence.
 
@@ -135,6 +137,17 @@ which is the thing a reader is hunting for. Reading it any other way would make
 entered to compute a cell reads `unhandled`, and the cell shows `#VALUE!`. Frames it
 called keep `threw` and `unwound`, so the raise is still located, and the chain ends
 there even when a macro recalculated the cell, which then reads `returned`. The
+**A frame Excel's modal error dialog ended reads `returned`, with `trust=flush`.**
+An unhandled error in a macro or a sheet event puts up VBA's error dialog; pressing
+End there fires no opcode of any kind, so the frames stay open until disarm flushes
+them. Whether such a frame is dead or merely waiting cannot be told apart at that
+point -- a running frame keeps its trailer on the stack, and so does the stale stack
+of a dead one -- so it is closed as if it were still running. **`outcome` is not
+evidence on a row whose `trust` is `flush`**: the duration is a ceiling and the word
+is the default. The raising frame is still located when execution continues instead
+(the stack-pointer backstop closes it as `threw`).
+
+The
 frame is identified by its calling cell (`xlfCaller`, always resolved) differing
 from the frame beneath. An entry with no calling cell, such as a user-triggered sheet event, an
 `Application.OnTime` macro or an `Application.Run` macro, reads `threw` instead. A function that *returns* an error value, such as `CVErr(xlErrValue)`,
@@ -566,7 +579,7 @@ read as the column before it.
 
 The row invariants hold for *any* correct trace and are asserted on
 every row by every driver, via `Test-RowInvariants` in
-`suites/_xray_common.ps1`: an entry-kind row always names its caller; the
+`tests/sweep/_xray_common.ps1`: an entry-kind row always names its caller; the
 kind is one of the closed set above; a `callerref` is present exactly when
 the kind says one should be; a `cell` description is a full external
 address and not a bare reference; an exit row carries neither. Drivers
@@ -595,7 +608,7 @@ nested past 64 XLL calls writes no rows for the deeper ones, with no marker.
 The header line **is** the version. Any change — a column (append-only, at
 the end), a new kind, a new format — lands as one change touching four
 places: `kHeader` in `rowcsv.cpp`, this document, `Read-TraceFile`, and
-`suites/format/reader-contract.test.ps1`. An old reader meeting a new file
+`tests/sweep/format/reader-contract.test.ps1`. An old reader meeting a new file
 fails the header check and *says so*; nothing skips silently. A future format
 (a richer JSON, should one land) adds a dispatch
 branch to the reader and a section here; the **model** — the kinds, the

@@ -14,6 +14,8 @@ namespace app
     {
         if (IsArmed())
         {
+            // Logged: a caller waiting on the log otherwise sees a refused arm as silence.
+            core::Log::Note("arm refused: already armed -- XRayXL_Disarm first");
             xll::ArmReport r;
             r.detail = "already armed";
             return r;

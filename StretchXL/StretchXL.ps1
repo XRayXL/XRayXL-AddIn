@@ -103,6 +103,19 @@
 .PARAMETER Seed
     Replay a specific shuffle. Ignored without -RandomOrder.
 
+.PARAMETER GroupBySession
+    Keep tests that share a session set-up (add-ins, settle time, environment)
+    together, so a reused session lasts through its whole group instead of
+    being replaced whenever the next test needs different add-ins. Order within
+    a group is kept; with -RandomOrder the group order is shuffled by the same
+    seed. ON BY DEFAULT for -RandomOrder with -SessionMode Reuse or ReuseClean;
+    give it to group an unshuffled reuse run. Needs -Path and a reuse mode.
+
+.PARAMETER NoGroupBySession
+    Turn the default grouping off: a shuffled reuse run mixes every test into
+    every session, as before -GroupBySession existed. Replaying a seed from such
+    a run needs this switch again.
+
 .PARAMETER DumpAfterSeconds
     If Excel is still alive this many seconds after the close, write a
     minidump WHILE IT IS STILL STUCK, then carry on waiting. 0 disables it.
@@ -134,6 +147,11 @@
     A shuffled X-close soak of one suite, warm-ups paid up front.
 
 .EXAMPLE
+    .\StretchXL.ps1 -Parallel 8 -Runs 6 -Path .\suites -OutDir C:\sx\r -SessionMode Reuse -RandomOrder
+    A shuffled soak whose reused sessions each last through a whole group of tests
+    (grouping is the default here; -NoGroupBySession mixes every test instead).
+
+.EXAMPLE
     .\StretchXL.ps1 -Cleanup
     Clear orphans from a run that was interrupted.
 #>
@@ -151,6 +169,8 @@ param(
     [Parameter(ParameterSetName = 'Run')][switch]$Warmup,
     [Parameter(ParameterSetName = 'Run')][switch]$RandomOrder,
     [Parameter(ParameterSetName = 'Run')][int]$Seed = -1,
+    [Parameter(ParameterSetName = 'Run')][switch]$GroupBySession,
+    [Parameter(ParameterSetName = 'Run')][switch]$NoGroupBySession,
     [Parameter(ParameterSetName = 'Run')][ValidateRange(0, 3600)][int]$DumpAfterSeconds = 0,
     [Parameter(ParameterSetName = 'Run')][switch]$FullDump,
     [Parameter(ParameterSetName = 'Run')][switch]$NoDump,
@@ -324,6 +344,13 @@ if ($RandomOrder) {
         $tmpSwap = $workItems[$i]; $workItems[$i] = $workItems[$j]; $workItems[$j] = $tmpSwap
     }
 }
+$groupCount = 0
+$grouped = Resolve-GroupBySession -Group:$GroupBySession -NoGroup:$NoGroupBySession -RandomOrder:$RandomOrder `
+                                  -SessionMode $SessionMode -FloorMode:$floorMode
+if ($grouped) {
+    $workItems = Group-WorkBySession -Items $workItems -Rng $(if ($RandomOrder) { $rng } else { $null })
+    $groupCount = @($workItems | ForEach-Object { $_.SessionKey } | Select-Object -Unique).Count
+}
 
 # -Parallel divides the work; the remainder goes to the first workers so the
 # total is exact, and no more workers start than there are items.
@@ -386,6 +413,7 @@ $metaRecord = [ordered]@{
         sessionMode = $SessionMode; closeWithX = $CloseWithX.IsPresent
         closeTimeoutSeconds = $CloseTimeoutSeconds; testTimeoutSeconds = $TestTimeoutSeconds
         warmup = $Warmup.IsPresent; randomOrder = $RandomOrder.IsPresent; seed = $seedUsed
+        groupBySession = $grouped
         dumpAfterSeconds = $DumpAfterSeconds; fullDump = $FullDump.IsPresent; noDump = $NoDump.IsPresent
         outDir = $outRoot; dumpDir = $dumpRoot
     }
@@ -423,7 +451,8 @@ if (-not $floorMode) {
     Write-Output ("  test timeout     : {0}s" -f $TestTimeoutSeconds)
 }
 if ($Warmup)      { Write-Output '  warm-up          : one unmeasured bare close per worker, reported but never counted' }
-if ($RandomOrder) { Write-Output ("  order            : SHUFFLED, seed {0} (replay with -RandomOrder -Seed {0})" -f $seedUsed) }
+if ($RandomOrder) { Write-Output ("  order            : SHUFFLED, seed {0} (replay with -RandomOrder -Seed {0}{1})" -f $seedUsed, $(if ($NoGroupBySession -and $SessionMode -ne 'Fresh') { ' -NoGroupBySession' } else { '' })) }
+if ($grouped) { Write-Output ("  grouping         : {0} session set-up(s), each kept together{1}" -f $groupCount, $(if ($RandomOrder) { '; group order shuffled by the seed' } else { '' })) }
 Write-Output ("  dump on hang     : {0}" -f $(if ($NoDump) { 'NO -- -NoDump; hangs are killed with no evidence' } elseif ($FullDump) { 'yes, full memory' } else { 'yes, stacks and handles' }))
 if ($DumpAfterSeconds -gt 0) {
     Write-Output ("  dump if slow     : after {0}s still alive, while still stuck" -f $DumpAfterSeconds)

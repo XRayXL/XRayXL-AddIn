@@ -54,6 +54,7 @@ namespace xll
             volatile LONG64 g_registers = 0;
             volatile LONG64 g_hooked = 0;
             volatile LONG64 g_faults = 0;
+            volatile LONG64 g_declinedCut = 0;
 
             // False if truncated.
             bool CopyCounted(const XLOPER12* x, wchar_t* dst, size_t cap)
@@ -85,7 +86,7 @@ namespace xll
                         (coper <= 3 || rgp == nullptr || CopyCounted(rgp[3], c.functionText, _countof(c.functionText)));
                     if (!whole)
                     {
-                        InterlockedIncrement64(&g_faults);
+                        InterlockedIncrement64(&g_declinedCut);   // a correct decline, not a fault
                         c.procedure[0] = 0;      // unusable; the worker skips it
                         return;
                     }
@@ -273,6 +274,7 @@ namespace xll
             s.registers = g_registers;
             s.hooked    = g_hooked;
             s.faults    = g_faults;
+            s.declinedCut = g_declinedCut;
             return s;
         }
     }

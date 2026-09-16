@@ -53,7 +53,7 @@ namespace core
     //
     // `CVErr(2042)` does NOT store 2042: it stores 0x800A07FA -- FACILITY_CONTROL
     // (0x800A0000) with 2042 in the low word. [measured: a #N/A handed to a
-    // Variant parameter, suites/stress/calc/variant-arg-holds-a-cell-error]
+    // Variant parameter, tests/sweep/stress/calc/variant-arg-holds-a-cell-error]
     //
     // The bare form is accepted too, for a path that carries the raw xlCVError
     // rather than an SCODE. It cannot collide: an HRESULT of 2042 has its high

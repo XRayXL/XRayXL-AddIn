@@ -47,6 +47,7 @@ namespace xll
             long long calls     = 0;  // every C API call seen -- the cost figure
             long long registers = 0;  // how many were xlfRegister
             long long hooked    = 0;  // and how many of those were patched
+            long long declinedCut = 0; // a field longer than the capture: correctly not hooked
             long long faults    = 0;  // the guard fired -- must stay zero
         };
 

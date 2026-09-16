@@ -69,9 +69,11 @@ namespace emit
         // (empty, or the next record's producer has not committed yet).
         bool  Pop(char* out, int& len);
 
-        // Cumulative for the current Init. A record too big for the ring is a drop even under PAUSE.
+        // Cumulative since the last ResetCounts or Init. A record too big for the ring is a drop even under PAUSE.
         long long Drops()  const;
         long long Pauses() const;
+        // Survives Teardown, so a synchronous session must call this or it reports the last ring's loss.
+        void      ResetCounts();
 
     private:
         void PutWrapped(LONG64 at, const char* src, int n);

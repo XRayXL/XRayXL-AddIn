@@ -4,11 +4,33 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "XRayXL", "src\XRayXL.vcxproj", "{4D1C9E00-0001-4A00-9000-00000000A001}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "TracedAddin", "tests\TracedAddin\TracedAddin.vcxproj", "{4D1C9E00-0001-4A00-9000-00000000B001}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "TracedAddin", "tests\fixtures\TracedAddin\TracedAddin.vcxproj", "{4D1C9E00-0001-4A00-9000-00000000B001}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DemoFinance", "src\demo\DemoFinance.vcxproj", "{4D1C9E00-0001-4A00-9000-00000000C001}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DemoBehaviors", "src\demo\DemoBehaviors.vcxproj", "{4D1C9E00-0001-4A00-9000-00000000C002}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "unit", "unit", "{4D1C9E00-0001-4A00-9000-00000000D000}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "callerdecode", "tests\sweep\unit\callerdecode\callerdecode.vcxproj", "{4D1C9E00-0001-4A00-9000-00000000D001}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "csv_close_race_test", "tests\sweep\unit\csv_close_race_test\csv_close_race_test.vcxproj", "{4D1C9E00-0001-4A00-9000-00000000D002}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "decode_test", "tests\sweep\unit\decode_test\decode_test.vcxproj", "{4D1C9E00-0001-4A00-9000-00000000D003}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "paramparse_test", "tests\sweep\unit\paramparse_test\paramparse_test.vcxproj", "{4D1C9E00-0001-4A00-9000-00000000D004}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "pcode_scan_guard_test", "tests\sweep\unit\pcode_scan_guard_test\pcode_scan_guard_test.vcxproj", "{4D1C9E00-0001-4A00-9000-00000000D005}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "proctable_test", "tests\sweep\unit\proctable_test\proctable_test.vcxproj", "{4D1C9E00-0001-4A00-9000-00000000D006}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ring_stress", "tests\sweep\unit\ring_stress\ring_stress.vcxproj", "{4D1C9E00-0001-4A00-9000-00000000D007}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "rowcsv_test", "tests\sweep\unit\rowcsv_test\rowcsv_test.vcxproj", "{4D1C9E00-0001-4A00-9000-00000000D008}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "vbaderive_roles_test", "tests\sweep\unit\vbaderive_roles_test\vbaderive_roles_test.vcxproj", "{4D1C9E00-0001-4A00-9000-00000000D009}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "xlltypeplan_test", "tests\sweep\unit\xlltypeplan_test\xlltypeplan_test.vcxproj", "{4D1C9E00-0001-4A00-9000-00000000D00A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -32,8 +54,60 @@ Global
 		{4D1C9E00-0001-4A00-9000-00000000C002}.Debug|x64.Build.0 = Debug|x64
 		{4D1C9E00-0001-4A00-9000-00000000C002}.Release|x64.ActiveCfg = Release|x64
 		{4D1C9E00-0001-4A00-9000-00000000C002}.Release|x64.Build.0 = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D001}.Debug|x64.ActiveCfg = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D001}.Debug|x64.Build.0 = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D001}.Release|x64.ActiveCfg = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D001}.Release|x64.Build.0 = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D002}.Debug|x64.ActiveCfg = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D002}.Debug|x64.Build.0 = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D002}.Release|x64.ActiveCfg = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D002}.Release|x64.Build.0 = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D003}.Debug|x64.ActiveCfg = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D003}.Debug|x64.Build.0 = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D003}.Release|x64.ActiveCfg = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D003}.Release|x64.Build.0 = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D004}.Debug|x64.ActiveCfg = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D004}.Debug|x64.Build.0 = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D004}.Release|x64.ActiveCfg = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D004}.Release|x64.Build.0 = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D005}.Debug|x64.ActiveCfg = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D005}.Debug|x64.Build.0 = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D005}.Release|x64.ActiveCfg = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D005}.Release|x64.Build.0 = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D006}.Debug|x64.ActiveCfg = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D006}.Debug|x64.Build.0 = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D006}.Release|x64.ActiveCfg = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D006}.Release|x64.Build.0 = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D007}.Debug|x64.ActiveCfg = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D007}.Debug|x64.Build.0 = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D007}.Release|x64.ActiveCfg = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D007}.Release|x64.Build.0 = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D008}.Debug|x64.ActiveCfg = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D008}.Debug|x64.Build.0 = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D008}.Release|x64.ActiveCfg = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D008}.Release|x64.Build.0 = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D009}.Debug|x64.ActiveCfg = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D009}.Debug|x64.Build.0 = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D009}.Release|x64.ActiveCfg = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D009}.Release|x64.Build.0 = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D00A}.Debug|x64.ActiveCfg = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D00A}.Debug|x64.Build.0 = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D00A}.Release|x64.ActiveCfg = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D00A}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{4D1C9E00-0001-4A00-9000-00000000D001} = {4D1C9E00-0001-4A00-9000-00000000D000}
+		{4D1C9E00-0001-4A00-9000-00000000D002} = {4D1C9E00-0001-4A00-9000-00000000D000}
+		{4D1C9E00-0001-4A00-9000-00000000D003} = {4D1C9E00-0001-4A00-9000-00000000D000}
+		{4D1C9E00-0001-4A00-9000-00000000D004} = {4D1C9E00-0001-4A00-9000-00000000D000}
+		{4D1C9E00-0001-4A00-9000-00000000D005} = {4D1C9E00-0001-4A00-9000-00000000D000}
+		{4D1C9E00-0001-4A00-9000-00000000D006} = {4D1C9E00-0001-4A00-9000-00000000D000}
+		{4D1C9E00-0001-4A00-9000-00000000D007} = {4D1C9E00-0001-4A00-9000-00000000D000}
+		{4D1C9E00-0001-4A00-9000-00000000D008} = {4D1C9E00-0001-4A00-9000-00000000D000}
+		{4D1C9E00-0001-4A00-9000-00000000D009} = {4D1C9E00-0001-4A00-9000-00000000D000}
+		{4D1C9E00-0001-4A00-9000-00000000D00A} = {4D1C9E00-0001-4A00-9000-00000000D000}
 	EndGlobalSection
 EndGlobal

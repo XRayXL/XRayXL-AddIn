@@ -58,7 +58,7 @@
       <ConformanceMode>true</ConformanceMode>
       <PreprocessorDefinitions>UNICODE;_UNICODE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <!-- for xlcall.h -->
-      <AdditionalIncludeDirectories>$(XRayRoot)src\third_party;$(XRayRoot)tests\xll_common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(XRayRoot)src\third_party;$(XRayRoot)tests\fixtures\xll_common;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -91,7 +91,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="demo_xll_common.h" />
-    <ClInclude Include="..\..\tests\xll_common\plain_xll.h" />
+    <ClInclude Include="..\..\tests\fixtures\xll_common\plain_xll.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

@@ -138,4 +138,5 @@ namespace emit
 
     long long ByteRing::Drops()  const { return LoadAcq(const_cast<volatile LONG64*>(&m_drops)); }
     long long ByteRing::Pauses() const { return LoadAcq(const_cast<volatile LONG64*>(&m_pauses)); }
+    void      ByteRing::ResetCounts() { InterlockedExchange64(&m_drops, 0); InterlockedExchange64(&m_pauses, 0); }
 }

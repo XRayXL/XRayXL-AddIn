@@ -278,6 +278,8 @@ namespace csv
         if (Prepared()) { g_owners++; Unlock(); return true; }
         // A drain that never joined, or a producer never counted out, still owns the ring; write synchronously instead.
         const bool ringFree = !g_ringAbandoned && RingTeardown();
+        // Every new session, ring or not: a synchronous one otherwise reports the last ring's drops.
+        g_ring.ResetCounts();
         g_rows = 0;
         g_seq  = 0;
         g_in   = 0;             // reset HERE (arm), before any producer stamps it

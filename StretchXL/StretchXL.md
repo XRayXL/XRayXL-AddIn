@@ -26,16 +26,16 @@ test ever written.
 
 ```powershell
 # everything under a tests root
-.\StretchXL\StretchXL.ps1 -Parallel 8 -Path .\suites -OutDir <any folder>
+.\StretchXL\StretchXL.ps1 -Parallel 8 -Path .\tests\sweep -OutDir <any folder>
 
 # the floor: no -Path, so no tests -- the control that proves the harness clean
 .\StretchXL\StretchXL.ps1 -Parallel 8 -OutDir <any folder>
 
 # a subset -- the folder IS the selection
-.\StretchXL\StretchXL.ps1 -Parallel 4 -Path .\suites\stress -OutDir <any folder>
+.\StretchXL\StretchXL.ps1 -Parallel 4 -Path .\tests\sweep\stress -OutDir <any folder>
 
 # the order-dependency soak: reused dirty sessions, shuffled, replayable by seed
-.\StretchXL\StretchXL.ps1 -Parallel 8 -Runs 20 -SessionMode Reuse -RandomOrder -Path .\suites -OutDir <any folder>
+.\StretchXL\StretchXL.ps1 -Parallel 8 -Runs 20 -SessionMode Reuse -RandomOrder -Path .\tests\sweep -OutDir <any folder>
 ```
 
 Requires 64-bit Excel and an interactive desktop session. `-Parallel` and
@@ -237,6 +237,18 @@ run. The shuffle is driven by a seed printed in the header and settable with
 `-Seed`, because a random order that found a failure and cannot be replayed
 is half a result.
 
+**Shuffling across set-ups defeats reuse.** A session is only ever shared by tests
+whose set-up matches, so a fully shuffled tree whose suites load different
+add-ins replaces the session most of the time — measured, one sweep's shuffled
+reuse soak served about two tests per session. So a shuffled reuse run keeps
+each set-up's tests together after the shuffle, **by default**: order within a
+group stays random, the group order is shuffled by the same seed, and each
+worker's session lives through its whole share of a group. Nothing is lost by
+it, because tests with different set-ups could never have shared a session
+anyway. `-NoGroupBySession` restores the full mix, and a seed from a shuffled
+reuse run made before grouping existed replays only with it; `-GroupBySession`
+groups an unshuffled reuse run.
+
 ## The floor is the control, forever
 
 With no test given, the harness runs
@@ -276,6 +288,7 @@ whatever it is testing, and they ship with it.
 | `-CloseTimeoutSeconds <int>` | no (default 70) | When to call a session a `HANG`. A classifier, not a measurement — the real close-to-exit time is reported on every session as `shutdown=`. A deadline shorter than the slowest clean shutdown manufactures hangs instead of measuring them. |
 | `-TestTimeoutSeconds <int>` | no (default 120) | When to call a test body a `TIMEOUT`: both the Excel and the wedged test process are dumped, then the test process is killed. Distinct from the close deadline because they are different failures. |
 | `-RandomOrder` / `-Seed <int>` | no | Shuffle the work; seed printed and recorded, `-Seed` replays. With dirty reuse, this is the order-dependency soak. |
+| `-GroupBySession` / `-NoGroupBySession` | no | Keep tests with the same session set-up together, so a reused session lasts through its group (see above). **On by default with `-RandomOrder` and `-SessionMode Reuse`/`ReuseClean`**; `-NoGroupBySession` turns it off, `-GroupBySession` turns it on for an unshuffled reuse run. Grouping needs `-Path` and a reuse mode; the group order is shuffled by the same seed, and the header's replay hint names `-NoGroupBySession` when a run used it. |
 | `-CloseWithX` | no | Close by simulated X click instead of `Application.Quit()`. See below. |
 | `-Warmup` | no | One unmeasured iteration per worker before the counted runs, through the same machinery (ledger, deadline, dump-on-hang). Exists because the first X-close per worker process costs ~60s; the warm-ups run in parallel, so the invocation pays ~60s once and the measured data loses its known first-run mode. Reported as a `run=warmup` line — a warm-up that hangs is still loud — but never counted: not in the tally, the rates, the shutdown distribution, or the expected-runs check. |
 | `-DumpAfterSeconds <int>` | no (default 0 = off) | If Excel is still alive this long after the close, write a minidump **while it is still stuck**, then keep waiting. A `HANG` is always dumped before it is killed; this additionally catches slow-but-eventually-clean shutdowns, which a dump taken only at the deadline can never see. |

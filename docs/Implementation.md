@@ -801,7 +801,7 @@ without resuming is **unwound**; the frame that runs again after the raise
 **handled** it. So a chain reads `threw → unwound → … → handled` outwards from the
 raiser. A raise that ran its own epilogue is a benign object-model raise or a
 same-frame handler and reads `returned`. This part is exercised by
-`suites/vba/error-shows-thrower-and-catcher` and `error-from-class-and-form`.
+`tests/sweep/vba/error-shows-thrower-and-catcher` and `error-from-class-and-form`.
 
 **The problem this section solves.** An unhandled error in a worksheet function does
 not propagate anywhere a user can see as an error — Excel turns it into `#VALUE!` in
@@ -942,8 +942,14 @@ The rule that remains load-bearing is a negative one:
 > planted address legal. **Marking our own binary as more secure is what would
 > break the tracer.**
 
-The exposure is dated rather than hypothetical: 14 of 719 x64 Office binaries
-already carry the bit.
+**No current Excel is affected.** The bit is spreading through Office — 14 of
+719 x64 binaries in the Office tree carry it, among them
+`PowerPivotExcelClientAddIn.dll`, `ACECORE.DLL` and `xmsrv_xl.dll` — but none of
+them is `EXCEL.EXE`, and a DLL's bit does not turn shadow stacks on for the
+process. Breaking the tracer would take all three of: `EXCEL.EXE` gaining the
+bit, the process running in strict rather than compatibility mode, and an exit
+edge that rewrites a return address, which neither tracer uses. The trend is
+why that last one was engineered out, and why the rule above stays.
 
 ## AV / EDR
 

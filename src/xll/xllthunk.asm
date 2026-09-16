@@ -50,7 +50,7 @@
 ; The first version of this used 248h -- forgetting the shadow space -- and so
 ; read the RETURN ADDRESS as argument five, and forwarded that. The callee got
 ; a garbage fifth argument and the trace printed 6.95155e-310. Caught by
-; suites\xll\cases\01-TxStackArgs.test.ps1, which exists for exactly this.
+; tests\sweep\xll\cases\01-TxStackArgs.test.ps1, which exists for exactly this.
 ;
 ; Outgoing, the symmetry is different and must not be copied from the above:
 ; our `call` pushes 8 more, so the callee reads its argument 4 at ITS rsp+28h,

@@ -267,6 +267,14 @@ function Write-DialogsHandled {
     Write-Output 'STRETCH dialogs=handled'
 }
 
+# The manager keeps the last 8192 bytes of a test's output, so a detail longer than
+# that cuts off the start of its own verdict line and the result reads as ERROR.
+$script:DetailMaxChars = 2000
+function Limit-Detail([string]$Text) {
+    if ($Text.Length -le $script:DetailMaxChars) { return $Text }
+    return $Text.Substring(0, $script:DetailMaxChars) + " ...[cut $($Text.Length - $script:DetailMaxChars) chars]"
+}
+
 function Write-TestCase {
     <#
     .SYNOPSIS
@@ -283,7 +291,7 @@ function Write-TestCase {
     if ($Pass -eq $Fail) { throw 'Write-TestCase: exactly one of -Pass / -Fail' }
     $cv = if ($Pass) { 'PASS' } else { 'FAIL' }
     $cleanName = ($Name -replace '\s+', '_')
-    $cleanDetail = ($Detail -replace '\s+', ' ').Trim()
+    $cleanDetail = Limit-Detail (($Detail -replace '\s+', ' ').Trim())
     $caseLine = "STRETCH case=$cleanName verdict=$cv"
     if ($cleanDetail) { $caseLine += " detail=$cleanDetail" }
     Write-Output $caseLine
@@ -309,7 +317,7 @@ function Complete-Test {
     if ($picked -ne 1) { throw 'Complete-Test: exactly one of -Pass / -Fail / -Skip' }
     $tv = if ($Pass) { 'PASS' } elseif ($Fail) { 'FAIL' } else { 'SKIP' }
 
-    $cleanDetail = ($Detail -replace '\s+', ' ').Trim()
+    $cleanDetail = Limit-Detail (($Detail -replace '\s+', ' ').Trim())
     $verdictLine = "STRETCH verdict=$tv"
     if ($cleanDetail) { $verdictLine += " detail=$cleanDetail" }
     Write-Output $verdictLine

@@ -158,6 +158,65 @@ function Assert-SuiteArtifacts {
     }
 }
 
+function Resolve-GroupBySession {
+    <#
+      Whether to keep same-session items together. On by default for a shuffled
+      reuse run, where a full shuffle would throw the reuse away; -NoGroup turns
+      that off, -Group asks for it in an unshuffled reuse run. Throws on a
+      request that cannot be honoured.
+    #>
+    [CmdletBinding()]
+    param(
+        [switch]$Group,
+        [switch]$NoGroup,
+        [switch]$RandomOrder,
+        [Parameter(Mandatory)][string]$SessionMode,
+        [switch]$FloorMode
+    )
+    if ($Group -and $NoGroup) { throw '-GroupBySession and -NoGroupBySession contradict each other: give one' }
+    if ($Group) {
+        if ($FloorMode) { throw '-GroupBySession needs -Path: the floor has no suite set-ups to group' }
+        if ($SessionMode -eq 'Fresh') { throw '-GroupBySession needs -SessionMode Reuse or ReuseClean: a fresh session is never shared' }
+        return $true
+    }
+    if ($NoGroup) { return $false }
+    return ($RandomOrder.IsPresent -and $SessionMode -ne 'Fresh' -and -not $FloorMode)
+}
+
+function Group-WorkBySession {
+    <#
+      The work list with items that share a session key kept together. Items
+      keep their order within a group; the groups come in first-appearance
+      order, or in an order shuffled by Rng. A session is only ever reused
+      between items with one key, so interleaving keys buys nothing but restarts.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][System.Collections.IList]$Items,
+        # the run's seeded generator, so a seed still replays the whole order
+        [System.Random]$Rng
+    )
+    $keys = New-Object System.Collections.ArrayList
+    $byKey = @{}
+    foreach ($item in $Items) {
+        $key = [string]$item.SessionKey
+        if (-not $byKey.ContainsKey($key)) {
+            $byKey[$key] = New-Object System.Collections.ArrayList
+            [void]$keys.Add($key)
+        }
+        [void]$byKey[$key].Add($item)
+    }
+    if ($Rng) {
+        for ($i = $keys.Count - 1; $i -gt 0; $i--) {   # Fisher-Yates
+            $j = $Rng.Next($i + 1)
+            $swap = $keys[$i]; $keys[$i] = $keys[$j]; $keys[$j] = $swap
+        }
+    }
+    $grouped = New-Object System.Collections.ArrayList
+    foreach ($key in $keys) { $grouped.AddRange($byKey[$key]) }
+    return ,$grouped
+}
+
 function Stop-ExcelByPid {
     <#
       Kill one Excel, by pid and image name (pids are recycled). Returns

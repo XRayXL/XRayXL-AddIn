@@ -62,7 +62,7 @@ namespace xll
             if (h == nullptr) h = GetModuleHandleW(Leaf(module));
             if (h == nullptr)     { if (count) count->moduleNotLoaded++; return nullptr; }
             if (h == OwnModule()) { if (count) count->ownModule++;       return nullptr; }
-            char proc[160];
+            char proc[256];      // Excel's 255-character limit; a longer name would narrow to empty
             NarrowInto(procedure, proc, sizeof(proc));
             void* addr = reinterpret_cast<void*>(GetProcAddress(h, proc));
             if (addr == nullptr && count) count->procNotFound++;
@@ -443,6 +443,7 @@ namespace xll
             std::ostringstream w;
             w << "register watch: " << st.calls << " C API call(s) seen, "
               << st.registers << " were xlfRegister, " << st.hooked << " hooked, "
+              << st.declinedCut << " declined (a field cut short), "
               << st.faults << " fault(s)";
             core::Log::Note(w.str());
         }

@@ -51,7 +51,7 @@ $built   = Join-Path $Root 'build\x64\Release'
 # WHAT COUNTS AS A MODIFIED TREE. dist\ is excluded on purpose: this script
 # writes it, so it is always modified by the time anyone could look.
 # Uncompiled files count too: LICENSE and README ship, and the .sln decides what builds.
-$srcPaths = @('src', 'StretchXL', 'suites', 'tests', 'tools',
+$srcPaths = @('src', 'StretchXL', 'tests', 'tools',
               'docs', 'version.props', 'LICENSE', 'README.md', 'XRayXL.sln')
 function Test-TreeDirty { [bool](& git -C $Root status --porcelain -- @srcPaths) }
 
@@ -132,7 +132,7 @@ Write-Step 3 "Deploy"
 Write-Step 4 "Full sweep (this takes several minutes and drives real Excel)"
 $sweepOut = Join-Path $env:TEMP ("XRayXL-release-$version-" + (Get-Date -Format 'yyyyMMdd-HHmmss'))
 & (Join-Path $Root 'StretchXL\StretchXL.ps1') -Parallel $Parallel `
-    -Path (Join-Path $Root 'suites') -OutDir $sweepOut
+    -Path (Join-Path $Root 'tests\sweep') -OutDir $sweepOut
 $sweepExit = $LASTEXITCODE
 if ($sweepExit -ne 0) {
     throw "SWEEP FAILED (exit $sweepExit) -- nothing assembled. Results: $sweepOut"

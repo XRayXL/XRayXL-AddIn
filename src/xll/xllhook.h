@@ -28,7 +28,7 @@ namespace xll
 
         // identity
         char     name[96]{};        // the name a user would recognise
-        char     procName[96]{};    // the export name, when it differs
+        char     procName[256]{};   // the export name; Excel allows 255 characters
         char     module[64]{};
 
         // mechanism

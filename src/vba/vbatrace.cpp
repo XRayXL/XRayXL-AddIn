@@ -553,7 +553,9 @@ namespace vba
         // opcode, closing through the stack-pointer backstop instead.
         void DecideOutcomeAtClose(ThreadState* s, Frame& f, bool ranEpilogue, bool stillRunning)
         {
-            if (f.outcome == kOutHandled) return;   // already resolved as the catcher
+            // Already resolved as the catcher -- unless it then raised an error that left it,
+            // which makes it that error's thrower.
+            if (f.outcome == kOutHandled && !(f.raised && !ranEpilogue)) return;
             // `End` already settled this one, and no epilogue ran anywhere, so
             // every rule below would read it as an unwind it was not part of.
             if (f.outcome == kOutAbandoned) return;
