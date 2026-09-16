@@ -39,7 +39,6 @@ namespace vba
         // nothing cares about slots that never occur -- but "which opcodes cost
         // us a signature, and how often". That distribution is head-heavy.
         volatile LONG g_stopOp[PcodeLengths::kMax] = {};
-
         // THE OPCODE WHOSE LENGTH WE JUST USED, when the walk then broke. Where
         // `g_stopOp` names an opcode with NO length, this names one whose length
         // is probably WRONG -- the worse defect, because a missing length
@@ -210,7 +209,13 @@ namespace vba
         // rather than "a table entry is missing", which is the difference between
         // a fact and a wrong instruction to the reader.
         // [measured: the handlers for 662, 671, 1122, 1467, 1470]
-        return op == 671 || op == 662 || op == 1122 || op == 1467 || op == 1470;
+        //
+        // 751 is the same idiom for a by-reference parameter: it forwards the
+        // slot's address, and is emitted alike for a `ByRef Long` and a
+        // `ByRef Double()`, so it names no type.
+        // [measured: vba/cases/params-only-passed-on]
+        return op == 671 || op == 662 || op == 751 ||
+               op == 1122 || op == 1467 || op == 1470;
     }
 
     const char* PcodeTypeName(std::uint32_t op)
@@ -240,6 +245,12 @@ namespace vba
         // wrong type on a parameter, not a diagnostic. 663+32 = 695 is the same
         // case, harmless today only because 663 is absent from the load table.
         if (storeOp == 1477 + 32 || storeOp == 663 + 32) return nullptr;
+        // The ByRef Variant store has three forms, picked by the right-hand side:
+        // a number 774, `Set` 783, a full copy 787. Only 774 mirrors a load
+        // (742); 783 and 787 sit over 751 and 755, which name no type.
+        // [measured: nothing but a ByRef Variant emits either --
+        //  vba/cases/byref-variant-stores]
+        if (storeOp == 783 || storeOp == 787) return "Variant&";
         return PcodeTypeName(storeOp - 32);
     }
 
@@ -814,6 +825,8 @@ namespace vba
         const std::uint64_t code = trailer - procSize;
         std::uint32_t i = 0;
         bool clean = false;
+        // Where this statement says the next one starts; 0 if it is the last.
+        std::uint32_t stmtNext = 0;
         int  resyncs = 0;
         constexpr int kMaxResyncs = 64;   // bounded: a procedure is finite
         // The opcode whose length was last used to step: when the walk cannot
@@ -865,22 +878,41 @@ namespace vba
                 break;
             }
 
-            // An exit ends the procedure cleanly. Which exit names the return
-            // type and its operand is the class/form result slot; the argument
-            // walk needs both.
+            // An `Exit` emits the same opcode as the real end. Which it is comes
+            // from the statement carrying it: a statement's operand is the next
+            // statement's offset, and is ZERO on the last one. So an exit needs no
+            // length -- and there are ten of them, one per return type.
+            // [measured: vba/cases/early-exit-types]
             if (IsProcTerminatorSlot(op))
             {
                 clean = true;
-                out.exitOp = op;
-                std::int32_t exOperand = 0;
-                if (RdI32(code + i + 2, exOperand)) out.exitOperand = exOperand;
-                break;
+                if (!out.exitOp)
+                {
+                    out.exitOp = op;
+                    std::int32_t exOperand = 0;
+                    if (RdI32(code + i + 2, exOperand)) out.exitOperand = exOperand;
+                }
+                if (stmtNext <= i) break;       // last statement: the real end
+                prevOp = op;
+                i = stmtNext;
+                continue;           // a terminator is not a parameter load
             }
 
             // The type is recorded before the length is consulted, so an
             // unsized opcode still names its slot.
             std::int32_t operand = 0;
             const bool haveOperand = RdI32(code + i + 2, operand);
+            // A statement opcode says where the next statement begins, relative
+            // to itself. Only forward offsets inside the procedure are kept: a
+            // backward or out-of-range one is not a next statement.
+            if (IsBosSlot(op))
+            {
+                // Reset on every statement, or the last one inherits a successor
+                // and its exit looks early.
+                stmtNext = (haveOperand && operand > 0 &&
+                            i + static_cast<std::uint32_t>(operand) <= procSize)
+                         ? i + static_cast<std::uint32_t>(operand) : 0;
+            }
             seen.Note(op, haveOperand ? operand : 0);
             Attribute(out, L, op, operand, haveOperand, maxArg);
 

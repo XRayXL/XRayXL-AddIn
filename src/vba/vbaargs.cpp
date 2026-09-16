@@ -314,6 +314,9 @@ namespace vba
         { InterlockedExchange(&g_unkOp[i], 0); InterlockedExchange(&g_unkCount[i], 0); }
     }
 
+    // XRAYXL_DIAG: show the opcode behind a name (see vbaargs.h).
+    bool g_diagOps = false;
+
     // WHAT TO CALL A SLOT THE BYTECODE DID NOT NAME. One function, so the
     // signature and the value cell cannot disagree about it -- they did, until
     // now: `typetext` said `(?op738)` or `(?)` precisely while `args` dropped
@@ -345,6 +348,8 @@ namespace vba
             _snprintf_s(buf, cap, _TRUNCATE, "?op%u", static_cast<unsigned>(types.op[k]));
             if (count) NoteUnnamedArgOp(types.op[k]);
         }
+        else if (g_diagOps)
+            _snprintf_s(buf, cap, _TRUNCATE, "?none#%u", static_cast<unsigned>(types.op[k]));
         else _snprintf_s(buf, cap, _TRUNCATE, "?none");
         return buf;
     }
@@ -375,6 +380,12 @@ namespace vba
             const char* tn = types.name[k];
             char unk[24];
             if (!tn) tn = UnnamedTypeMarker(types, k, unk, sizeof unk, /*count=*/true);
+            char named[40];
+            if (g_diagOps && types.name[k])
+            {
+                _snprintf_s(named, _TRUNCATE, "%s#%u", tn, static_cast<unsigned>(types.op[k]));
+                tn = named;
+            }
             const int w = _snprintf_s(out.signature + sj, cap - sj, _TRUNCATE,
                                       "%s%s", params ? "," : "", tn);
             // Out of buffer: say the signature was cut rather than close it
@@ -386,6 +397,15 @@ namespace vba
         // Keep room for the marker, or the cut is invisible again.
         if (truncated && sj > cap - 6) sj = cap - 6;
 
+        // XRAYXL_DIAG: name the exit the walk ended on, so the opcode that
+        // terminates a procedure can be read straight off a trace.
+        if (g_diagOps && types.exitOp && sj < cap - 16)
+        {
+            const int wx = _snprintf_s(out.signature + sj, cap - sj, _TRUNCATE,
+                                       "|exit%u", static_cast<unsigned>(types.exitOp));
+            if (wx > 0) sj += wx;
+        }
+
         // `~`: the walk did not read the whole body, so a `?` may be a
         // skipped load rather than an unread parameter.
         if (types.partial) InterlockedIncrement64(&g_partialWalks);
@@ -393,6 +413,8 @@ namespace vba
                     truncated ? ",..." : (types.partial ? "~" : ""));
         out.params = params;
     }
+
+    void SetArgTypeOpcodeDiagnostics(bool on) { g_diagOps = on; }
 
     bool CaptureArgs(std::uint64_t trailer, std::uint64_t r14, ArgCapture& out)
     {

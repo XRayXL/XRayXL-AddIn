@@ -385,6 +385,17 @@ function New-XRayMacroBook {
     foreach ($addr in $Cells.Keys) { $ws.Range($addr).Formula = $Cells[$addr] }
     if ($Prepare) { & $Prepare $ws }
 
+    # Excel refuses SaveAs past 218 characters, and says only "Unable to get the
+    # SaveAs property of the Workbook class" -- which points at everything except
+    # the path. The suite's own names are fixed, so -OutDir is the part a caller
+    # controls.
+    if ($bookPath.Length -gt 218) {
+        Complete-Test -Fail -Detail (
+            ("workbook path is {0} characters and Excel refuses SaveAs past 218, " +
+             "so this is the -OutDir, not the test: shorten it. Path: {1}") -f
+            $bookPath.Length, $bookPath)
+    }
+
     $fileFormat = if ($Format -eq 'xlsx') { 51 } else { 52 }
     $wb.SaveAs($bookPath, $fileFormat); $wb.Close($false)
     foreach ($r in ($added + @($proj, $ws, $wb))) {

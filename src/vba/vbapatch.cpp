@@ -245,6 +245,7 @@ namespace vba
 
         // Past the last refusal. No hook can fire until the loop below writes a slot.
         SetPcodeDiagnostics(core::modes::DiagEnabled());
+        SetArgTypeOpcodeDiagnostics(core::modes::DiagEnabled());
         ResetTracing();
 
         // Latch the emit mode for this session: TOP emits only depth-1

@@ -60,14 +60,10 @@ namespace vba
             // operand-8): a MEMBER access through a UDT reference, the member's
             // own type selecting the slot.
             { 1058, "Udt&"     }, { 1069, "Udt&" }, { 1071, "Udt&" },
-            // Across the whole 134-cell narrowing matrix only a
-            // `ByRef p As TPoint` produced either: 751 from a `With p` block and
-            // a whole-record copy, 1063 from reading a String member. Structure
-            // agrees with measurement -- 1063 is inside the member-access
-            // family, 751 sits immediately after 750 at the top of the ByRef
-            // family with the family's own length of 6.
-            // [measured]
-            { 751,  "Udt&"     }, { 1063, "Udt&" },
+            // 1063 is inside the member-access family: a String member read
+            // through a UDT reference, so the PARAMETER is a `Udt&`. 751 looks
+            // like it belongs here and does not -- see PcodeCarriesNoType.
+            { 1063, "Udt&" },
             // THE UDT-MEMBER FAMILY IS TYPED BY THE MEMBER, and a `Type`
             // carrying one member of every type reaches all of it:
             //
@@ -146,8 +142,8 @@ namespace vba
         //      measuring "how far had rsi moved before the next fetch" measures
         //      the wrong thing. 1309, 500, 498 and 1311 all derive as 2 and are
         //      6; only the emitted p-code says so.
-        //   4. Exit opcodes are absent -- the walk stops on them, so their
-        //      length is never used.
+        //   4. Exit opcodes are absent: the walk steps over one by the offset the
+        //      statement declares, so their length is never used.
         //
         // WHERE THE ENTRIES CAME FROM, weakest evidence last: traced procedures;
         // the shape fuzzer, whose oracle is "did the tracer understand every

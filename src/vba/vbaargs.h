@@ -34,6 +34,11 @@
 
 namespace vba
 {
+    // XRAYXL_DIAG only: append `#NNN` to each named type, naming the opcode that
+    // named it. `?opNNN` says which opcode failed; this says which succeeded,
+    // for when a name is present but wrong.
+    void SetArgTypeOpcodeDiagnostics(bool on);
+
     struct ArgCapture
     {
         bool ok    = false;
