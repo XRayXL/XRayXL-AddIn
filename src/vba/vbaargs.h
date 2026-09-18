@@ -1,34 +1,17 @@
-// Reading a VBA procedure's arguments out of its frame.
+// Reading a VBA procedure's arguments out of its frame, on 64-bit Excel.
 //
-// Measured on 64-bit Excel with planted sentinels, over thirteen procedures of
-// known signature [measured: frame-layout]:
+//    * R14 is the frame base. The argument region is [R14, R14 + argSz), and argSz is the
+//      WORD at trailer+0x08, in bytes: argSz = 8 * (nargs + 1).
+//    * Slot 0, at [R14+0], is reserved. Arguments are slots 1..n.
+//    * Every slot is eight bytes. ByVal Long and Integer hold the value, ByVal Double the
+//      raw IEEE bits, ByVal String a BSTR pointer; ByRef of any type holds a pointer.
+//    * One slot past argSz is the caller's frame. Reading it does not fault, so the bound
+//      is enforced here.
 //
-//   * R14 is the frame base. The argument region is [R14, R14 + argSz), and
-//     argSz is the WORD at trailer+0x08, in BYTES. Across procedures taking
-//     0/1/2/3 arguments it read 8/16/24/32 -- so argSz = 8 * (nargs + 1), an
-//     AFFINE relation, not the plain multiple the prior art suggested.
-//   * Slot 0, at [R14+0], is reserved: it held the same pointer in every
-//     record, including procedures with no arguments. Arguments are slots
-//     1..n, at [R14+8], [R14+16], ...
-//   * Every slot is eight bytes. ByVal Long and Integer hold the VALUE; ByVal
-//     Double holds the raw IEEE bits; ByVal String holds a BSTR pointer;
-//     ByRef of any type holds a pointer to the value.
-//   * argSz bounds the region EXACTLY. One slot past it is the CALLER's frame:
-//     a two-argument procedure showed, at [R14+24], the variable its caller had
-//     assigned immediately before the call. Reading past argSz does not fault --
-//     it silently reports the caller's data as this call's argument, which is
-//     why the bound is enforced here rather than trusted.
-//
-// THE TYPE IS NOT IN THE FRAME AND IS NOT GUESSED FROM IT: eight bytes reading
-// 0x40A5790000000000 are a Double, a very large Long, or a pointer. The type
-// comes from the procedure's own bytecode (vbapcode.h) and never from the shape of
-// the value. Two consequences:
-//   * A parameter the body never READS emits no typed load and so has no
-//     recoverable type. Its position renders "?" and its value a raw qword.
-//   * Where no type is known the value is still emitted -- as that raw qword, or
-//     decoded only where it validates ITSELF (a BSTR carries its own length
-//     prefix, a SAFEARRAY its dimensions and element type). A confident wrong
-//     argument is worse than a hex number, which is obviously undecoded.
+// The type is not in the frame and is never guessed from it: it comes from the procedure's own
+// bytecode (vbapcode.h). A parameter the body never reads has no recoverable type. It renders
+// "?" and its value is a raw qword, or is decoded only where it validates itself (a BSTR, a
+// SAFEARRAY).
 #pragma once
 #include <cstdint>
 
@@ -54,12 +37,9 @@ namespace vba
         // count, so this reports what is actually known.
         int  slots = 0;
 
-        // WHICH SLOT THE FIRST ARGUMENT IS AT. Normally 1, because slot 0 is
-        // reserved. TWO for a Function returning `Variant`: the caller passes
-        // the address of its result VARIANT, which the calling convention
-        // pushes last and so arrives first, and it is not an argument. The
-        // rendered labels count arguments (a1, a2, ...) while the reads are
-        // done at slots, so the two must not be conflated.
+        // Which slot the first argument is at. Normally 1, because slot 0 is reserved; 2 for a
+        // Function returning Variant, where the caller's result VARIANT arrives first. Labels
+        // count arguments (a1, a2, ...) while reads are done at slots.
         int  firstSlot = 1;
 
         // CALLER-PROVIDED (a large per-thread render buffer), so a big

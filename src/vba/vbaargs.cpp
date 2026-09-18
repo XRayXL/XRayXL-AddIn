@@ -42,12 +42,9 @@ namespace vba
         // not get, so it is reported rather than absorbed.
         volatile LONG64 g_partialWalks = 0;
 
-        // OPCODES THAT TOUCHED A PARAMETER SLOT AND COULD NOT BE NAMED. A `?`
-        // in a signature has two causes needing different actions: no opcode at
-        // all means the body never loads the parameter and there is nothing to
-        // fix, while an opcode we SAW and cannot name is a hole in kTypeOps. The
-        // signature distinguishes them (`?` vs `?opNNN`) but only in a trace file
-        // somebody happens to open, so a session counts them and says so.
+        // Opcodes that touched a parameter slot and could not be named. A bare `?` means the
+        // body never loads the parameter; `?opNNN` is a hole in kTypeOps, so a session counts
+        // those and says so.
         constexpr int   kUnkMax = 16;
         volatile LONG   g_unkOp[kUnkMax]    = {};
         volatile LONG   g_unkCount[kUnkMax] = {};
@@ -77,12 +74,9 @@ namespace vba
         using vba::VtName;
 
 
-        // The declared type name as a VARTYPE, for the shared decoder. Safe to
-        // interpret a value by, because the name came from the opcode that
-        // loaded it, not from the bytes. "Variant" is absent on purpose: the
-        // Variant decoder reads the tag itself. Unmapped names return 0 and
-        // fall through to the self-validating readers. Compared over `len`, so
-        // "Long&" is looked up without its "&" and without a copy.
+        // The declared type name as a VARTYPE for the shared decoder. "Variant" is absent on
+        // purpose: the Variant decoder reads the tag itself. Unmapped names return 0. Compared
+        // over `len`, so "Long&" is looked up without its "&".
         std::uint16_t VartypeFor(const char* name, size_t len)
         {
             struct Vt { const char* name; std::uint16_t vt; };
@@ -103,12 +97,9 @@ namespace vba
             return 0;
         }
 
-        // An OMITTED Optional parameter.
-        //
-        // An omitted Optional is materialised by the CALLER as a Variant
-        // carrying VT_ERROR and DISP_E_PARAMNOTFOUND (the published mnemonic set
-        // has `LitVar_Missing`). Both constants are EXACT, which is what makes
-        // this safe to decode with no type information at all.
+        // An omitted Optional is materialised by the caller as a Variant carrying VT_ERROR and
+        // DISP_E_PARAMNOTFOUND. Both constants are exact, so this is safe to decode with no
+        // type information.
 
         // AN OMITTED Optional, OR NOTHING. The strictest reader here: it
         // demands two EXACT constants -- vt == VT_ERROR and scode ==
@@ -124,19 +115,9 @@ namespace vba
             return true;
         }
 
-        // A VARIANT, AND `Missing` IS ONE OF THE THINGS A VARIANT CAN BE.
-        //
-        // An omitted Optional IS a VARIANT -- VT_ERROR carrying
-        // DISP_E_PARAMNOTFOUND -- so when the p-code declares the slot a
-        // Variant, the Variant decoder handled it first and rendered the
-        // marker's payload: `Error(0x80020004)`. Faithful to the bytes, and
-        // useless to a reader; `docs/TraceRowModel.md` says an omitted Optional
-        // reads `Missing`, and it did, but only for slots the p-code left
-        // untyped -- which is the shape the one test happened to use.
-        //
-        // Asking the marker first is safe precisely because it demands two
-        // EXACT constants: an application `Error()` value carries a different
-        // scode and still renders as an error.
+        // An omitted Optional is itself a VARIANT, so the marker is asked first and reads
+        // `Missing` rather than `Error(0x80020004)`. Safe because it demands two exact
+        // constants: an application Error() value carries a different scode.
         bool DescribeVariantOrMissing(std::uint64_t at, char* out, int cap, int maxElems)
         {
             if (ReadMissingMarker(at, out, cap)) return true;
@@ -151,15 +132,10 @@ namespace vba
             return true;
         }
 
-        // A BSTR, DIRECT OR ONE INDIRECTION DOWN. `p` may BE the BSTR, or point to
-        // one -- a `ByRef s As String` parameter is the latter, exactly as a `ByRef
-        // a()` parameter points to its SAFEARRAY pointer. Safe because a BSTR proves
-        // itself (length prefix, NUL termination, and -- because nothing here has
-        // vouched for the type -- no control characters), and that
-        // is the standard the direct form was already trusted on.
-        //
-        // `followed` says a pointer was followed -- which is what makes a slot ByRef
-        // in substance when the p-code declared no type for it.
+        // A BSTR, direct or one indirection down: a `ByRef s As String` slot points to one.
+        // Safe because a BSTR proves itself by length prefix, NUL termination and no control
+        // characters. `followed` says a pointer was followed, which makes the slot ByRef in
+        // substance.
         bool ReadBstrDirectOrThrough(std::uint64_t p, char* out, int cap, bool& followed)
         {
             followed = false;
@@ -189,11 +165,7 @@ namespace vba
                 if (!RdU64(p, inner) || !ReadSafeArrayHeader(inner, 0, s)) return false;
             }
 
-            // ONE ARRAY RENDERER, shared with the return column
-            // (vbaretdecode.h). The bounds, the braces, the element loop and the
-            // truncation marker were written twice and agreed by hand; the
-            // element decoder and the header parse were already shared, and this
-            // was the last piece that was not.
+            // One array renderer, shared with the return column (vbaretdecode.h).
             return RenderSafeArrayValue(s, out, cap, kMaxRenderedElems);
         }
 
@@ -205,9 +177,8 @@ namespace vba
             return (tn && strcmp(tn, "Variant") == 0) ? 3 : 1;
         }
 
-        // One argument slot as text. `tn` is the type the p-code named, or
-        // null. False only when the slot cannot be read. Order matters, and
-        // each branch is measured:
+        // One argument slot as text. `tn` is the type the p-code named, or null. False only
+        // when the slot cannot be read. Order matters:
         //   1. ByVal Variant: slots k and k+1 ARE a VARIANT, read by the return
         //      decoder so both columns render identical bytes identically.
         //      Bounded by argSz, or the look-ahead reads the caller's frame.
@@ -317,28 +288,16 @@ namespace vba
     // XRAYXL_DIAG: show the opcode behind a name (see vbaargs.h).
     bool g_diagOps = false;
 
-    // WHAT TO CALL A SLOT THE BYTECODE DID NOT NAME. One function, so the
-    // signature and the value cell cannot disagree about it -- they did, until
-    // now: `typetext` said `(?op738)` or `(?)` precisely while `args` dropped
-    // the whole distinction and rendered a bare `a1=`.
+    // What to call a slot the bytecode did not name. One function, so the signature and the
+    // value cell agree.
     //
-    //   `?opNNN`  an opcode TOUCHED the slot and is not in the type table.
-    //             A gap in our table, and the number says which row fixes it.
-    //   `?none`   an opcode touched it and is KNOWN to convey no type. A fact
-    //             about that opcode, not a gap -- printing `?opNNN` here would
-    //             be a wrong instruction to the reader.
-    //   `?unseen` NO opcode touched this slot at all.
+    //    `?opNNN`  an opcode touched the slot and is not in the type table
+    //    `?none`   an opcode touched it and is known to convey no type
+    //    `?unseen` no opcode touched this slot at all
     //
-    // TWO SYMBOLS, ONE MEANING EACH. `?` is always "this slot's type is
-    // unknown" and the word after it says which not-knowing. `~`, closing the
-    // signature, is always "the walk did not read the whole body". They compose:
-    // `Long,?unseen~` says the walk was incomplete, so that `?unseen` may be a
-    // load the walk SKIPPED rather than a parameter that is never read. Putting
-    // that caveat in the slot marker instead would state a property of the WALK
-    // in a per-slot field, and say it twice.
-    //
-    // `count` only where the marker reaches a SIGNATURE, so the totals do not
-    // double-count a slot that is also rendered as a value.
+    // `~` closing the signature means the walk did not read the whole body, so a `?unseen` may
+    // be a load the walk skipped. `count` only where the marker reaches a signature, so the
+    // totals do not double-count.
     static const char* UnnamedTypeMarker(const ArgTypes& types, int k, char* buf, int cap,
                                   bool count)
     {
@@ -454,13 +413,10 @@ namespace vba
         ArgTypes types;
         const bool haveTypes = ReadArgTypes(trailer, types, slots - 1);
 
-        // How many slots are arguments. argSz = 8 x (nargs + 1) for the
-        // reserved slot 0 -- except a Function returning Variant, where the
-        // caller's result VARIANT arrives first as one more slot.
-        // The return kind comes from the exit opcode the walk stopped on, via
-        // the same ExitReturnKind the exit row uses; when the walk reached no
-        // exit, or the exit carries no type (class and form Functions), the
-        // plain arithmetic stands.
+        // How many slots are arguments: argSz = 8 x (nargs + 1) for the reserved slot 0, plus
+        // one when a Function returns Variant and the caller's result VARIANT arrives first.
+        // The return kind comes from the exit opcode the walk stopped on; with no typed exit
+        // the plain arithmetic stands.
         out.firstSlot = (ExitReturnKind(types.exitOp) == RetKind::Variant) ? 2 : 1;
         out.slots     = slots - out.firstSlot;
 
@@ -488,12 +444,9 @@ namespace vba
             const char* tn = haveTypes ? types.name[k] : nullptr;
             const size_t tnLen = tn ? strlen(tn) : 0;
             const bool  declaredRef = tnLen > 1 && tn[tnLen - 1] == '&';
-            // EVERY SLOT SAYS WHERE ITS TYPE CAME FROM. A named type is VBA's
-            // own metadata and the value was read AS that type; a marker means
-            // nothing declared one, so whatever follows was recognised from the
-            // bytes themselves and is an inference. `tn` itself stays null into
-            // RenderSlot -- the marker is a label, never a type claim to decode
-            // against.
+            // A named type is VBA's own metadata and the value was read as that type; a marker
+            // means the value was recognised from the bytes themselves. `tn` stays null into
+            // RenderSlot: the marker is a label, never a type to decode against.
             char unk[24];
             const char* label = tn ? tn : UnnamedTypeMarker(types, k, unk, sizeof unk,
                                                             /*count=*/false);

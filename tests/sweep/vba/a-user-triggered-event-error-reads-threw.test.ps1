@@ -1,16 +1,13 @@
-# AN ERROR IN A VBA ACTIVATION EXCEL STARTED WITH NO CALLING CELL READS `threw`.
+# An error in a VBA activation Excel started with no calling cell reads `threw`.
 #
-# The escape boundary (D92) is a worksheet-function entry, found by xlfCaller naming
-# a calling cell. Some activations Excel starts have no calling cell: a sheet event
-# fired by a user edit, and an Application.OnTime macro (scheduled Now+1s, given a
-# 10s idle window to fire). xlfCaller answers `#REF!` for both, so they are not cell escapes. With no VBA frame beneath, an unhandled error in
-# one reaches the bottom of the shadow stack and reads `threw` (never `unhandled`,
-# never `handled`), and the escape is counted. This is the one documented gap: it is
-# under-labelled, not wrong.
+# The escape boundary is a worksheet-function entry, identified by xlfCaller naming a calling
+# cell. A sheet event fired by a user edit and an Application.OnTime macro have no calling cell
+# (xlfCaller answers #REF!), so an unhandled error in one reaches the bottom of the shadow stack
+# and reads `threw`, never `unhandled` or `handled`, and the escape is counted. This is the one
+# documented gap: under-labelled, not wrong.
 #
-# The event is fired FROM OUTSIDE VBA -- the harness writes the cell over COM -- so
-# the handler runs as a top-level VBA activation with nothing of VBA beneath it, which
-# is the user-triggered shape a macro-driven write cannot reproduce.
+# The event is fired from outside VBA, by writing the cell over COM, so the handler runs as a
+# top-level activation, which a macro-driven write cannot reproduce.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

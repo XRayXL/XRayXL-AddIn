@@ -1,18 +1,13 @@
-# A `ByRef Variant` THAT IS ONLY WRITTEN HAS THREE STORE OPCODES, NOT ONE.
+# A `ByRef Variant` that is only written has three store opcodes, not one.
 #
-# A write-only parameter emits no load, so its type comes from the store, and a
-# store normally names its type through the load it mirrors (store = load + 32).
-# That reaches 774 = 742+32 and stops: the other two ByRef Variant stores sit
-# above opcodes that name no type -- 783 over 751, the generic by-reference push,
-# and 787 over 755, which is absent -- so both read `?opNNN` in a real trace.
+# A write-only parameter emits no load, so its type comes from the store. store = load + 32
+# reaches 774 = 742+32; the other two ByRef Variant stores, 783 and 787, sit above opcodes that
+# name no type.
 #
-# Which of the three is emitted is chosen by the RIGHT-HAND SIDE: a number takes
-# 774, `Set` takes 783, and anything needing a full copy (String, Variant, array)
-# takes 787. That would not be enough to name a type on its own -- the RHS is not
-# the parameter -- so the cases below vary the PARAMETER type under each of those
-# RHS shapes. Only a `ByRef Variant` produces 783 or 787; the same assignment
-# into an Object, a class, a String, a Long or a Double produces that type's own
-# store, and every `ByVal Variant` produces 1477 whatever is assigned.
+# The right-hand side chooses which is emitted: a number takes 774, `Set` takes 783, and
+# anything needing a full copy (String, Variant, array) takes 787. The cases vary the parameter
+# type under each of those shapes: only a `ByRef Variant` produces 783 or 787, and every `ByVal
+# Variant` produces 1477.
 $case = @{ Name='byref-variant-stores'
      Setup=@'
 ' --- the three ByRef Variant stores, one per right-hand side --------------

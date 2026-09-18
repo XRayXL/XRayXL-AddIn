@@ -1,14 +1,8 @@
-# ARGS and RETVAL are not just echoes -- they change the TRACE.
+# ARGS and RETVAL change the trace, not just the echo. The same workbook is traced twice, once
+# with both flags on and once with both off, and the rows are compared.
 #
-# This is the case that matters: a setter whose effect cannot be observed reads
-# exactly like one that works, so it is not enough that XRayXL_SetTraceParam
-# says ARGS=FALSE. The same workbook is traced twice,
-# once with both flags on and once with both off, and the rows are compared.
-#
-# THE RULE BEING DEFENDED: a disabled decode changes what is EMITTED, never
-# what is COUNTED. The frames still appear, still pair, still name their
-# caller and cell -- only the `args` and `ret` columns go empty. Turning a
-# decode off must not thin the accounting or lose a call.
+# A disabled decode changes what is emitted, never what is counted: the frames still appear,
+# pair, and name their caller; only `args` and `ret` go empty.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

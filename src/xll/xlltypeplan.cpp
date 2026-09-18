@@ -97,11 +97,8 @@ namespace xll
             i += wide ? 2 : 1;
         }
 
-        // ---- the arguments ---------------------------------------------------
-        //
-        // THE part that has to be right: `typeIndex` walks the string, `abi`
-        // walks the ABI slots, and they are not the same number. A '%' is
-        // consumed as part of its code; an O contributes three slots.
+        // `typeIndex` walks the string and `abi` walks the ABI slots, and they differ: a '%' is
+        // part of its code, and an O takes three slots.
         int abi = 0;
         for (; typeText[i] != 0; )
         {

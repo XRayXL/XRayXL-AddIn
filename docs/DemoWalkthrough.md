@@ -61,6 +61,11 @@ Every workbook has two buttons wired up for you:
 No VBA editor needed. (Under the hood the buttons call `Application.Run("XRayXL_Arm")` /
 `("XRayXL_Disarm")`, which is also how you'd drive it from your own macros.)
 
+The **XRayXL** buttons on the Developer tab do the same two things, and the
+**Options** dialog holds the capture settings below — the workbook buttons
+exist so the demo works whether or not the ribbon loaded, or the Developer tab is
+showing. Arm from anywhere and all three agree: they are the same commands.
+
 ### What a trace row says
 
 `kind` (entry/exit) · `source` (XLL/VBA) · `function` · `caller` (the calling cell) ·

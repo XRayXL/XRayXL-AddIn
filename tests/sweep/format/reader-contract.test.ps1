@@ -1,15 +1,9 @@
-# The trace-file contract, proven NEGATIVELY: feed Read-TraceFile doctored
-# files and assert it refuses each one the way docs/TraceRowModel.md
-# promises. The ~170 product tests prove the reader ACCEPTS what the tracer
-# writes; without this file the refusal paths -- the entire point of a strict
-# reader -- are the untested code. Needs no arming and never binds the session the
-# manager provides; the good-file corpus is real rows, verbatim, from real
-# traced sessions.
+# The trace-file contract, proven negatively: feed Read-TraceFile doctored files and assert it
+# refuses each one the way docs/TraceRowModel.md promises. Needs no arming and never binds the
+# session; the good-file corpus is real rows from real traced sessions.
 #
-# The header is RESTATED LITERALLY here rather than read from
-# $script:TraceHeader, deliberately: this file is an independent witness.
-# Edit the constant in _xray_common.ps1 without editing the doc and this
-# test, and this test fails -- which is the evolution policy working.
+# The header is restated literally here rather than read from $script:TraceHeader, so this file
+# is an independent witness of the format.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

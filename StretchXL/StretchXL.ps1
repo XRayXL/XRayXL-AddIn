@@ -192,14 +192,9 @@ $SlowShutdownSeconds = 10
 # Settle after RegisterXLL when a suite does not say: add-in start-up is not instantaneous.
 $DefaultSettleSeconds = 3
 
-# ---------------------------------------------------------------------------
-# The pid ledger. Workers are Start-Job child processes that survive the
-# parent being killed, each with an Excel of its own, so every Excel is written
-# to a ledger before it is used; the parent clears its ledger in a finally and
-# -Cleanup sweeps every ledger for when even that did not run. One ledger per
-# invocation, so two runs cannot kill each other's Excels, and it holds only
-# pids we started: other people's Excels are never touched.
-# ---------------------------------------------------------------------------
+# The pid ledger. Workers are Start-Job child processes that survive the parent being killed, so
+# every Excel is written to a ledger before it is used, and -Cleanup sweeps every ledger. One
+# ledger per invocation, holding only pids we started.
 $ledgerDir  = Join-Path $env:TEMP 'StretchXL'
 $ledgerPath = Join-Path $ledgerDir "StretchXL_pids.$PID.txt"
 New-Item -ItemType Directory -Force $ledgerDir | Out-Null
@@ -471,17 +466,12 @@ if ($productRecord | Where-Object { $_.isDebug }) {
 }
 Write-Output ''
 
-# ---------------------------------------------------------------------------
-# One worker: runs its share of items and emits one 'RESULT {json}' line per
-# item, returned rather than printed so the parent owns ordering and counting.
-# Every path emits a line: "no line" and "nothing happened" must never look
-# the same.
+# One worker: runs its share of items and returns one 'RESULT {json}' line per item, so the
+# parent owns ordering and counting. Every path emits a line.
 #
-# Each item is one session bracket: start Excel, identify it by its own
-# window, ledger the pid, open our own process handle, add a workbook, run the
-# test, close the configured way, release every reference, wait on the
-# handle, classify.
-# ---------------------------------------------------------------------------
+# Each item is one session bracket: start Excel, identify it by its own window, ledger the pid,
+# open a process handle, add a workbook, run the test, close, release every reference, wait on
+# the handle, classify.
 $workerBody = {
     param($Cfg)
 

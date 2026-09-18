@@ -6,11 +6,8 @@
 // number and a capped array must read the same whichever source wrote them.
 namespace core
 {
-    // HOW MANY ARRAY ELEMENTS ARE PRINTED. Effectively "as many as the buffer
-    // holds": the render loops stop at their output buffer's cap, so the real
-    // limit is bytes; this stays finite only so a pathological multi-million
-    // element array cannot spin. The true count is always in the header --
-    // the cap is on the rendering, never on the claim.
+    // A cap on rendered array elements, so a multi-million element array cannot spin. The real
+    // limit is the output buffer, and the true count is always in the header.
     constexpr int kMaxRenderedElems = 1 << 20;
 
     // %.15g: fifteen digits round-trip every value a double holds exactly;

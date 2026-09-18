@@ -23,19 +23,12 @@ using namespace app::params;
 
 namespace
 {
-    // ---- XRayXL_GetTraceSummary -------------------------------------------
+    // XRayXL_GetTraceSummary: one row per function called, with its count. Both sources keep the
+    // counts on the hot path, so this only formats them. Safe to read while armed: entries are only
+    // added and counters only rise.
     //
-    // WHAT HAS BEEN TRACED: one row per function actually called, with its call
-    // count. The counts are not gathered here -- both sources already keep them
-    // on the hot path as a single interlocked add -- so this only formats what
-    // is already true, when a cell asks rather than on the hot path.
-    //
-    // Safe to read LIVE while armed, because entries are only added and counters
-    // only rise: a racing reader sees a stale count, never garbage.
-    //
-    // WILDCARD, not regex: this runs on a calc thread on every volatile recalc
-    // over a table that can hold thousands of procedures, and std::regex
-    // allocates, throws on a malformed pattern, and is slow.
+    // Wildcard, not regex: this runs on every volatile recalc over thousands of procedures, and
+    // std::regex allocates and throws on a malformed pattern.
     constexpr int kSumRows = 48;      // data rows before truncation
     constexpr int kSumCols = 4;       // Source, Module, Function, Calls
     // + column header, the status block and one truncation or "nothing" note. The row emitters below never exceed this.
@@ -69,13 +62,10 @@ namespace
         return *pat == 0;
     }
 
-    // THE STATUS FOOTER: what the tool is doing, and whether it lost anything.
-    // A FOOTER, not a header, so the function table still begins at row 2 -- a
-    // spilled =XRayXL_GetTraceSummary() expects its data directly under the
-    // column header, and a variable-height block at the top would shift it. The
-    // drop/pause counts survive Close(), so a call right after XRayXL_Disarm
-    // shows the same numbers the disarm log recorded. `put` is templated so
-    // there is no std::function allocation.
+    // The status footer: what the tool is doing and whether it lost anything. A footer, so a
+    // spilled formula still finds the function table at row 2. The counts survive Close(), so a
+    // call after Disarm shows what the disarm log recorded. `put` is a template to avoid a
+    // std::function allocation.
     template <class Put>
     void AppendSummaryStatusFooter(Put put)
     {
@@ -116,13 +106,10 @@ namespace
         if (dropped > 0) put(L"", "buffer", "rows dropped (full)", static_cast<double>(dropped));
         if (paused  > 0) put(L"", "buffer", "hot-path pauses (full)", static_cast<double>(paused));
 
-        // THE FILE THIS SESSION WROTE. Its id always rises, so a re-arm makes a
-        // new file and naming it here is how a reader finds the right one. Empty
-        // until the first record creates it, and said so plainly rather
-        // than shown as a guessed path.
+        // The file this session writes. Its name is settled at arm; `rows` says whether anything has reached it.
         const std::wstring wp = emit::csv::Path();
         char fileLeaf[80];
-        if (wp.empty()) _snprintf_s(fileLeaf, _TRUNCATE, "(none yet)");
+        if (wp.empty()) _snprintf_s(fileLeaf, _TRUNCATE, "(not armed)");
         else
         {
             const std::size_t slash = wp.find_last_of(L'\\');

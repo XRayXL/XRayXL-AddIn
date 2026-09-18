@@ -6,21 +6,10 @@
     <XRayVersionPatch>1</XRayVersionPatch>
   </PropertyGroup>
 
-  <!-- THE CONFIGURATION THE BINARY WAS BUILT AS, carried into its VERSIONINFO.
-       The suites load the tracer from build\addin\, a path that says nothing
-       about which configuration put it there, and Debug and Release compile the
-       SAME version number from the properties above - so without this a Debug
-       XLL can be tested and neither the file nor the result can tell.
-
-       Carried as a NUMBER, never the configuration's name: a define whose value
-       is a quoted string does not survive rc.exe's command line, and the
-       failure there is silent and total (XRayXL.rc explains at length). The
-       resource turns the number back into text.
-
-       Anything that is not exactly Debug or Release yields 2, and the resource
-       then reads UNKNOWN rather than quietly claiming Release. This is
-       evaluated where $(Configuration) is already established - see the import
-       site in XRayXL.vcxproj. -->
+  <!-- The configuration the binary was built as, carried into its VERSIONINFO: the suites load
+       from build\addin\, which names no configuration, and Debug and Release share a version.
+       A number, because a quoted-string define does not survive rc.exe's command line.
+       Anything but Debug or Release yields 2, which the resource reads as UNKNOWN. -->
   <PropertyGroup>
     <XRayBuildConfig>$(Configuration)</XRayBuildConfig>
     <XRayBuildDebugFlag Condition="'$(XRayBuildConfig)'=='Debug'">1</XRayBuildDebugFlag>

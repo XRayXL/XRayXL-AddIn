@@ -1,28 +1,14 @@
-# ByRef ARGUMENTS A PROCEDURE CHANGED -- does the exit row show the new value?
+# ByRef arguments a procedure changed: the exit row shows the new value.
 #
-# ByRef is VBA's DEFAULT. `Sub Calc(result As Double)` that fills in `result`
-# is ordinary code, and until now its entire effect was invisible: the entry row
-# captured the arguments at the FIRST STATEMENT, deliberately, so the "before"
-# value is what a reader saw, and there was no "after" anywhere.
+# ByRef is VBA's default, so `Sub Calc(result As Double)` filling in `result` is ordinary code.
+# Argument types come from the load opcode, and a pure out-parameter is never read, so the two
+# shapes are separated:
 #
-# THE RISK THIS MEASURES FIRST. Argument types come from the LOAD opcode -- a
-# parameter the body never READS emits no typed load and so has no recoverable
-# type. A pure out-parameter is exactly that shape:
+#      FillOnly     assigns only          -- typed from the store
+#      ReadWrite    reads, then assigns   -- typed from the load
 #
-#     Sub FillOnly(result As Double)      ' writes it, never reads it
-#         result = 9.75
-#     End Sub
-#
-# If a write emits no usable type, the decoder cannot know the parameter is
-# ByRef, and the most common out-parameter in VBA would be the one case the
-# feature missed. So the two shapes are separated and both are reported:
-#
-#     FillOnly     assigns only          -- type recoverable?
-#     ReadWrite    reads, then assigns   -- type certainly recoverable
-#
-# AND THE NEGATIVE CONTROL MATTERS AS MUCH AS THE POSITIVE. A ByVal parameter
-# whose copy the callee modified must NOT be reported: the caller never sees
-# that change, so an "after" value would assert an effect that does not exist.
+# The negative control matters as much: a ByVal parameter whose copy the callee modified must
+# not be reported, because the caller never sees that change.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

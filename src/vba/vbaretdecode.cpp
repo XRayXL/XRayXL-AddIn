@@ -27,12 +27,9 @@ namespace vba
 
         using core::Append;
 
-        // A BSTR, STRICTLY -- AND THIS IS THE ONLY ONE. The byte length sits in the
-        // dword before the data, and everything here is a reason to refuse: a wrong
-        // guess prints the first bytes of an unrelated allocation as though they
-        // were a value. Truncation past kBstrMaxChars is marked; beyond
-        // kBstrMaxBytes the whole thing is refused; a tab is text, other control
-        // characters are the signature of reading memory that is not text.
+        // The only BSTR reader, and strict: a wrong guess prints an unrelated allocation as a
+        // value. Truncation past kBstrMaxChars is marked, beyond kBstrMaxBytes the whole thing
+        // is refused, and a control character other than tab means the memory is not text.
         constexpr std::uint32_t kBstrMaxBytes = 4096;   // refuse beyond this when PROBING
         constexpr int           kBstrMaxChars = 256;    // then show this many
 
@@ -69,19 +66,9 @@ namespace vba
             std::uint16_t term = 1;
             if (!RdU16(p + cb, term) || term != 0) return false;
 
-            // A CONTROL CHARACTER IS A REFUSAL ONLY WHEN PROBING. Every other
-            // check above is STRUCTURAL -- aligned, even length, bounded, and a
-            // NUL at exactly `p + cb` -- and those are what actually tell a
-            // string from a pointer or a double. This one looks at CONTENT, and
-            // content proves nothing: a BSTR may legally hold any 16-bit unit.
-            //
-            // It earns its place only when nothing else has said "string": then
-            // a byte below 32 is the best evidence available that the bits are
-            // not text. When a VARIANT tag, an exit opcode or a declared
-            // `As String` has ALREADY said BSTR, VBA's own metadata has settled
-            // the type, and the same byte is a `vbCrLf` in a message or a tab in
-            // a record. Refusing there threw a real value away and printed a raw
-            // pointer where the string had been.
+            // A control character is a refusal only when probing. When a VARIANT tag, an exit
+            // opcode or a declared `As String` has already said BSTR, the same byte is a
+            // `vbCrLf` in a message or a tab in a record.
             if (!told)
                 for (int i = 0; i < take; ++i)
                     if (w[i] < 32 && w[i] != 9) return false;
@@ -94,36 +81,22 @@ namespace vba
         bool DescribeVariantAt(std::uint64_t at, char* out, int cap, const char** typeOut,
                                int depth, int maxElems);
 
-        // NESTING IS BOUNDED. It cannot be unbounded: each level is a real
-        // recursion on the hot-path stack and the memory could be cyclic, so a
-        // finite ceiling is the fail-safe. Deeper than this reads as "[...]"
-        // rather than recursing, and the render buffer -- not this bound -- is
-        // what stops a wide-but-shallow structure.
-        //
-        // THE COUNTER ADVANCES ON THE VARIANT-IN-A-VARIANT HOP, NOT ON THE
-        // ARRAY: DescribeSafeArray passes `depth` through unchanged and only
-        // DescribeElement's VT_VARIANT case increments.
+        // Nesting is bounded: each level is a real recursion on the hot-path stack and the
+        // memory could be cyclic. Deeper than this reads as "[...]". The counter advances on
+        // the Variant-in-a-Variant hop, in DescribeElement's VT_VARIANT case, not on the array.
         constexpr int kMaxNest = 32;
 
-        // THE ONE PLACE AN OBJECT IS RENDERED, for both columns -- so an object
-        // handed down as an argument and handed back as a result reads the same
-        // on both rows.
-        //
-        // With OBJECTS on, the class is named and a Range, Worksheet or Workbook
-        // is described. Anything that does not work out -- the setting off, a
-        // class we cannot name, a COM call that failed -- falls back to the
-        // ADDRESS, which is what this always said and is never wrong.
+        // The one place an object is rendered, so an argument and a result read the same. With
+        // OBJECTS on the class is named and a Range, Worksheet or Workbook is described;
+        // anything that does not work out falls back to the address.
         volatile LONG g_describeObjects = 0;
 
         void DescribeObject(std::uint64_t ptr, char* out, int cap)
         {
             if (ptr == 0) { _snprintf_s(out, cap, _TRUNCATE, "Nothing"); return; }
 
-            // THE ADDRESS IS ALWAYS THERE. The class replaces the word `object`
-            // and the detail follows it; nothing is taken away. Dropping the
-            // address was tried and caught by the test that follows ONE object
-            // from an argument to a result -- which is what an address is for
-            // and what a class name cannot do.
+            // The address is always there: it is how one object is followed from an argument to
+            // a result, which a class name cannot do.
             if (InterlockedCompareExchange(&g_describeObjects, 0, 0) != 0)
             {
                 // The detail is rendered to fit after "<class>@0x<16 hex>", so its
@@ -144,14 +117,10 @@ namespace vba
             _snprintf_s(out, cap, _TRUNCATE, "object@0x%llX", static_cast<unsigned long long>(ptr));
         }
 
-        // A DECIMAL: a 96-bit magnitude, a scale of 0..28 decimal places and a
-        // sign byte, laid over the whole VARIANT (the vt shares its reserved
-        // word): scale at +2, sign at +3, the high 32 bits at +4, the low 64 at
-        // +8. Only ever inside a Variant -- `Decimal` cannot be declared, so
-        // `CDec` is the one way one comes to exist. Rendered EXACTLY, in
-        // integer arithmetic: 28 digits is more than a double holds, and a
-        // rounded money figure is a wrong one. A scale above 28 or a sign byte
-        // that is neither 0 nor 0x80 is not a DECIMAL, and is refused.
+        // A DECIMAL: a 96-bit magnitude, a scale of 0..28 and a sign byte, laid over the whole
+        // VARIANT: scale at +2, sign at +3, the high 32 bits at +4, the low 64 at +8. Rendered
+        // exactly, in integer arithmetic, since 28 digits is more than a double holds. A scale
+        // above 28 or a sign byte other than 0 or 0x80 is refused.
         bool DescribeDecimal(std::uint64_t at, char* out, int cap)
         {
             std::uint8_t scale = 0, sign = 0; std::uint32_t hi = 0; std::uint64_t lo = 0;
@@ -329,34 +298,13 @@ namespace vba
         }
 
 
-        // A SAFEARRAY, described as "<elem>[dims]{first,elements,...}" row by
-        // row: the LAST index varies fastest, so a 2-D array reads a(0,0),
-        // a(0,1), a(1,0) ... though the bytes lie column-major. Bounds come
-        // from rgsabound, stored right-to-left (rgsabound[0] is the LAST
-        // declared dimension), so they are printed in declaration order.
+        // The one array renderer, for both columns: "<Elem>[lo..hi,...]{e1,e2,...}", row by
+        // row. The last index varies fastest, though the bytes lie column-major, and rgsabound
+        // is stored right to left, so bounds are printed in declaration order. An element type
+        // that cannot be named is `?`.
         //
-        // Every header field is checked before anything is read through it:
-        // a stale pointer that happens to be readable must not produce a
-        // plausible-looking array out of unrelated memory.
-        //
-        // SIBLING of vbaargs.cpp's ReadSafeArray (the ARGUMENT path). Kept
-        // separate on purpose -- this one takes a caller vtHint and is reached
-        // directly, that one validates element width and follows an extra
-        // indirection. See the fuller note there. Element rendering is shared
-        // (DescribeArrayElement); the header parse is not, deliberately.
-        // THE ONE ARRAY RENDERER, for both columns: "<Elem>[lo..hi,...]{e1,e2,...}".
-        //
-        // The header parse was merged into vbaoleaut.h and the ELEMENT decoder was
-        // always shared -- this was the last piece written twice. The two copies
-        // agreed on the truncation marker by hand and differed in their tail
-        // reserve (32 against 48) and in how the element cap reached them, which
-        // is how an array could read differently depending on which column it
-        // landed in. The arguments column's `array[` fallback is gone with it:
-        // an element type that cannot be named is `?`, the same `?` the type
-        // position uses, meaning the same thing.
-        //
-        // `sa` must already have come from ReadSafeArrayHeader, which is what
-        // makes the bounds and the element count safe to walk here.
+        // `sa` must already have come from ReadSafeArrayHeader, which makes the bounds and the
+        // element count safe to walk.
         bool RenderSaText(const SaInfo& sa, std::uint16_t vt, char* out, int cap,
                           int depth, int maxElems)
         {
@@ -364,11 +312,9 @@ namespace vba
             const std::uint64_t total      = sa.total;
             const std::uint64_t pvData     = sa.pvData;
             const std::uint32_t cbElements = sa.cbElem;
-            // BUILT IN THE CALLER'S BUFFER, WITH THE TAIL RESERVED. kTail bytes are held
-            // back from every write below and the closing marker is written into that
-            // reserve, so the elements can never squeeze it out. `cap` is the caller's,
-            // so a NESTED array gets whatever room its parent had left and closes itself
-            // on the same terms.
+            // Built in the caller's buffer with kTail bytes held back for the closing marker,
+            // so the elements can never squeeze it out. A nested array gets whatever room its
+            // parent had left.
             constexpr int kTail = 48;            // ",...(64 of 18446744073709551615 shown)}"
             if (cap < kTail * 2) return false;   // no room to say anything true
             const int body = cap - kTail;        // what elements and bounds may use
@@ -407,15 +353,10 @@ namespace vba
             }
             for (std::uint64_t i = 0; i < total && i < show; ++i)
             {
-                // RENDER-IN-PLACE: the element is written straight into the
-                // caller's buffer at the current offset, not into a fixed
-                // 512-byte temp -- so a NESTED array or a long string element gets
-                // whatever room is left in `body` rather than being cut at 512,
-                // and nesting costs no per-level stack buffer. kMinElem guarantees
-                // a whole SCALAR always fits before we start (the longest scalar
-                // is ~25 chars), so a scalar is never left half-written; an
-                // unbounded element fills the remaining room and, if it is a
-                // nested array, marks its own truncation on the same terms.
+                // Render in place: the element is written straight into the caller's buffer, so
+                // a nested array or long string gets whatever room is left and nesting costs no
+                // per-level stack buffer. kMinElem guarantees a whole scalar fits before we
+                // start.
                 constexpr int kMinElem = 64;
                 if (body - len < kMinElem) break;
                 if (i) len = Append(out, body, len, ",");
@@ -460,19 +401,10 @@ namespace vba
             return RenderSaText(sa, vt, out, cap, depth, maxElems);
         }
 
-        // Is this a VARTYPE the decoder can actually read a value for?
-        //
-        // ONLY CONSULTED AT THE TOP LEVEL OF A RESULT, and the asymmetry is the
-        // point. INSIDE an array an unreadable element renders `?vtN` and the
-        // array survives, because the other elements are real. As the WHOLE
-        // result there is nothing else in the row, so `?vt41231` would be the
-        // entire answer -- a claim that a Variant was returned, made from bytes
-        // whose own tag says they are not one.
-        //
-        // Reachable because a Variant is identified by its SLOT: anything
-        // at [R14-0x18] is read as one. If a procedure ever puts something else
-        // there the row goes empty and is COUNTED, rather than confident and
-        // wrong.
+        // Is this a VARTYPE the decoder can read a value for? Consulted only at the top level
+        // of a result: inside an array an unreadable element renders `?vtN` and the array
+        // survives, but as the whole result it would claim a Variant was returned from bytes
+        // whose own tag says otherwise. The row goes empty and is counted.
         bool ReadableVartype(std::uint16_t vt)
         {
             switch (vt)
@@ -503,12 +435,10 @@ namespace vba
             // True after a by-reference hop; VT_RECORD needs to know.
             bool byref = false;
 
-            // VT_BYREF: the VARIANT holds a POINTER to the value. That is how
-            // the interpreter passes a typed variable into a Variant parameter
-            // -- 0x4008 is VT_BYREF|VT_BSTR -- so the shape is
-            // ordinary VBA, not a corner. Followed once, under the same guard
-            // as every other pointer, and at the top level only: inside an
-            // array a by-reference element is not something the array owns.
+            // VT_BYREF: the VARIANT holds a pointer to the value, which is how the interpreter
+            // passes a typed variable into a Variant parameter (0x4008 is VT_BYREF|VT_BSTR).
+            // Followed once, under the same guard as every other pointer, and at the top level
+            // only.
             if (vt & kVT_BYREF)
             {
                 std::uint64_t target = 0;
@@ -542,11 +472,8 @@ namespace vba
             {
                 std::uint32_t sc = 0;
                 if (!RdU32(val, sc)) return false;
-                // The same spelling the XLL column uses, from one table: a `#N/A`
-                // an XLL returned and a `#N/A` a UDF was handed are the same fact
-                // about the same sheet. An SCODE outside Excel's set keeps its
-                // number -- a COM error is not a cell error, and naming it would
-                // claim it was.
+                // The same spelling the XLL column uses, from one table. An SCODE outside
+                // Excel's set keeps its number: a COM error is not a cell error.
                 if (const char* en = core::ExcelErrNameFromVba(sc))
                     _snprintf_s(out, cap, _TRUNCATE, "%s", en);
                 else
@@ -580,21 +507,15 @@ namespace vba
         }
     }
 
-    // THE TYPE FROM THE STORE, when the exit opcode does not carry one.
+    // The type from the store, when the exit opcode does not carry one. Class and form
+    // Functions all leave through exit opcode 1664 whatever they return, so the instruction
+    // that wrote the result carries the type. The store family is the load family plus 32;
+    // String, Object and Variant do not follow that pairing. Boolean needs no entry: VBA stores
+    // it as an Integer.
     //
-    // Class and form Functions all leave through exit opcode 1664 whatever they
-    // return -- measured across eleven procedures and every declared type -- so
-    // the instruction that WROTE the result carries the type, exactly as it does
-    // for slot 634. The store family is the load family plus 32, measured on
-    // seven types (vbapcode.h). String, Object and Variant do NOT follow that
-    // pairing and were each measured in isolation.
-    //
-    // Boolean needs no entry: VBA stores it as an Integer (-1/0).
-    //
-    // NOTE THE ASYMMETRY WITH VARIANT. 694 is here, but it is not what identifies
-    // a Variant -- the caller does that from the OPERAND (-0x18), because a
-    // Variant is stored through a different opcode depending on what it holds
-    // (707 for a string). See DecideReturnKind in vbatrace.cpp.
+    // 694 is here, but the caller identifies a Variant from the operand (-0x18), because a
+    // Variant is stored through a different opcode depending on what it holds (707 for a
+    // string). See DecideReturnKind in vbatrace.cpp.
     RetKind StoreReturnKind(std::uint16_t storeOp)
     {
         switch (storeOp)
@@ -604,33 +525,21 @@ namespace vba
         case 690: return RetKind::Long;
         case 693: return RetKind::Currency;
         case 699: return RetKind::LongLongOrArray;
-        // 671 IS THE TYPED-ARRAY STORE, here for the same reason 699 is: on the
-        // CLASS and FORM path the exit opcode is 1664, which carries no type, so
-        // the store is the only thing that can name the result.
-        //
-        // NOT SUFFICIENT ON ITS OWN, AND MEASURED SO: with this in place a class
-        // `Function RLongArr() As Long()` STILL reports an empty ret and 1664 is
-        // still counted unmapped. So either the store scan is not finding 671 at
-        // operand -8 for this shape or it declines on a conflict -- the next
-        // thing to MEASURE, not to assume. The row stays because it is right
-        // about what 671 means; the defect is not closed.
-        // [defect: class-function-array-return-unmapped]
+        // 671 is the typed-array store, here for the same reason 699 is: on the class and form
+        // path the exit opcode is 1664, which carries no type. Known gap: a class Function
+        // returning a typed array still reports an empty ret.
         case 671: return RetKind::LongLongOrArray;
         case 700: return RetKind::Single;
         case 701: return RetKind::Double;
 
-        // ---- STRING, VARIANT AND OBJECT ---------------------------------
+        // String, Variant and Object. Each stores where the decoder already reads it:
         //
-        // Each cross-checks against where the decoder already reads it:
-        //   708 stores at operand -8     -- where String reads its BSTR
-        //   694 stores at operand -0x18  -- where Variant reads, and nowhere else does
-        //   696 stores at operand -8     -- and 696-32 = 664, the load table's Object
+        //    708 stores at operand -8     -- where String reads its BSTR
+        //    694 stores at operand -0x18  -- where Variant reads, and nowhere else does
+        //    696 stores at operand -8     -- and 696-32 = 664, the load table's Object
         //
-        // A Variant holding an array uses the same store as a scalar Variant
-        // (measured: `Array(1,2,3)` and `42` both store through 694@-0x18); one
-        // holding a string stores through 707 at the same -0x18 -- which is why the
-        // caller decides a Variant by its OPERAND and not by this table. Nothing here
-        // distinguishes the held type; DescribeVariantAt reads the VARIANT's own tag.
+        // A Variant holding a string stores through 707 at the same -0x18, which is why the
+        // caller decides a Variant by its operand and not by this table.
         case 708: return RetKind::String;
         case 694: return RetKind::Variant;
         case 696: return RetKind::Object;
@@ -682,12 +591,8 @@ namespace vba
         // for the ones with no type worth saying.
         if ((vt & kVT_ARRAY) == 0)
         {
-            // Through the VT_BYREF tag: the name is the target's, which is what
-            // the value will be read as.
-            // ONE NAME TABLE. This was a hand-copied SUBSET of VtName -- the same
-            // sixteen strings, maintained separately -- so renaming a type in one
-            // place would have made the two columns disagree about it. The subset
-            // is now a policy (`VtNameWorthSaying`) beside the fact (`VtName`).
+            // Through the VT_BYREF tag: the name is the target's, which is what the value will
+            // be read as.
             const std::uint16_t base = static_cast<std::uint16_t>(vt & ~kVT_BYREF);
             if (VtNameWorthSaying(base)) *heldType = VtName(base);
         }

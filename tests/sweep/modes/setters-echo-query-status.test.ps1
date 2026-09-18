@@ -1,10 +1,6 @@
-# The setter surface is OBSERVABLE: every set echoes what it did,
-# XRayXL_GetTraceParam answers the current value, and an off-vocabulary value
-# is refused with nothing changed. This is the anti-inert-setter test: a buffer
-# setter that recorded a number and changed nothing shipped once, and nobody
-# could tell, because everything observable about it was right.
-#
-# No boolean XLLTrace/VBATrace setters: a boolean cannot express DEPTH=TOP.
+# The setter surface is observable: every set echoes what it did, XRayXL_GetTraceParam answers
+# the current value, and an off-vocabulary value is refused with nothing changed. A setter that
+# records a value and changes nothing reads exactly like one that works.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -47,13 +43,13 @@ try {
     # Off-vocabulary: refused, and the value is UNCHANGED afterwards.
     $e = Set-XRayTraceParam $sx 'VBA' 'DEPTH' 'BANANAS'
     $after = [string](Get-XRayTraceParam $sx 'VBA' 'DEPTH')
-    $ok = ($e -match 'refused' -and $after -eq 'TOP')
+    $ok = ($e -match '#Err' -and $after -eq 'TOP')
     Write-TestCase 'bad-value-refused-nothing-changed' -Pass:$ok -Fail:(-not $ok) -Detail "$e / then VBA DEPTH=$after"
     if (-not $ok) { $failed++ }
 
     # An off-vocabulary NAME is refused the same way.
     $e = Set-XRayTraceParam $sx 'XLL' 'BANANAS' 'ALL'
-    $ok = ($e -match 'refused')
+    $ok = ($e -match '#Err')
     Write-TestCase 'bad-name-refused' -Pass:$ok -Fail:(-not $ok) -Detail $e
     if (-not $ok) { $failed++ }
 
@@ -80,7 +76,7 @@ try {
     # A ring below the 16 KB floor is refused, value unchanged (still 512KB).
     $e = Set-XRayTraceParam $sx 'BUFFERSIZE' '4K'
     $after = [string](Get-XRayTraceParam $sx 'BUFFERSIZE')
-    $ok = ($e -match 'refused' -and $after -eq '512KB')
+    $ok = ($e -match '#Err' -and $after -eq '512KB')
     Write-TestCase 'buffer-below-floor-refused' -Pass:$ok -Fail:(-not $ok) -Detail "$e / then BUFFERSIZE=$after"
     if (-not $ok) { $failed++ }
 
@@ -93,7 +89,7 @@ try {
     # Off-vocabulary BUFFERWHENFULL is refused, value unchanged (still PAUSE).
     $e = Set-XRayTraceParam $sx 'BUFFERWHENFULL' 'BANANAS'
     $after = [string](Get-XRayTraceParam $sx 'BUFFERWHENFULL')
-    $ok = ($e -match 'refused' -and $after -eq 'PAUSE')
+    $ok = ($e -match '#Err' -and $after -eq 'PAUSE')
     Write-TestCase 'bad-whenfull-refused-nothing-changed' -Pass:$ok -Fail:(-not $ok) -Detail "$e / then BUFFERWHENFULL=$after"
     if (-not $ok) { $failed++ }
 

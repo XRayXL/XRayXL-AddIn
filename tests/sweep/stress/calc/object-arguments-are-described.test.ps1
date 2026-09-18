@@ -86,10 +86,8 @@ End Function
         foreach ($tag in @('cell','row','col','block','wholecol','sheet','book','coll')) {
             if (-not $ours.ContainsKey($tag)) { return "$tag : never traced" }
             if ($ours[$tag] -eq '')           { return "$tag : no argument rendered" }
-            # NOTHING MAY STILL BE A BARE ADDRESS. That is the answer when the
-            # setting is off or a call failed, and with OBJECTS on and a live
-            # Excel neither is true -- so an address here is a regression, not a
-            # tolerable outcome.
+            # Nothing may still be a bare address: that is the answer when the setting is off or
+            # a call failed, and with OBJECTS on and a live Excel neither is true.
             if ($ours[$tag] -match '^object@0x') {
                 return "$tag : rendered a bare address [$($ours[$tag])] -- OBJECTS produced nothing" }
         }

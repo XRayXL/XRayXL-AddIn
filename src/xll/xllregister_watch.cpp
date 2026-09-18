@@ -28,19 +28,15 @@ namespace xll
             std::atomic<bool> g_watching{ false };
             std::atomic<ApplyFn> g_apply{ nullptr };   // read by the worker, cleared by Remove
 
-            // A LOCK IS FINE HERE: registrations are rare -- a burst at add-in
-            // load and nothing between -- and the hot path is the pass-through
-            // below, which takes none. The worker copies the batch out and
-            // RELEASES the lock before patching, so it is never held across
-            // MinHook's thread suspension.
+            // A lock is fine here: registrations are rare and the pass-through below takes
+            // none. The worker copies the batch out and releases the lock before patching, so
+            // it is never held across MinHook's thread suspension.
             std::mutex g_mutex;
             std::vector<Captured> g_pending;
 
-            // WHEN THE FIRST OF A BATCH WAS SEEN. Between a registration and
-            // its patch the function can be CALLED and not traced -- a macro
-            // that loads an add-in and calculates 4ms later misses every call,
-            // 6 of 6. Closing that window means patching per registration
-            // (2,829ms against 31ms), so it is narrowed and REPORTED instead.
+            // When the first of a batch was seen. Between a registration and its patch the
+            // function can be called untraced. Patching per registration would close that but
+            // freezes the process once per function, so the window is narrowed and reported.
             ULONGLONG g_firstPendingTick = 0;
 
             // Short enough that the untraced window is small, long enough that
@@ -247,11 +243,9 @@ namespace xll
 
         void Remove()
         {
-            // BEFORE unhooking, so the worker cannot be inside a patch pass
-            // while the detour is taken out from under it. It drains once more
-            // on the way out, so a registration seen a moment ago is not
-            // silently discarded. No timeout: the worker never calls Excel, and
-            // returning early would let Disarm change the target table under it.
+            // Before unhooking, so the worker cannot be inside a patch pass while the detour is
+            // removed. It drains once more on the way out. No timeout: returning early would
+            // let Disarm change the target table under it.
             if (g_stop != nullptr) SetEvent(g_stop);
             if (g_worker != nullptr)
             {

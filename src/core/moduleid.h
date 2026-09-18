@@ -4,7 +4,7 @@
 #include <cstdint>
 
 // The image holding an address, read without taking a reference on it. No other
-// DLL is pinned (D90), so a write into one first checks its image is still there.
+// DLL is pinned, so a write into one first checks its image is still there.
 namespace core
 {
     struct ModuleId

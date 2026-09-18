@@ -144,6 +144,16 @@ Point Excel at `dist\XRayXL64.xll`: either add it permanently through
 File → Options → Add-ins → Manage: Excel Add-ins, or drag the `.xll` onto an
 open Excel window to load it for that session only.
 
+An **XRayXL** group appears at the far right of the **Developer** tab, with three
+buttons: **Arm**, **Disarm** and **Options** — the last opens a dialog holding the
+capture settings. Two things to know: Excel hides the Developer tab by default
+(File → Options → Customize Ribbon, tick *Developer*), and the buttons appear once
+a workbook is open, not on Excel's start screen. Each is also a
+registered command, so nothing needs the ribbon — see
+[Trace something](#trace-something). If the buttons cannot be loaded, XRayXL says so
+and carries on working; [Before you run it](#before-you-run-it) explains when
+that happens.
+
 [**`dist/demo/`**](docs/DemoWalkthrough.md) is a playground — a VBA→XLL calc chain, event
 handlers, an error-handling chain, and a form/timer/recursion/class mix, each
 with one-click **Arm** and **Disarm** buttons. Load the two demo add-ins with
@@ -174,11 +184,16 @@ suites need, the two demo add-ins, and the unit tests under `tests\sweep\unit\`.
 writes `dist\` — only `tools\release.ps1` does that, after a green sweep.
 
 The output is one native DLL — `build\x64\Release\XRayXL\XRayXL64.xll` — with no
-runtime dependencies beyond Windows itself. No .NET, no COM server, no
-installer.
+runtime dependencies beyond Windows itself. No .NET, no installer, and nothing
+to register permanently: Excel serves ribbon controls only to a COM add-in, so the
+XLL is one for as long as the connect takes, then deletes its own registration
+(see [Before you run it](#before-you-run-it)).
 
 
 ### Trace something
+
+Press **Arm** in the XRayXL group on the Developer tab, recalculate or run your
+macros, then press **Disarm**. Or, from VBA or any automation client, with no window and no focus:
 
 ```vba
 Application.Run "XRayXL_Arm"          ' start recording
@@ -187,6 +202,11 @@ Application.Calculate                 ' ...or press F9
 
 Application.Run "XRayXL_Disarm"       ' stop, flush, close
 ```
+
+The two are the same thing: the buttons call these commands. Arm from a macro
+and the ribbon follows it; change a setting in **Options** and
+`XRayXL_GetTraceParam` reports it. While armed the capture settings are greyed —
+they are read once, at arm, so they are refused until you disarm.
 
 
 ### Choosing what to capture
@@ -220,6 +240,16 @@ Honest caveats, in roughly the order they will matter to you.
   references and function names all land in it — so whatever your workbook
   computes is in there, in the clear. It is a plain file in `%TEMP%`; treat it
   as sensitive as the spreadsheet itself.
+- **The ribbon buttons make XRayXL briefly a COM add-in.** Ribbon controls cannot
+  be served any other way. To load it, XRayXL writes a CLSID, a ProgId and an Excel
+  add-ins entry under `HKEY_CURRENT_USER`, connects itself, and **deletes all
+  three immediately** — they are not left behind for the session, and the
+  add-ins entry is written `LoadBehavior=0`, so nothing of it can autoload into
+  your next Excel. If any of that is refused — a locked-down profile, an
+  elevated Excel, or Excel itself declining — you get a message box saying so,
+  no buttons, and an add-in that otherwise works normally. `XRAYXL_RIBBON=0` skips
+  the whole thing, and is the switch to reach for if you suspect the ribbon of
+  anything.
 - **Crash dumps are off by default.** A crash always writes a small text report
   (registers and module names, no workbook content). A full minidump — which
   *would* contain workbook memory, and whose writer is an EDR signature — is

@@ -1,20 +1,9 @@
-; A second SHAPE of export, in the traced add-in's own code.
+; A second shape of export. Many XLLs export a jump table: the exported symbol is a six-byte
+; `jmp qword ptr [rip+disp32]` and the real address lives in a writable data slot. Incremental
+; linking and import thunks produce this, and the tracer must handle both shapes. Per export:
 ;
-; Not every XLL exports its functions directly. Plenty export a jump table
-; instead: the exported symbol is a six-byte `jmp qword ptr [rip+disp32]` and
-; the real address lives in a writable data slot. Incremental linking emits
-; this, import thunks are this, and any add-in that generates its exports at
-; build time tends to be this.
-;
-; The tracer must handle both, and NOTHING about that is specific to any
-; framework -- it is a property of the binary. So the traced add-in exhibits both
-; shapes itself, and the suite covers them without needing a third-party
-; add-in installed.
-;
-; Layout produced here, per export:
-;
-;   .code    FF 25 <disp32>        jmp qword ptr [rip+disp32]     6 bytes
-;   .data    <qword>               -> the real implementation      writable
+;    .code    FF 25 <disp32>        jmp qword ptr [rip+disp32]     6 bytes
+;    .data    <qword>               -> the real implementation      writable
 ;
 ; The implementations are the ordinary C++ functions in tracedaddin.cpp.
 

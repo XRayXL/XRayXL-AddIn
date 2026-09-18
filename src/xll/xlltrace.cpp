@@ -48,11 +48,8 @@ namespace xll
         volatile LONG64 g_recorderFaults = 0;
         volatile LONG64 g_framesResynced = 0;
 
-        // ---- per-thread state ------------------------------------------------
-        //
-        // TLS only: multithreaded calculation puts several threads inside one
-        // hooked function at once, and anything shared here would corrupt spans
-        // across threads rather than merely race.
+        // Per-thread state. TLS only: multithreaded calculation puts several threads inside one
+        // hooked function at once.
         struct Frame
         {
             unsigned long long span = 0;
@@ -99,11 +96,8 @@ namespace xll
             char argcbuf[8];
             _snprintf_s(argcbuf, _TRUNCATE, "%d", t->plan.paramCount);
 
-            // Decoded in one place for both sources (core/caller.h). ASKING
-            // COSTS A ROUND-TRIP INTO EXCEL, once per entry, on the traced thread,
-            // inside the span being timed. It is unconditional: the calling cell is
-            // part of every row, and `cell` and `sheet` are written together or not
-            // at all.
+            // Decoded in one place for both sources (core/caller.h). Asking costs a round trip
+            // into Excel once per entry, inside the span being timed.
             core::Caller who;      // NOT {} -- ReadCaller fills it
             core::ReadCaller(who);
 
@@ -133,13 +127,8 @@ namespace xll
                             "%s...(%d of %d slots described)", n ? " " : "", described, t->plan.slotCount);
             }
 
-            // No seq: emit::csv::WriteRow allocates it, so the file has one sequence
-            // rather than one per source.
-            //
-            // ARGCOUNT IS THE ARITY, NOT THE NUMBER DECODED -- ARGS=FALSE does
-            // not change it, because how many arguments a function takes is a
-            // fact about the function, and blanking it would make a disabled
-            // decode look like a nullary call.
+            // No seq: emit::csv::WriteRow allocates it. argcount is the arity, not the number
+            // decoded, so ARGS=FALSE does not make a call look nullary.
             emit::csv::Row row;
             row.kind = "entry";  row.source = "XLL";  row.span = st.span;  row.thread = st.tid;  row.qpc = st.qpc;
             row.parent = parentb;  row.depth = depthb;
@@ -159,14 +148,8 @@ namespace xll
             _snprintf_s(depthb, _TRUNCATE, "%d", depth);
             char durbuf[32];
 
-            // An async function has not produced its answer yet, so the span
-            // measures the dispatch and not the work: reporting it would say a
-            // four-second call took microseconds, which for a tool that exists
-            // to find slow things is worse than saying nothing.
-            // `trust` SAYS WHY, `ticks` STAYS A NUMBER. An async call has no
-            // duration of the work to report, so the number is left empty and
-            // `async` says which question it is not answering -- where a single
-            // free-text field had to carry the word where a count belonged.
+            // An async function has not produced its answer yet, so the span measures only the
+            // dispatch. `ticks` is left empty and `trust` says `async`.
             const char* trustText;
             if (t->plan.async) { durbuf[0] = 0; trustText = "async"; }
             else
@@ -200,22 +183,17 @@ namespace xll
         }
     }
 
-    // ---- the recorders ------------------------------------------------------
-    //
-    // SEH-wrapped, both of them. These run on a calculation thread inside
-    // somebody else's add-in, decoding pointers we did not create; a fault
-    // here must cost the row and nothing more.
+    // The recorders. Both SEH-wrapped: they decode pointers we did not create on somebody
+    // else's calc thread, so a fault must cost the row and nothing more.
 
     extern "C" void XRayOnEntry(void* target, void* regs)
     {
         Target* t = static_cast<Target*>(target);
         const Regs* r = static_cast<const Regs*>(regs);
 
-        // DEPTH IS ALWAYS BALANCED. Entry increments and exit decrements, whether or
-        // not the row is written -- the two decisions are made independently and must
-        // not be allowed to disagree.
-        // A frame whose thunk sits at or below this one on the stack is gone: an
-        // exception unwound past it without an exit. Close it before going deeper.
+        // Depth is always balanced: entry increments and exit decrements whether or not the row
+        // is written. A frame whose thunk sits at or below this one on the stack was unwound
+        // without an exit, so close it before going deeper.
         const ULONG_PTR sp = reinterpret_cast<ULONG_PTR>(regs);
         while (t_state.depth > 0)
         {

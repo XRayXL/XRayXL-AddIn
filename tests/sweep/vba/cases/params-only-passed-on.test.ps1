@@ -1,18 +1,9 @@
-# A PARAMETER THAT IS ONLY FORWARDED CARRIES NO TYPE, AND MUST NOT CLAIM ONE.
+# A parameter that is only forwarded carries no type, and must not claim one.
 #
-# Opcode 751 is the generic by-reference push: it forwards a slot's ADDRESS to
-# another call and says nothing about what the slot holds. It was in the type
-# table as `Udt&`, because the only measurement that produced it happened to use
-# a `ByRef p As TPoint` -- the UDT was a property of the test, not of the opcode.
-#
-# The cost of that was not a missing type but a WRONG one: a `ByRef n As Long`
-# that is only passed on reported `Udt&`, with no `?` to say it was a guess, and
-# a reader has no way to tell it from a real UDT.
-#
-# The two shapes here differ from a UDT in every way that matters -- a scalar
-# Long and an array of Double -- so if either still reads `Udt` the opcode is
-# being asked to name something it does not know. The real UDT is kept beside
-# them as the control: 1058 DOES name a UDT, and must go on doing so.
+# Opcode 751 is the generic by-reference push: it forwards a slot's address to another call and
+# says nothing about what the slot holds. A `ByRef n As Long` and a `ByRef a() As Double` that
+# are only passed on must not read `Udt&`. The real UDT is kept beside them as the control: 1058
+# does name a UDT, and must go on doing so.
 $case = @{ Name='params-only-passed-on'
      Setup=@'
 Private Type TPoint

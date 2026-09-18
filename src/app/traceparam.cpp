@@ -1,10 +1,6 @@
-// THE TRACE-PARAMETER SURFACE: XRayXL_SetTraceParam and XRayXL_GetTraceParam.
-//
-//
-// FUNCTIONS, not commands: each needs an ARGUMENT and an ECHO, which a command
-// has no channel for. Being worksheet-callable, both REFUSE a cell caller -- a
-// formula that reconfigures the tracer on every recalc is a foot-gun -- and both
-// refuse while ARMED, since the modes are read once at arm.
+// XRayXL_SetTraceParam and XRayXL_GetTraceParam. Functions, not commands, because each needs an
+// argument and an echo. Both refuse a cell caller, since a formula would reconfigure the tracer on
+// every recalc, and both refuse while armed, since the modes are read once at arm.
 #include "session.h"
 #include "exports.h"
 #include "paramparse.h"
@@ -24,21 +20,11 @@ using namespace app::params;
 
 namespace
 {
-    // ---- XRayXL_SetTraceParam / XRayXL_GetTraceParam ---------------------
+    // One setting per call, addressed by (Source, Name), so a call changes only what it names and a
+    // new setting is a new name rather than a wider parser.
     //
-    // ONE setting per call, addressed by (Source, Name). A compound grammar
-    // ("ALL+ARGS+RET") was rejected because every change would restate the whole
-    // configuration for that source, so a typo in the depth would silently
-    // change two things at once. Here a call changes only what it names, and a
-    // new setting is a new NAME rather than a wider parser.
-    //
-    // Omitting Source addresses BOTH. An unsupplied XLL argument arrives as
-    // xltypeMissing whatever its position, so a LEADING argument can be omitted
-    // without a placeholder -- which is how Source comes first and stays
-    // optional.
-    //
-    // The XLOPER12 -> value parsing is paramparse.{h,cpp}, unit-tested
-    // without Excel; what stays here is the state change and the echo.
+    // Omitting Source addresses both. An unsupplied XLL argument arrives as xltypeMissing whatever
+    // its position, so a leading argument can be omitted without a placeholder.
     using namespace app::params;
 
     void ApplyOne(core::modes::Source s, core::modes::Param p, core::modes::Depth d, bool on)
@@ -61,7 +47,10 @@ namespace
         case core::modes::Param::Depth:  t = core::modes::DepthNameW(core::modes::GetDepth(s));  break;
         case core::modes::Param::Args:   t = core::modes::OnOffW(core::modes::GetArgs(s));       break;
         case core::modes::Param::RetVal: t = core::modes::OnOffW(core::modes::GetRetVal(s));     break;
-        default:                         t = core::modes::OnOffW(core::modes::GetObjects(s));    break;
+        // OBJECTS is VBA only; TRUE against XLL would promise an effect it has not.
+        default: t = (s == core::modes::Source::Xll) ? L"n/a -- VBA only"
+                                                     : core::modes::OnOffW(core::modes::GetObjects(s));
+                 break;
         }
         wcsncpy_s(out, cap, t, _TRUNCATE);
     }
@@ -81,25 +70,22 @@ namespace
         return IsWord(srcArg, word) || IsWord(nameArg, word);
     }
 
-    // BUFFERSIZE is source-less. A user naturally calls
-    // SetTraceParam("BUFFERSIZE", <MB>), landing the word in the Source slot, so it
-    // is accepted in either slot with the value after it. Returns the echo when
-    // this WAS a BUFFERSIZE call, nullptr when it was not, so the caller falls
-    // through.
+    // BUFFERSIZE has no source, so the word is accepted in either slot with the value after it.
+    // Returns the echo, or nullptr when this was not a BUFFERSIZE call.
     LPXLOPER12 HandleBufferSizeParam(LPXLOPER12 srcArg, LPXLOPER12 nameArg, LPXLOPER12 valArg)
     {
         LPXLOPER12 bufVal = ValueAfterWord(srcArg, nameArg, valArg, L"BUFFERSIZE");
         if (!bufVal) return nullptr;
 
         if (AnythingArmed())
-            return EchoStr(L"refused while armed -- XRayXL_Disarm first, then set, then XRayXL_Arm");
+            return EchoStr(L"#Err - cannot change settings while armed; XRayXL_Disarm first, then set, then XRayXL_Arm");
         unsigned long long bytes = 0;
         if (!ParseBufferBytes(bufVal, bytes))
-            return EchoStr(L"refused: BUFFERSIZE is a number with optional K/KB or M/MB "
-                           L"(bare = MB), 0..4096 MB, 0 = synchronous -- nothing changed");
+            return EchoStr(L"#Err - BUFFERSIZE is a number with optional K/KB or M/MB "
+                           L"(bare = MB), 0..240 MB, 0 = synchronous; nothing changed");
         if (bytes != 0 && bytes < kBufMinRing)
-            return EchoStr(L"refused: BUFFERSIZE ring must be at least 16 KB "
-                           L"-- or 0 for synchronous -- nothing changed");
+            return EchoStr(L"#Err - BUFFERSIZE ring must be at least 16 KB, "
+                           L"or 0 for synchronous; nothing changed");
         core::modes::SetBufferBytes(static_cast<std::size_t>(bytes));
         wchar_t sz[32]; FormatBufferW(bytes, sz, 32);
         char line[128];
@@ -121,10 +107,10 @@ namespace
         if (!wfVal) return nullptr;
 
         if (AnythingArmed())
-            return EchoStr(L"refused while armed -- XRayXL_Disarm first, then set, then XRayXL_Arm");
+            return EchoStr(L"#Err - cannot change settings while armed; XRayXL_Disarm first, then set, then XRayXL_Arm");
         bool pause = false;
         if (!ParseWhenFull(wfVal, pause))
-            return EchoStr(L"refused: BUFFERWHENFULL must be DROP or PAUSE -- nothing changed");
+            return EchoStr(L"#Err - BUFFERWHENFULL must be DROP or PAUSE; nothing changed");
         core::modes::SetPauseOnFull(pause);
         char line[96];
         _snprintf_s(line, _TRUNCATE, "trace param set: BUFFERWHENFULL -> %s", pause ? "PAUSE" : "DROP");
@@ -148,7 +134,7 @@ namespace
         if (ArgType(v) == xltypeStr) ReadUpper(v, wide, 16);
         core::NarrowAscii(wide, word, sizeof(word));
         if (!core::Log::LevelFromText(word, lvl))
-            return EchoStr(L"refused: LOGLEVEL must be DEBUG, INFO, WARNING or ERROR -- nothing changed");
+            return EchoStr(L"#Err - LOGLEVEL must be DEBUG, INFO, WARNING or ERROR; nothing changed");
 
         core::Log::SetLevel(lvl);
         core::Log::Info(std::string("log level set to ") + core::Log::LevelName(lvl));
@@ -161,7 +147,7 @@ namespace
     {
         core::Log::Note("function: XRayXL_SetTraceParam");
         if (CalledFromCell())
-            return EchoStr(L"refused: call via Application.Run, not from a cell");
+            return EchoStr(L"#Err - call via Application.Run, not from a cell");
 
         // LOGLEVEL first, because it is settable while armed; then the two
         // source-less words that do refuse. Each returns its own echo or
@@ -172,25 +158,29 @@ namespace
 
         bool both = false; core::modes::Source s = core::modes::Source::Xll;
         if (!ParseSource(srcArg, both, s))
-            return EchoStr(L"refused: Source must be XLL or VBA, or omitted for both -- nothing changed");
+            return EchoStr(L"#Err - Source must be XLL or VBA, or omitted for both; nothing changed");
 
         core::modes::Param p = core::modes::Param::Depth;
         if (!ParseParam(nameArg, p))
-            return EchoStr(L"refused: Name must be DEPTH, ARGS, RETVAL or OBJECTS -- nothing changed");
+            return EchoStr(L"#Err - Name must be DEPTH, ARGS, RETVAL or OBJECTS; nothing changed");
+
+        // OBJECTS is VBA only, so it is refused for XLL and for an omitted Source: "both" cannot mean one.
+        if (p == core::modes::Param::Objects && (both || s == core::modes::Source::Xll))
+            return EchoStr(L"#Err - OBJECTS Parameter only available for VBA");
 
         if (AnythingArmed())
-            return EchoStr(L"refused while armed -- XRayXL_Disarm first, then set, then XRayXL_Arm");
+            return EchoStr(L"#Err - cannot change settings while armed; XRayXL_Disarm first, then set, then XRayXL_Arm");
 
         core::modes::Depth d = core::modes::Depth::Off; bool on = false;
         if (p == core::modes::Param::Depth)
         {
             if (!ParseDepth(valArg, d))
-                return EchoStr(L"refused: DEPTH must be OFF, TOP or ALL -- nothing changed");
+                return EchoStr(L"#Err - DEPTH must be OFF, TOP or ALL; nothing changed");
         }
         else
         {
             if (!ParseOnOff(valArg, on))
-                return EchoStr(L"refused: value must be TRUE or FALSE -- nothing changed");
+                return EchoStr(L"#Err - value must be TRUE or FALSE; nothing changed");
         }
 
         if (both) { ApplyOne(core::modes::Source::Xll, p, d, on); ApplyOne(core::modes::Source::Vba, p, d, on); }
@@ -249,12 +239,12 @@ namespace
 
         bool both = false; core::modes::Source s = core::modes::Source::Xll;
         if (!ParseSource(srcArg, both, s))
-            return CellEcho(L"#SOURCE? expected XLL or VBA, or omit for both");
+            return CellEcho(L"#Err - Source must be XLL or VBA, or omit for both");
 
         const bool haveName = !IsMissing(nameArg);
         core::modes::Param p = core::modes::Param::Depth;
         if (haveName && !ParseParam(nameArg, p))
-            return CellEcho(L"#NAME? expected DEPTH, ARGS, RETVAL or OBJECTS");
+            return CellEcho(L"#Err - Name must be DEPTH, ARGS, RETVAL or OBJECTS");
 
         // Grid sizes derive from this list.
         const core::modes::Param all[] = { core::modes::Param::Depth, core::modes::Param::Args,

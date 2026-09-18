@@ -1,14 +1,9 @@
-# RECURSION THAT WRITES A CELL AT EVERY LEVEL.
+# Recursion that writes a cell at every level.
 #
-# The object-model fix narrows the `unwound` mark to frames OUTER than the raise
-# (span < errSpan). Recursion is where that comparison is most exposed: spans
-# rise with depth, so a benign raise deep in the stack sets a HIGH errSpan while
-# many shallower frames are still live. This drives a five-deep recursion whose
-# every frame writes a cell (a benign raise) and asks that NONE of them read as
-# an error -- the fix must hold when the span it compares against moves.
-#
-# Nothing here throws, so every frame must read `returned`, the chain must reach
-# depth 5, and the parents must chain P4_Rec(n) under P4_Rec(n+1).
+# The `unwound` mark applies only to frames outer than the raise (span < errSpan). Spans rise
+# with depth, so a benign raise deep in the stack sets a high errSpan while many shallower
+# frames are still live. Nothing here throws, so every frame must read `returned`, the chain
+# must reach depth 5, and P4_Rec(n) must sit under P4_Rec(n+1).
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

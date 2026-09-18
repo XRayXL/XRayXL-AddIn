@@ -1,39 +1,17 @@
-# TWO KNOWN PARAMETERS, AND EVERY DECLARED TYPE BETWEEN THEM -- in the gate.
+# Two known parameters, and every declared type between them.
 #
-# Three parameters. The first and third are always `ByVal As Long` carrying 1001
-# and 3003. The MIDDLE one is swept through every type VBA can declare, as both
-# a Sub and a Function.
+# Three parameters. The first and third are always `ByVal As Long` carrying 1001 and 3003. The
+# middle one is swept through every type VBA can declare, as both a Sub and a Function, since a
+# Function has a result slot at [R14-8] and a Sub does not.
 #
-# WHAT THIS ADDS OVER `parameter-orders`, which is the neighbouring case and
-# already exercises the three-slot ByVal Variant first, middle and last. Three
-# things, and the third is the one that matters most:
+# The assertion carries no table of type names, only a relationship: whatever sits in the
+# middle, the first parameter reads `a1:Long=1001` and the last reads `Long=3003`. The argument
+# label is a frame slot index, and a `ByVal Variant` occupies three slots, so the third
+# parameter lands at `a5`; reading the wrong slot still yields a number, which the two distinct
+# anchors catch.
 #
-#   1. EVERY middle type, not a chosen permutation set -- Object, a class type,
-#      a whole array, a UDT, an Enum, LongPtr, Date, and the ByRef forms.
-#   2. Sub AND Function for each, because a Function has a result slot at
-#      [R14-8] and a Sub does not (`sub-local-read-as-result` came from exactly
-#      that confusion).
-#   3. THE ASSERTION CARRIES NO TABLE OF EXPECTED TYPE NAMES. `parameter-orders`
-#      states the reported name for each type, which is right for what it tests
-#      and is also the part that rots when a type table changes. Here the
-#      invariant is a RELATIONSHIP: whatever sits in the middle, the first
-#      parameter reads `a1:Long=1001` and the last reads `Long=3003`. That
-#      survives every future change to the type table without being edited.
-#
-# WHY ANCHORS FIND SLOT SLIP AT ALL. The argument label is a FRAME SLOT index
-# and slots are not parameters: a `ByVal Variant` is a 24-byte VARIANT occupying
-# THREE, so the third parameter lands at `a5`. Read slot 3 instead of slot 5 and
-# the answer is still *a number* -- which is why a value that carries no
-# position cannot catch it. 1001 and 3003 differ on purpose: two anchors holding
-# the same value would let the decoder read one where the other belongs.
-#
-# THREE PARAMETERS SHOULD DECODE WITHOUT A RESYNCHRONISATION, ALWAYS. These
-# bodies are four statements with no call in them. If the walk cannot cross one
-# from offset 0 to the exit, a pinned length is wrong somewhere -- so `)~` is a
-# failure here, not an acceptable outcome, and neither is a `?` in a body that
-# reads all three parameters.
-#
-# ParamArray is absent: it must be the LAST parameter, so it cannot be a middle.
+# These bodies are four statements with no call, so `)~` or a `?` is a failure here. ParamArray
+# is absent: it must be the last parameter.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

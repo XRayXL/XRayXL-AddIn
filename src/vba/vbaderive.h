@@ -1,23 +1,11 @@
-// Finding VBE7's p-code dispatch table, and the slots we would patch. This
-// header derives and verifies; it patches NOTHING.
+// Finds VBE7's p-code dispatch table and the slots to patch. Derives and verifies; patches
+// nothing. Pure static analysis of a module image: no probe executed and no stack walked.
 //
-// SAFE TO RUN AT ALL, because the derivation is pure static analysis of a module
-// image -- no probe executed, no stack walked, no automation. The stack-walk
-// hazard -- 64-bit Office registers a dynamic function table whose callback
-// terminates the process -- lives on that path, and this route never goes
-// there.
+// Slot indices are constants: the dispatch table is an interface, and index N means the same
+// opcode on every build. Every address is derived.
 //
-// SLOT INDICES ARE CONSTANTS AND NOT A HARDCODING BUG: every address here is
-// derived, and an index is not an address. The dispatch table is an interface,
-// and index N means the same opcode on every build -- measured across 41 VBE7
-// binaries from 2012 to 2026, where the two beginning-of-statement slots agree
-// 41/41 and all 25 exit slots hold one handler per repeat-group 41/41.
-//
-// AN Image ABSTRACTION, because the consumer reads VBE7 as loaded in this
-// process and the evidence harness reads it as a file across a corpus. Both go
-// through the same derivation: a verification exercising different code from the
-// thing that ships proves nothing about the thing that ships
-// (docs/Implementation.md, Part 2).
+// An Image abstraction, so a harness can read VBE7 as a file through the same derivation the
+// add-in runs on the loaded module.
 #pragma once
 #include <cstdint>
 #include <cstddef>
@@ -89,12 +77,9 @@ namespace vba
         // with no length".
         std::uint32_t invalidHandlerRva = 0;
         std::uint32_t invalidSlots = 0;   // how many point at it
-        // THE OPCODE SET'S OWN FINGERPRINT: for every slot, the index of the
-        // lowest slot sharing its handler, hashed. It names no address, so it
-        // is the same number wherever VBE7 loaded and whatever moved inside it,
-        // and it is identical on both measured builds. It is what says the
-        // table we locked onto is the opcode set `kSigLength` was measured
-        // against -- the one thing a slot count and a margin cannot say.
+        // The opcode set's fingerprint: for every slot, the index of the lowest slot sharing
+        // its handler, hashed. It names no address, so it is the same wherever VBE7 loaded, and
+        // it says the table is the opcode set kSigLength describes.
         std::uint64_t partitionHash = 0;
         bool          partitionOk = false;   // ...and it matched the pinned one
         // THE RAISE SLOT and whether it verified. Error attribution needs it
@@ -102,11 +87,9 @@ namespace vba
         // feature rather than refusing the whole arm: losing every VBA row
         // because an error opcode moved would be the wrong trade.
         bool          raiseOk = false;
-        // THE `End` SLOT, on the same terms as the raise slot: one feature, not
-        // the product. `End` tears the VBA session down firing no exit opcode,
-        // and this is the only signal that its frames are dead. A failed check
-        // costs the depth and parentage of whatever runs after an `End` -- the
-        // behaviour before this slot was hooked -- and nothing else.
+        // The `End` slot, on the same terms as the raise slot. `End` fires no exit opcode, and
+        // this is the only signal that its frames are dead; a failed check costs the depth and
+        // parentage of whatever runs after an `End`.
         bool          endOk = false;
         int           exitGroups = 0;
         std::uint32_t declines[static_cast<int>(Decline::Count_)] = {};

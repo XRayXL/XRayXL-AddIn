@@ -1,16 +1,9 @@
-// TracedAddin -- a deliberately ordinary XLL for the tracing tests to watch.
+// TracedAddin: a deliberately ordinary XLL for the tracing tests to watch. Not built from the
+// product's sources, so when a trace of it is wrong the fault is the tracer's.
 //
-// NOT part of the product, and deliberately not built from the product's
-// sources. Tracing our own XLL would exercise the one add-in whose internals
-// we control, which is exactly the population that hides the failures worth
-// finding. Everything here is the plainest possible use of the C API, so when
-// a trace of it is wrong, the fault is the tracer's.
-//
-// The point of this file is COVERAGE OF THE TYPE CODES. Every function's
-// answer depends only on its inputs, so a test can assert what the trace SAYS
-// about a call, not merely that a row appeared.
-//
-// Naming: Tx<Code> takes that code; TxRet<Code> returns it.
+// It covers the type codes. Every function's answer depends only on its inputs, so a test can
+// assert what the trace says about a call. Naming: Tx<Code> takes that code; TxRet<Code>
+// returns it.
 
 #include <windows.h>
 #include <cwchar>
@@ -113,16 +106,10 @@ extern "C" __declspec(dllexport) LPXLOPER12 __stdcall TxStackArgs(
 extern "C" __declspec(dllexport) LPXLOPER12 __stdcall TxA(short flag)
 { return RetNum(flag ? 1 : 0); }
 
-// EXPORTED, AND DELIBERATELY NEVER REGISTERED BY THIS XLL.
-//
-// It exists so a test can register it under a DIFFERENT display name, which is
-// the shape that actually matters: Excel-DNA exports f0, f1, f2 and registers
-// them under the names a user types, so display and export are never the same
-// string. Nothing else here can express that case -- re-registering a function
-// this XLL already registered does NOT reproduce it, because Excel keeps ONE
-// registration per (module, procedure) and simply adds another name to the
-// same id, leaving two names for one function rather than one name that
-// differs from its export.
+// Exported, and never registered by this XLL, so a test can register it under a different
+// display name: the Excel-DNA shape, where the exports are f0, f1, f2. Re-registering an
+// already registered function does not reproduce it, because Excel keeps one registration per
+// (module, procedure) and adds the second name to the same id.
 extern "C" __declspec(dllexport) LPXLOPER12 __stdcall TxUnregistered(short flag)
 { return RetNum(flag ? 4242 : -1); }
 
@@ -222,12 +209,7 @@ extern "C" __declspec(dllexport) LPXLOPER12 __stdcall TxOptional(LPXLOPER12 a, L
     return RetNum(omitted ? av : av + 1000.0);
 }
 
-// ---- exported through a JUMP TABLE, not directly -----------------------------
-//
-// These two are reached via jumptable.asm: the exported symbol is a six-byte
-// `jmp qword ptr [rip+disp32]` into a writable slot. That is a second SHAPE of
-// export that plenty of XLLs have, and the tracer must handle it the same as a
-// direct export. Nothing here is specific to any framework.
+// Exported through a jump table (jumptable.asm), not directly.
 extern "C" LPXLOPER12 __stdcall TxJumpAddImpl(double a, double b)
 { return RetNum(a + b + 0.5); }
 
@@ -301,14 +283,9 @@ extern "C" __declspec(dllexport) LPXLOPER12 __stdcall TxNoArgs()
     return RetNum(42);
 }
 
-// ---- a function that RAISES ---------------------------------------------------
-//
-// Our thunk sits between Excel and this. If the exception unwinds through the
-// thunk, the thunk's unwind data (xllthunk.asm) has to be right or the process dies.
-//
-// The add-in catches its own exception here. An add-in that let one escape into
-// Excel would be broken on its own terms; what is under test is that OUR frame
-// survives the unwind.
+// A function that raises. If the exception unwinds through our thunk, the thunk's unwind data
+// (xllthunk.asm) has to be right or the process dies. The add-in catches its own exception;
+// what is under test is that our frame survives the unwind.
 extern "C" __declspec(dllexport) LPXLOPER12 __stdcall TxRaises(double x)
 {
     __try
@@ -568,17 +545,9 @@ extern "C" __declspec(dllexport) int __stdcall xlAutoOpen()
     Register(xDLL, L"TxStackArgs",       L"QBBBBB");     // the fifth is a STACK argument
     Register(xDLL, L"TxA",        L"QA");
 
-    // A DISPLAY NAME THE OTHER XLL CANNOT KNOW.
-    //
-    // Every other function here registers under its own export name, so
-    // "recovering" one of those names proves nothing: the probe already has the
-    // export from Application.RegisteredFunctions and would produce the same
-    // string by echoing it. TxHiddenName appears NOWHERE except in Excel's own
-    // memory, so reading it back is the only result that distinguishes finding
-    // Excel's registration record from restating what we were already told.
-    //
-    // This is the Excel-DNA shape: an export like f0 carrying the name a user
-    // actually types.
+    // A display name the other XLL cannot know. Every other function registers under its own
+    // export name, so recovering one proves nothing. TxHiddenName appears nowhere except in
+    // Excel's own memory, so reading it back proves Excel's registration record was found.
     Register(xDLL, L"TxUnregistered", L"QA", L"TxHiddenName");
     Register(xDLL, L"TxI",        L"QI");
     Register(xDLL, L"TxJ",        L"QJ");

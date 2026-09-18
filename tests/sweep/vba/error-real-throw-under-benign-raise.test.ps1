@@ -1,19 +1,12 @@
-# A REAL Err.Raise NESTED BENEATH A BENIGN OBJECT-MODEL RAISE.
+# A real Err.Raise nested beneath a benign object-model raise.
 #
-# TOUCHING THE OBJECT MODEL RAISES, through the same opcode as Err.Raise, so a
-# raise sets the error state only PROVISIONALLY and the frame's own close proves
-# it benign. While that state is up, a SECOND raise arriving
-# is deduped (the raise opcode fires ~4x per Err.Raise). This asks the sharp
-# question that dedupe raises: if the second raise is a GENUINE Err.Raise in a
-# NESTED frame, is it still attributed -- or does the benign frame's provisional
-# state swallow a real throw?
+# Touching the object model raises through the same opcode as Err.Raise, so a raise sets the
+# error state only provisionally, and further raises are deduped while it is up. A genuine
+# Err.Raise in a nested frame must still be attributed:
 #
-#   P1_Outer  On Error GoTo, catches            -> handled
-#   P1_Mid    writes a cell (benign), then calls -> the error unwinds through it
-#   P1_Thrower  Err.Raise (the real error)       -> threw  <-- the assertion
-#
-# If P1_Thrower reads `returned`, a benign cell write suppressed a real throw's
-# attribution -- the exact failure the fix must not introduce.
+#    P1_Outer    On Error GoTo, catches             -> handled
+#    P1_Mid      writes a cell (benign), then calls -> the error unwinds through it
+#    P1_Thrower  Err.Raise (the real error)         -> threw  <-- the assertion
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

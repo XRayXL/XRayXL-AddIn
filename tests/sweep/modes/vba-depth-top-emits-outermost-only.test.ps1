@@ -59,10 +59,8 @@ End Function
     $vbaEntries = @($rows | Where-Object { ($_.kind -eq 'entry' -and $_.source -eq 'VBA') })
     $vbaExits   = @($rows | Where-Object { ($_.kind -eq 'exit' -and $_.source -eq 'VBA') })
     if ($vbaEntries.Count -ne 1) {
-        # SAY WHAT THE EXTRA ROWS WERE. Under a reused session this failed with
-        # 'got 3' and could not say whether ON mode had stopped filtering or
-        # the trace file had not been truncated at arm and held a previous
-        # test's rows. The function names and depths settle that at a glance.
+        # Say what the extra rows were: the function names and depths tell a filter that stopped
+        # working from rows that belong to another test in a reused session.
         $seen = @($vbaEntries | ForEach-Object { '{0}[depth={1}]' -f $_.function, $_.depth }) -join ','
         $problems += "expected exactly 1 VBA entry row (the top frame), got $($vbaEntries.Count): $seen"
     }

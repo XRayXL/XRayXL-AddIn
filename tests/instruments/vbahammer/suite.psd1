@@ -1,12 +1,9 @@
 @{
-    # An INSTRUMENT, deliberately outside tests\sweep\ so a full sweep never runs
-    # it: it hunts a crash rather than defending a behaviour, and it is
-    # expected to take minutes and MAY kill its Excel -- that is the finding.
-    #   .\StretchXL\StretchXL.ps1 -Parallel 1 -Path .\tests\instruments\vbahammer -OutDir <dir>
-    # BOTH sources, so a cycle arms the XLL hooks and the VBA dispatch
-    # patches together. The crash happened in a VBA-only session, but the two
-    # had never been hammered at once. Test XLL first: its UDFs have to
-    # resolve in the saved formulas.
+    # An instrument, outside tests\sweep\ so a full sweep never runs it: it hunts a crash, takes
+    # minutes and may kill its Excel.
+    #    .\StretchXL\StretchXL.ps1 -Parallel 1 -Path .\tests\instruments\vbahammer -OutDir <dir>
+    # Both sources, so a cycle arms the XLL hooks and the VBA dispatch patches together. Test
+    # XLL first: its UDFs have to resolve in the saved formulas.
     RegisterXll = @(
         '..\..\..\build\x64\Release\TracedAddin\TracedAddin64.xll'
         '..\..\..\build\addin\XRayXL64.xll'

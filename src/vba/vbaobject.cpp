@@ -11,15 +11,9 @@ namespace vba
 {
 namespace
 {
-    // THE THREE WE UNDERSTAND, and their published interface IDs.
-    //
-    // NO VALIDATION STEP, because QueryInterface IS the validation: a constant
-    // that is wrong, or that Excel changes, simply never matches, and the object
-    // falls through to being NAMED from its type info. A bad GUID costs the
-    // detail for that class and cannot produce a false claim. An arm-time probe
-    // against a known instance was written first and removed -- it guaranteed a
-    // property that was already guaranteed, and charged three COM calls and a
-    // gate on the hot path for it.
+    // The three classes we detail, by their published interface IDs. QueryInterface is the
+    // validation: a wrong GUID never matches, and the object falls through to being named from
+    // its type info.
     const GUID kIidRange     = { 0x00020846, 0, 0, { 0xC0,0,0,0,0,0,0,0x46 } };
     const GUID kIidWorksheet = { 0x000208D8, 0, 0, { 0xC0,0,0,0,0,0,0,0x46 } };
     const GUID kIidWorkbook  = { 0x000208DA, 0, 0, { 0xC0,0,0,0,0,0,0,0x46 } };
@@ -119,15 +113,8 @@ namespace
         return r;
     }
 
-    // WHAT THE TYPE LIBRARY CALLS IT. This is what VBA's TypeName() reads, and
-    // it is a type-library lookup rather than an object-model invocation -- the
-    // cheaper of the two calls, and the one every object gets.
-    //
-    // REPORTED AS THE TYPE INFO GIVES IT. Excel's own interfaces are named
-    // `_Worksheet` and `_Workbook` with a leading underscore where VBA says
-    // `Worksheet`; trimming it to match would be a cosmetic guess about a
-    // convention, so the name is passed through and the test compares it against
-    // VBA's TypeName() rather than assuming they agree.
+    // What the type library calls it, which is what VBA's TypeName() reads. Passed through as
+    // given: Excel's own interfaces are `_Worksheet` and `_Workbook`, with the underscore.
     bool NameOf(ITypeInfo* ti, char* out, int cap)
     {
         BSTR name = nullptr;
@@ -140,18 +127,10 @@ namespace
 
     bool TypeName(IDispatch* d, char* out, int cap)
     {
-        // THE CLASS, NOT ITS DEFAULT INTERFACE -- for the objects we did NOT
-        // identify by interface id, which are the only ones that reach here.
-        //
-        // `IDispatch::GetTypeInfo` answers with the INTERFACE: `_Collection`
-        // where VBA's TypeName() says `Collection`. Trimming that underscore
-        // would be a guess about a COM naming convention, so `IProvideClassInfo`
-        // is asked for the COCLASS instead -- the same question VBA asks.
-        //
-        // IT DOES NOT ALWAYS ANSWER. A VBA Collection gives `Collection`;
-        // Excel's own sheet object gives nothing and falls through to
-        // `_Worksheet`. That is why the three classes we recognise are named
-        // from the recognition rather than from here. [measured]
+        // The class, not its default interface: IDispatch::GetTypeInfo answers `_Collection`
+        // where TypeName() says `Collection`, so IProvideClassInfo is asked for the coclass. It
+        // does not always answer; Excel's sheet object gives nothing and falls through to
+        // `_Worksheet`.
         IProvideClassInfo* pci = nullptr;
         if (SUCCEEDED(d->QueryInterface(IID_IProvideClassInfo,
                                         reinterpret_cast<void**>(&pci))) && pci)
@@ -218,12 +197,8 @@ namespace
             return true;
         }
         if (t_hold) t_hold->var = &v;
-        // THE SAME DECODER THE COLUMNS USE, reading the VARIANT we are holding:
-        // a scalar renders as a scalar, an array through the one array renderer.
-        // Nothing here knows what Excel hands back for a single cell against a
-        // row against a block -- it renders whatever arrived, which is what makes
-        // the test of those shapes a measurement.
-        // Sized to fit after "(addr)=", so the value's own truncation marker survives.
+        // The same decoder the columns use, reading the VARIANT we hold. Sized to fit after
+        // "(addr)=", so the value's own truncation marker survives.
         char val[4096]; val[0] = 0;
         const int room = cap - static_cast<int>(strlen(addr)) - 4;
         const int valCap = room < static_cast<int>(sizeof(val)) ? room : static_cast<int>(sizeof(val));
@@ -272,12 +247,8 @@ namespace
     {
         cls[0] = 0; detail[0] = 0;
 
-        // A CLASS WE IDENTIFIED IS NAMED BY THAT IDENTIFICATION. QueryInterface
-        // succeeding against Excel's own Worksheet id IS the fact that it is a
-        // Worksheet -- there is nothing left to look up, and asking anyway gets a
-        // worse answer: Excel's sheet object yields no coclass through
-        // IProvideClassInfo, so the type info says `_Worksheet`, its default
-        // INTERFACE. [measured: this test, which failed on exactly that]
+        // A class identified by QueryInterface is named by that identification. The type info
+        // would say `_Worksheet`, since Excel's sheet object yields no coclass.
         bool detailed = false;
         if (Answers(d, kIidRange))
         {

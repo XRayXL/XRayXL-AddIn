@@ -40,10 +40,8 @@ try {
     $lossy = Stop-XRayTrace $sx
     if ($lossy) { Complete-Test -Fail -Detail $lossy }
     $rows = Read-TraceRows $sx.ProcId
-    # CALLERS, ASSERTED. Run and Evaluate reach the function with no calling
-    # cell, and the contract says that decodes as caller='none' -- never as an
-    # invented cell. Measured: this test produces exactly 'cell' and
-    # kind 'none', nothing else.
+    # Run and Evaluate reach the function with no calling cell, and the contract says that
+    # decodes as caller='none', never as an invented cell.
     $inv = @(Test-RowInvariants $rows)
     Write-TestCase -Name 'caller-invariants-hold' -Pass:($inv.Count -eq 0) -Fail:($inv.Count -ne 0) -Detail ($inv -join '; ')
     $noCell = @($rows | Where-Object { ($_.kind -eq 'entry' -and $_.source -eq 'XLL') -and -not (Get-CallerCell $_) })

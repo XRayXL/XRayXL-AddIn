@@ -66,7 +66,7 @@ namespace vba
         // would be a confident wrong cell -- the one thing this project will
         // not do -- so the abrupt end gets a name of its own.
         const std::uint8_t kOutAbandoned = 4;
-        // An unhandled error left VBA through a frame Excel called for a cell (D92).
+        // An unhandled error left VBA through a frame Excel called for a cell.
         const std::uint8_t kOutUnhandledErr = 5;
 
 
@@ -103,12 +103,9 @@ namespace vba
             // frame outwards: where was it thrown, and who caught it.
             std::uint8_t  outcome;
 
-            // DID THE RAISE OPCODE FIRE IN THIS FRAME? The outcome is decided
-            // at CLOSE, because at the raise a real Err.Raise and ordinary
-            // object-model VBA (a cell write, For Each, OnTime) are identical --
-            // same opcode, same registers. How the frame LEFT tells them apart.
-            // Deferring also stops a benign raise's provisional error state
-            // suppressing a genuine throw in a nested frame.
+            // Did the raise opcode fire in this frame? The outcome is decided at close, because
+            // at the raise a real Err.Raise and ordinary object-model VBA (a cell write, For
+            // Each, OnTime) are identical. How the frame left tells them apart.
             bool          raised;
 
             // EXCEL STARTED THIS FRAME as a worksheet-function activation, so an error
@@ -134,12 +131,9 @@ namespace vba
             // read at every depth and whatever the caller was.
         };
 
-        // A PLAIN AGGREGATE with no member initialisers, so it is trivially
-        // constructible and can live in thread-local storage directly: the
-        // loader zero-fills it and no dynamic initialiser runs on a VBA thread.
-        // `generation` starting at zero is load-bearing -- g_generation starts
-        // at 1, so the ordinary check below initialises the block on first use
-        // with no "first time?" flag.
+        // A plain aggregate with no member initialisers, so it can live in thread-local storage
+        // with no dynamic initialiser. `generation` starting at zero is load-bearing:
+        // g_generation starts at 1, so the check below initialises the block on first use.
         struct ThreadState
         {
             Frame  stack[kMaxDepth];
@@ -152,19 +146,12 @@ namespace vba
             int    overflowDepth;
             std::uint32_t generation;   // which arming session this belongs to
 
-            // ---- AN ERROR IN FLIGHT ON THIS THREAD -----------------------
+            // An error in flight on this thread. A frame that ran nothing since the raise
+            // unwound; a statement running again in a frame that predates the raise means that
+            // frame caught it.
             //
-            // THE RULE: an error was raised, and a
-            // frame that ran NOTHING SINCE did not handle it -- it unwound. A
-            // statement running again in a frame that PREDATES the raise means
-            // that frame caught it.
-            //
-            // errActive is set at the THROWER'S CLOSE, not at the raise, so the
-            // first statement at which MarkHandlerIfErrorResumed observes it is
-            // already the settled one -- and so a benign raise's provisional
-            // error state cannot dedupe, and thereby suppress, a genuine throw
-            // in a nested frame. Setting it eagerly at the raise passes every
-            // single-raise case and loses that one.
+            // errActive is set at the thrower's close, not at the raise, so a benign raise's
+            // provisional state cannot suppress a genuine throw in a nested frame.
             bool          errActive;
             // THE SPAN OF THE FRAME THAT THREW. Spans only ever increase, so a frame
             // with a LOWER span existed before the raise and can be the handler; a higher
@@ -181,11 +168,9 @@ namespace vba
         // thread-local, not a thread-local pointer to the heap.
         __declspec(thread) ThreadState t_state;
 
-        // The rendered ARGUMENT LIST buffer: heap, lazily allocated on
-        // each thread's first hook call, so only threads that run a VBA hook pay
-        // for it and nothing is resized per row. On the heap rather than the
-        // stack so ArgCapture stays tiny on the deeply nested interpreter stack.
-        // Leaked at thread exit, bounded to one block per hooking thread.
+        // The rendered argument-list buffer: heap, allocated on each thread's first hook call,
+        // so ArgCapture stays tiny on the deeply nested interpreter stack. Leaked at thread
+        // exit, one block per hooking thread.
         constexpr int kArgRenderMax = 64 * 1024;
         __declspec(thread) char* t_argRender = nullptr;
         char* ArgRenderBuf()
@@ -224,25 +209,14 @@ namespace vba
         // not. The depth-capped marker row is NOT filtered: a truncation must
         // never be hidden by a mode.
         volatile LONG g_topLevelOnly = 0;
-        // ARGUMENT CAPTURE CAN BE TURNED OFF, as a control. It is the only part
-        // of the hook that FOLLOWS POINTERS out of the frame -- a BSTR, an
-        // object, a SAFEARRAY, any ByRef -- and the only part that walks a
-        // procedure's bytecode, so it has the largest fault surface and is the
-        // first thing to remove when asking whether the tracer is what is
-        // killing Excel. Frames, names, timing and the call tree are unaffected,
-        // so a run with this off is still a trace.
-        //
-        // Latched at arm. A disabled decode leaves the column empty and is
-        // COUNTED, never silently blank.
+        // Argument capture can be turned off as a control. It is the only part of the hook that
+        // follows pointers out of the frame and walks bytecode, so it has the largest fault
+        // surface. Latched at arm; a disabled decode is counted, never silently blank.
         volatile LONG g_capArgs = 1;
 
-        // DOES THE SIGNATURE CONTAIN A ByRef PARAMETER? ByRef is VBA's DEFAULT,
-        // so `Sub Calc(result As Double)` filling in `result` is ordinary code
-        // whose whole effect a trace of the entry values would miss.
-        //
-        // The marker is the "&" the type table already uses, and the same test
-        // the argument decoder uses to decide to dereference -- so a signature
-        // this says yes to is exactly one whose values it can follow.
+        // Does the signature contain a ByRef parameter? ByRef is VBA's default, so `Sub
+        // Calc(result As Double)` filling in `result` is ordinary code. The marker is the "&"
+        // the type table uses.
         bool SignatureHasByRef(const char* sig)
         {
             for (const char* c = sig; *c; ++c) if (*c == '&') return true;
@@ -276,16 +250,9 @@ namespace vba
             }
         }
 
-        // The SAME trace file as the XLL side, and one SEQUENCE across both,
-        // because the product is one causal timeline rather than two.
-        //
-        // `seq` and `qpc` are not the same thing: a row is STAMPED when its
-        // event happened and NUMBERED when it is written, and the work between
-        // (arguments, names, the caller) is why they can differ. seq orders the
-        // file; qpc orders the events.
-        //
-        // Everything here runs on a frame change, never per statement, so the
-        // synchronous write is off the hot path even though the file is not.
+        // The same trace file as the XLL side, and one sequence across both. A row is stamped
+        // (`qpc`) when its event happened and numbered (`seq`) when it is written. Runs on a
+        // frame change, never per statement.
         void EmitRow(const char* kind, const Frame& f, std::uint64_t qpc,
                      std::uint64_t durationTicks, int depth, Proc* p,
                      const ArgCapture* args = nullptr,
@@ -312,31 +279,19 @@ namespace vba
                         static_cast<unsigned long long>(qpc));
             _snprintf_s(trailerb, _TRUNCATE, "0x%llX",
                         static_cast<unsigned long long>(f.trailer));
-            // WHERE THIS SAT IN THE CHAIN, on every VBA row, entry and exit
-            // alike. `parent` is a span, so a missing row shows as a reference
-            // to a span that is not in the file -- a question, where rebuilding
-            // the tree from `depth` and row order alone would silently attach
+            // `parent` is a span, so a missing row shows as a reference to a span that is not
+            // in the file, where rebuilding the tree from depth and row order would attach
             // everything after a gap to the wrong caller.
             _snprintf_s(parentb, _TRUNCATE, "%llu",
                         static_cast<unsigned long long>(f.parent));
             _snprintf_s(depthb, _TRUNCATE, "%d", depth);
-            // On the EXIT row only -- an entry row cannot know yet. `returned`
-            // is written explicitly rather than left off, because this column
-            // exists precisely so an error unwind stops looking like a clean
-            // return.
-            // WHAT CLOSED THE FRAME, because it decides whether `ticks` is a
-            // MEASUREMENT or an UPPER BOUND. Only the exit opcode fires at the
-            // moment an activation ends; the stack-pointer backstop fires at the
-            // NEXT statement and the flush at disarm.
+            // On the exit row only. `returned` is written explicitly, so an error unwind never
+            // looks like a clean return.
             //
-            // It matters most where a user is most likely to be looking: a fully
-            // unhandled unwind fires ZERO exit opcodes, so every frame in that
-            // chain is closed by the backstop and would otherwise read as a slow,
-            // successful call.
-            //
-            // The number is kept: a true upper bound is still a fact.
-            // TWO COLUMNS, NOT A SENTENCE. An entry row has no duration, so
-            // both stay empty there rather than carrying a nothing.
+            // `trust` says what closed the frame, which decides whether `ticks` is a
+            // measurement or an upper bound: only the exit opcode fires at the moment an
+            // activation ends; the backstop fires at the next statement and the flush at
+            // disarm. A fully unhandled unwind fires no exit opcodes at all.
             const char* trustText = "";
             if (durationTicks)
             {
@@ -361,25 +316,18 @@ namespace vba
                 }
             }
 
-            // `proc` is always the trailer -- the identity the tracer actually
-            // used, which tells two same-named procedures apart. `module` is
-            // EMPTY when unresolvable, never a guess; `function` falls back to
-            // the trailer in hex, which obviously looks like an address.
-            //
-            // The caller's STACK-LOCAL resolution is preferred over the shared
-            // Proc entry, which is rewritten on every push and exists for the
-            // end-of-session Report.
+            // `proc` is always the trailer, which tells two same-named procedures apart.
+            // `module` is empty when unresolvable; `function` falls back to the trailer in hex.
+            // The caller's stack-local resolution is preferred over the shared Proc entry,
+            // which is rewritten on every push.
             ResolvedName shared{};
             if (p && !(nm && nm->qualModule[0] && nm->function[0])) SnapshotName(p, shared);
             const char* mod  = (nm && nm->qualModule[0]) ? nm->qualModule : shared.qualModule;
             const char* func = (nm && nm->function[0])   ? nm->function
                              : (shared.function[0] ? shared.function : trailerb);
 
-            // Only an entry row carries this: an exit is the same activation as
-            // the entry it pairs with. `cell` and `sheet` stay EMPTY for
-            // anything that is not a real cell on a real sheet -- a macro on a
-            // button has an object name, and `caller` is where that goes.
-            // Empty rather than wrong (core/caller.h).
+            // Only an entry row carries this. `cell` and `sheet` stay empty for anything that
+            // is not a real cell on a real sheet (core/caller.h).
             const char* whoKind = who ? who->kind : "";
             const char* whoRef  = who ? who->desc : "";
 
@@ -419,11 +367,8 @@ namespace vba
             {
                 if (nm) _snprintf_s(nm->function, sizeof(nm->function),
                                     _TRUNCATE, "%s", id.function);
-                // The PROJECT name is deliberately left out: objTable+0x90
-                // yields "ThisWorkbook" on this build -- a document module, not
-                // the project -- so printing it would put a confidently
-                // incorrect name on every row. Workbook and module are verified
-                // and identify a procedure anyway.
+                // The project name is left out: objTable+0x90 yields "ThisWorkbook" on this
+                // build, a document module, not the project.
                 if (nm)
                 {
                     if (id.workbook[0] && id.module[0])
@@ -456,17 +401,10 @@ namespace vba
             return static_cast<std::uint64_t>(core::QpcNow());
         }
 
-        // ASKING EXCEL FROM A THREAD EXCEL IS NOT CALLING US ON. The C API is
-        // documented for use inside an XLL callback; here we are on Excel's
-        // calculating thread but inside VBE7's interpreter, which Excel reached
-        // through COM. That xlfCaller answers at all was MEASURED, not assumed
-        // -- it does, because it is Excel's per-thread state and the calculating
-        // thread is where that state lives.
-        //
-        // Guarded anyway, in its own leaf frame: a fault here would otherwise be
-        // attributed to the tracer's own hook and trip the circuit breaker,
-        // standing down VBA tracing entirely over a question we could have
-        // declined to answer.
+        // Asking Excel from inside VBE7's interpreter, not an XLL callback. xlfCaller answers
+        // because it is per-thread state and this is the calculating thread. Guarded in its own
+        // leaf frame, so a fault here is not attributed to the hook and does not trip the
+        // circuit breaker.
 
         bool AskCaller(core::Caller* out)
         {
@@ -540,17 +478,10 @@ namespace vba
             }
         }
 
-        // ---- DECIDE THE OUTCOME AS THE FRAME CLOSES -------------------------
-        //
-        // The raise opcode (497) fires for BOTH a real Err.Raise and ordinary
-        // object-model VBA, and nothing AT the raise separates them. The frame's
-        // FATE does, and is known only here: one that raised and ran its own
-        // epilogue resolved it in place (benign), one that raised and unwound
-        // with no epilogue really threw -- and the frames OUTER than it unwind
-        // through until one resumes.
-        //
-        // `ranEpilogue` is (exitOp != 0): a real unhandled throw fires no exit
-        // opcode, closing through the stack-pointer backstop instead.
+        // Decide the outcome as the frame closes. The raise opcode (497) fires for both a real
+        // Err.Raise and ordinary object-model VBA, and only the frame's fate separates them:
+        // one that raised and ran its own epilogue resolved it in place, one that raised and
+        // unwound with no epilogue threw. `ranEpilogue` is (exitOp != 0).
         void DecideOutcomeAtClose(ThreadState* s, Frame& f, bool ranEpilogue, bool stillRunning)
         {
             // Already resolved as the catcher -- unless it then raised an error that left it,
@@ -574,11 +505,9 @@ namespace vba
 
             if (f.raised && ranEpilogue)
             {
-                // Raised, then exited normally: a benign object-model raise
-                // VBE7 resolved in place, or a same-frame handler. Not a throw.
-                // A same-frame On Error Resume Next of a REAL error also lands
-                // here as `returned` -- the rarer case, and the less misleading
-                // of the two to lose.
+                // Raised, then exited normally: a benign object-model raise, or a same-frame
+                // handler. A same-frame On Error Resume Next of a real error also lands here as
+                // `returned`.
                 f.outcome = kOutReturned;
                 Bump(g_totals.raisesBenign);
                 return;
@@ -610,25 +539,13 @@ namespace vba
             }
         }
 
-        // ---- WHAT KIND OF RESULT THIS PROCEDURE LEFT BEHIND ------------------
+        // What kind of result this procedure left behind. The exit opcode says, for most
+        // procedures (vbaretdecode.h); class and form Functions all leave through 1664, so the
+        // instruction that wrote the result is asked instead.
         //
-        // The exit opcode says, for most procedures (vbaretdecode.h). Class and
-        // form Functions all leave through 1664 whatever they return, so for
-        // them the instruction that WROTE the result is asked instead.
-        //
-        // SCANNING AND TYPING ARE SEPARATE JOBS: vbapcode.cpp finds every candidate
-        // store to the result slot and knows nothing about what the opcodes
-        // mean; vbaretdecode.cpp owns that.
-        //
-        // THE OFFSET IDENTIFIES A VARIANT, not the opcode: a Variant result
-        // lives at [R14-0x18] and nothing else does, and it is stored through
-        // DIFFERENT opcodes depending on what it holds. The slot is the
-        // invariant.
-        //
-        // TWO KNOWN STORES OF DIFFERENT TYPES CANNOT BOTH BE THE RESULT, and
-        // nothing here says which is the false positive, so the type is refused.
-        //
-        // Pure: a function of the bytecode and the exit opcode.
+        // The offset identifies a Variant, not the opcode: a Variant result lives at [R14-0x18]
+        // and is stored through different opcodes depending on what it holds. Two known stores
+        // of different types cannot both be the result, so the type is then refused.
         RetKind DecideReturnKind(std::uint64_t trailer, std::uint16_t exitOp, std::uint16_t& storeOp)
         {
             storeOp = 0;
@@ -667,19 +584,10 @@ namespace vba
             return kind;
         }
 
-        // ---- ByRef ARGUMENTS THE PROCEDURE CHANGED ---------------------------
-        //
-        // The entry captured the arguments at the FIRST statement, before the
-        // body could touch them; this is the "after". A ByRef slot points at the
-        // CALLER's variable, and the caller's frame is still live at the exit
-        // opcode, so the pointer still resolves.
-        //
-        // BYVAL IS DELIBERATELY NOT REPORTED: a ByVal slot holds a copy the
-        // caller never sees, so printing it as an "after" value would assert an
-        // effect that does not exist. `hasByRef` is the gate and the cost bound.
-        //
-        // Returns `&out` when the arguments MOVED; the four counters keep
-        // "nothing changed" apart from "never looked".
+        // ByRef arguments the procedure changed. Entry captured the arguments before the body
+        // could touch them; this is the "after". A ByRef slot points at the caller's variable,
+        // whose frame is still live at the exit opcode. ByVal is not reported: the caller never
+        // sees that copy. Returns `&out` when the arguments moved.
         const ArgCapture* ReadByRefChanges(const Frame& f, std::uint64_t r14, ArgCapture& out)
         {
             if (!(f.hasByRef && r14 != 0 && InterlockedCompareExchange(&g_capArgs, 0, 0) != 0))
@@ -703,12 +611,8 @@ namespace vba
             return nullptr;
         }
 
-        // ---- HOW THE RESULT READ WENT, in the totals ---------------------------
-        //
-        // Read, declined, or never attempted because the exit opcode has no
-        // mapping -- a gap in the TABLE, not a refusal by the decoder. The store
-        // candidates are recorded for that case, so it can be closed from
-        // evidence.
+        // How the result read went, in the totals: read, declined, or never attempted because
+        // the exit opcode has no mapping. The store candidates are recorded for that last case.
         void CountReturnOutcome(std::uint64_t trailer, std::uint64_t r14, RetKind kind,
                                 std::uint16_t exitOp, bool haveRet)
         {
@@ -753,16 +657,9 @@ namespace vba
             EndEscapedError(s);
         }
 
-        // ---- CLOSE THE FRAME ON TOP ---------------------------------------------
-        //
-        // `r14` is the frame base of the activation that is ENDING, and comes
-        // ONLY from the exit-opcode path. The other close paths run when a frame
-        // is DISCOVERED to have already returned, where R14 belongs to a
-        // different activation entirely and reading a return value would
-        // attribute one procedure's memory to another.
-        //
-        // `exitOp` is the typed exit that names the return kind (vbaretdecode.h),
-        // or 0 from the paths that close without having seen it.
+        // Closes the frame on top. `r14` is the frame base of the activation that is ending,
+        // and comes only from the exit-opcode path: on the other close paths R14 belongs to a
+        // different activation. `exitOp` is the typed exit that names the return kind, or 0.
         void CloseFrame(ThreadState* s, std::uint64_t nowTicks, std::uint64_t r14 = 0,
                         std::uint16_t exitOp = 0, const char* closedBy = "backstop",
                         bool stillRunning = false)
@@ -795,14 +692,9 @@ namespace vba
                 InterlockedAdd64(reinterpret_cast<volatile LONG64*>(&p->statements),
                                  static_cast<LONG64>(s->statements - f.stmtsAtEntry));
             }
-            // THE RESULT, at any depth. The exit opcode says what kind it is
-            // and whether one exists at all; vbaretdecode.cpp reads it from where
-            // that kind lives and refuses what it cannot vouch for. Slot 634
-            // alone needs the store opcode to split LongLong from an array, and
-            // only then is the body scanned.
-            //
-            // The same size as the argument column's buffer, so an array renders the
-            // same in both. Per-thread heap, not the stack VBA may be about to run out of.
+            // The result. The exit opcode says what kind it is and whether one exists; slot 634
+            // alone needs the store opcode to split LongLong from an array. The buffer is the
+            // size of the argument column's, on the per-thread heap rather than the stack.
             char* const retText = RetRenderBuf();
             const char* retType = "";
             bool haveRet = false;
@@ -866,29 +758,16 @@ namespace vba
                 g_totals.tripped = true;
         }
 
-        // A STACK OVERFLOW IS NOT AN ORDINARY FAULT. The hook runs at exactly
-        // the depths where the least stack remains, because VBA recursion runs
-        // until VBE7 itself gives up, and catching one without restoring the
-        // guard page leaves the thread primed to die later in unrelated code.
-        //
-        // So the filter remembers the code and the handler puts the guard page
-        // back (_resetstkoflw is documented to be called from exactly here) and
-        // opens the breaker AT ONCE rather than after eight faults.
+        // A stack overflow is not an ordinary fault: catching one without restoring the guard
+        // page leaves the thread primed to die later. The filter remembers the code, and the
+        // handler calls _resetstkoflw and opens the breaker at once.
         __declspec(thread) unsigned t_lastExceptionCode = 0;
 
 
-        // EVERY code is handled here, and that is LOAD-BEARING, not laziness.
-        // vbathunk.asm is declared PROC FRAME with .endprolog BEFORE its fifteen
-        // pushes, so its unwind info describes an EMPTY prologue -- safe only
-        // while nothing ever unwinds through it. Return
-        // EXCEPTION_CONTINUE_SEARCH for any code and the unwinder computes RSP
-        // as though those ~264 bytes were never pushed, takes a garbage return
-        // address, and transfers execution to whatever it points at: the exact
-        // signature of the one unexplained crash this project has seen.
-        //
-        // If a code ever needs to be declined, fix the thunk's unwind info FIRST
-        // (.pushreg per push and .setframe rbx). The two are one mechanism, and
-        // nothing else ties them together.
+        // Every code is handled here, and that is load-bearing: vbathunk.asm's unwind info
+        // describes an empty prologue, so EXCEPTION_CONTINUE_SEARCH would unwind through it to
+        // a garbage return address. To decline a code, fix the thunk's unwind info first
+        // (.pushreg per push and .setframe rbx).
         int HookFilter(unsigned code)
         {
             t_lastExceptionCode = code;
@@ -914,13 +793,9 @@ namespace vba
         void OnEndBody();
     }
 
-    // THE HOOK BODIES ARE SEH-WRAPPED. Guarding the individual reads of
-    // interpreter memory is not enough: a fault in the tracer's OWN code -- name
-    // resolution, argument decoding, the p-code walk, the emitter -- would
-    // propagate straight into the VBA interpreter on a live calc thread.
-    //
-    // Split into wrapper + body because __try may not share a frame with objects
-    // that need unwinding, and the bodies have several.
+    // The hook bodies are SEH-wrapped: a fault in the tracer's own code would otherwise
+    // propagate into the VBA interpreter on a live calc thread. Wrapper plus body, because
+    // __try may not share a frame with objects that need unwinding.
     namespace
     {
         using HookBody = void (*)(std::uint64_t, std::uint64_t);
@@ -979,11 +854,9 @@ namespace vba
         ThreadState* s = State();
         if (!s) return;
 
-        // MARK THAT A RAISE FIRED HERE -- DECIDE NOTHING YET. Whether this is a
-        // real throw or a benign object-model raise is unknowable at the raise
-        // itself, so the outcome waits for DecideOutcomeAtClose. A per-frame flag
-        // is idempotent, so the extra fires are counted as deduped rather than
-        // acted on twice.
+        // Mark that a raise fired here and decide nothing yet; the outcome waits for
+        // DecideOutcomeAtClose. The per-frame flag is idempotent, so the extra fires are
+        // counted as deduped.
         if (s->depth <= 0)
         {
             // Nothing open to attribute it to: the raising procedure has not
@@ -1010,23 +883,13 @@ namespace vba
         Bump(g_totals.raises);
     }
 
-    // ---- DID SOMEBODY CATCH IT? -------------------------------------------
+    // Did somebody catch it? A statement running again means the error was dealt with, by the
+    // frame it ran in. Called first in OnStatementBody, before the fast path returns.
     //
-    // A statement running again means the error was dealt with, and the frame it
-    // ran in is the one that dealt with it.
-    //
-    // CALLED FIRST IN OnStatementBody, before the fast path returns -- otherwise
-    // most statements never reach it.
-    //
-    // THE FIRST STATEMENT THAT SEES THE ERROR is already the settled one:
-    // errActive is set when the THROWER closes, and that close happens inside
-    // the processing of the handler's first statement, AFTER this check ran for
-    // it. So the first statement at which this observes errActive is the
-    // handler's second, by which point the unwind's closes are done and the top
-    // of the stack is the frame that resumed.
-    //
-    // ONLY A FRAME THAT PREDATES THE RAISE CAN BE THE HANDLER: a destructor
-    // opened during the unwind runs statements of its own but has a HIGHER span.
+    // errActive is set when the thrower closes, so the first statement that observes it is the
+    // handler's second, by which point the unwind's closes are done and the top of the stack is
+    // the frame that resumed. Only a frame that predates the raise can be the handler: a
+    // destructor opened during the unwind has a higher span.
     void MarkHandlerIfErrorResumed(ThreadState* s)
     {
         if (!(s->errActive && s->depth > 0 &&
@@ -1042,18 +905,10 @@ namespace vba
         s->errActive = false;
     }
 
-    // DOES AN ACTIVATION START HERE? vbaboundary.h owns the answer and its
-    // evidence; this file only acts on it.
-    //
-    // ASKED BEFORE THE FAST PATH, which is the whole point: the defect it fixes
-    // is a second activation with the SAME trailer at the SAME rsp, which is the
-    // fast path's exact condition. A UDF that raises never reaches its epilogue,
-    // so its frame stays open and the next call is waved through as the next
-    // statement of the frame we are already in.
-    //
-    // Unavailable is counted apart from No, so a boundary that quietly fell back
-    // to the rsp heuristic does not print the same number as one that was never
-    // wrong. Hence a bool return and three counted outcomes.
+    // Does an activation start here? vbaboundary.h owns the answer. Asked before the fast path:
+    // a UDF that raises never reaches its epilogue, so its next call arrives with the same
+    // trailer at the same rsp, which is the fast path's exact condition. Unavailable is counted
+    // apart from No.
     bool IsActivationStart(std::uint64_t trailer, std::uint64_t savedRegs)
     {
         switch (ActivationStart(trailer, savedRegs))
@@ -1081,14 +936,11 @@ namespace vba
             Bump(g_totals.sameTrailerShallower);
     }
 
-    // WHAT HAS RETURNED, closed before anything is opened: the stack grows
-    // down, so anything whose stack has been released has a SMALLER sp than we
-    // are now at.
+    // Closes what has returned before anything is opened: the stack grows down, so a frame
+    // whose stack has been released has a smaller sp than the current one.
     //
-    // COMING BACK UP PAST THE CAP is the second half of the same job. Beyond the
-    // shadow stack nothing was stored, so there is no frame to match and the
-    // only evidence a capped activation ended is a SHALLOWER rsp than it was
-    // last seen at. That undercounts a multi-level unwind, which is why
+    // Beyond the shadow stack's cap nothing was stored, so the only evidence a capped
+    // activation ended is a shallower rsp. That undercounts a multi-level unwind, which is why
     // `deepestSeen` is published as a floor.
     void CloseFramesThatReturned(ThreadState* s, std::uint64_t dispatchSp, std::uint64_t now)
     {
@@ -1099,28 +951,23 @@ namespace vba
             --s->overflowDepth;
     }
 
-    // IS EXCEL A LIVE CALLER between this VBA frame and its parent? Walk the REAL
-    // DID EXCEL START THIS FRAME, rather than VBA calling it? Excel enters VBA to
-    // compute a worksheet function, and xlfCaller names the cell it is computing. A
-    // VBA call within that calc keeps the same cell, so a caller cell that DIFFERS
-    // from the frame beneath -- or a cell where the frame beneath has none -- is a
-    // fresh worksheet-function entry, the one kind of activation whose unhandled error
-    // Excel turns into that cell's #VALUE! instead of passing to a VBA caller. Errors
-    // through Application.Run or an object-model call are NOT cells, so they propagate.
+    // Did Excel start this frame, rather than VBA calling it? Excel enters VBA to compute a
+    // worksheet function, and xlfCaller names the cell. A VBA call within that calc keeps the
+    // same cell, so a caller cell that differs from the frame beneath, or a cell where the
+    // frame beneath has none, is a fresh worksheet-function entry: the one activation whose
+    // unhandled error Excel turns into #VALUE! instead of passing to a VBA caller.
     //
-    // A sheet event has no calling cell, so a user-triggered event's unhandled error
-    // reads `threw` rather than `unhandled` (D92).
+    // A sheet event has no calling cell, so a user-triggered event's unhandled error reads
+    // `threw` rather than `unhandled`.
     bool IsExcelTheCaller(ThreadState* s, bool callerIsCell, std::uint64_t callerHash)
     {
         if (!callerIsCell) return false;
         return s->depth < 2 || s->stack[s->depth - 2].callerHash != callerHash;
     }
 
-    // A FRAME THAT LOST ITS STACK. An unhandled error runs no epilogue, and Excel may
-    // call the next cell's function at the same depth or deeper, so the backstop never
-    // fires. A running frame keeps its trailer on the stack; a dead one does not.
-    // Is this frame still executing? The interpreter keeps a frame's trailer at the
-    // dispatch rsp we recorded for it, so a returned frame's slot holds something else.
+    // Is this frame still executing? The interpreter keeps a frame's trailer at the dispatch
+    // rsp recorded for it, so a returned frame's slot holds something else. Needed because an
+    // unhandled error runs no epilogue and the backstop may never fire.
     bool FrameStillLive(const Frame& f)
     {
         std::uint64_t onStack = 0;
@@ -1136,14 +983,11 @@ namespace vba
         }
     }
 
-    // WHO OPENS A FRAME: only a prologue. Every genuine activation begins with
-    // one (459 activations, 28 shapes, three entry routes), so the stack pointer
-    // is not needed to open anything -- and opening on it is wrong,
-    // because `GoSub` moves rsp WITHIN one activation, which reads as a nested call. rsp still CLOSES frames, which it does correctly.
+    // Only a prologue opens a frame. Opening on the stack pointer is wrong, because `GoSub`
+    // moves rsp within one activation; rsp still closes frames.
     //
-    // The one case with no prologue to go on is a procedure ALREADY RUNNING when
-    // tracing armed. Its trailer is on nobody's stack, so it is opened anyway
-    // and counted as a guess, which is what `lateOpen` reports back.
+    // The one case with no prologue is a procedure already running when tracing armed. It is
+    // opened anyway and counted in `lateOpen`.
     bool ShouldOpenFrame(ThreadState* s, std::uint64_t trailer, bool atEntry,
                          std::uint64_t dispatchSp, bool& lateOpen)
     {
@@ -1162,17 +1006,10 @@ namespace vba
         return atEntry || lateOpen;
     }
 
-    // WHO CALLED THIS -- once per activation, the only granularity at which it
-    // is affordable: xlfCaller is a call INTO Excel from a traced thread, which
-    // is a handful per calc here and would be on the hot path per statement.
-    //
-    // FOUR different facts, counted apart: not asked, a cell, a caller that is
-    // not a cell (a button, a toolbar, an event -- answers, not failures), and
-    // Excel declining to answer.
-    //
-    // ALWAYS ASKED. The calling cell is part of every row and the VBA tracer needs
-    // it to place an error that escapes into a cell (D92); the lookup is a per-entry
-    // Excel12 round-trip inside the span being timed.
+    // Who called this, once per activation: xlfCaller is a call into Excel from a traced
+    // thread. Always asked, since the VBA tracer needs the cell to place an error that escapes
+    // into it. Four facts counted apart: not asked, a cell, a caller that is not a cell, and
+    // Excel declining.
     void IdentifyCaller(core::Caller& who)
     {
         if (!AskCaller(&who))
@@ -1279,13 +1116,9 @@ namespace vba
             Bump(p->calls);
             RaiseMax64(&p->maxDepth, static_cast<std::uint64_t>(s->depth));
         }
-        // R14 is the VBA frame base. Arguments are captured HERE, at the first
-        // statement, because that is when they are in place and before the body
-        // can overwrite them -- a ByRef argument assigned in the body would
-        // otherwise be reported as whatever it became.
-        //
-        // ReadReg's answer is checked: discarding it merges "the assembly
-        // contract broke" with "this frame legitimately had no frame base".
+        // R14 is the VBA frame base. Arguments are captured here, at the first statement,
+        // before the body can overwrite a ByRef one. ReadReg's answer is checked, so a broken
+        // assembly contract is not mistaken for a frame with no base.
         std::uint64_t r14 = 0;
         const bool haveR14 = ReadReg(savedRegs, kReg_r14, r14);
         if (!haveR14)
@@ -1303,11 +1136,9 @@ namespace vba
             // the Frame fields: the hash, not the text.
             if (args.ok)
             {
-                // EITHER TEST IS ENOUGH and they catch different things: the
-                // signature names a ByRef type the p-code declared, while
-                // `viaPointer` catches a slot dereferenced to read its value
-                // even though nothing declared it -- a write-only `String`, the
-                // one shape that recovers no type from a load OR a store.
+                // Either test is enough: the signature names a ByRef type the p-code declared,
+                // while `viaPointer` catches a slot dereferenced to read its value though
+                // nothing declared it, such as a write-only String.
                 f.hasByRef = SignatureHasByRef(args.signature) || args.viaPointer;
                 f.argsHash = args.byRefHash;
             }
@@ -1362,13 +1193,10 @@ namespace vba
         const std::uint64_t now = Now();
         Bump(g_totals.transitions);
 
-        // WHY THE STACK POINTER IS PART OF THE FRAME IDENTITY: the trailer
-        // alone identifies a PROCEDURE, not an activation of it, so a procedure
-        // calling itself produces no change and recursion is invisible -- which
-        // is what the published prior art still does. rsp at the dispatch falls
-        // exactly one step per VBA call and is stable within a frame (8 descents
-        // for T_Rec(8), 100 for T_Deep(100)), so (trailer, sp) identifies an
-        // ACTIVATION and recursion becomes an ordinary push.
+        // The stack pointer is part of the frame identity: the trailer identifies a procedure,
+        // not an activation, so recursion would be invisible. rsp at the dispatch falls one
+        // step per VBA call and is stable within a frame, so (trailer, sp) identifies an
+        // activation.
 
         CloseFramesThatReturned(s, dispatchSp, now);
         if (atEntry) CloseFramesThatLostTheirStack(s, now);
@@ -1400,15 +1228,9 @@ namespace vba
         if (!ReadReg(savedRegs, kReg_r14, r14))
             Bump(g_totals.regReadFailures);
 
-        // DOES THIS EXIT END THE PROCEDURE? Not all do -- a GoSub's `Return`
-        // fires one mid-activation, and closing on it cuts the activation in
-        // half. vbaboundary.h owns that distinction.
-        //
-        // Both non-Yes answers close nothing and both are counted, because "this
-        // exit was a Return" and "the opcode could not be read" are different
-        // facts. Not closing is the safe direction: a missed close is corrected
-        // by the next prologue, the stack pointer or the flush, while a wrong
-        // close writes a row asserting a call VBA never made.
+        // Does this exit end the procedure? A GoSub's `Return` fires one mid-activation
+        // (vbaboundary.h). Both non-Yes answers close nothing and are counted apart; a missed
+        // close is corrected later, a wrong close writes a row for a call VBA never made.
         std::uint16_t exitOp = 0;
         const Ending ending = ProcedureEnd(savedRegs, &exitOp);
         if (exitOp != 0) g_exitOpsSeen.Note(exitOp);
@@ -1441,24 +1263,12 @@ namespace vba
             Bump(g_totals.exitNoMatch);
         }
     }
-        // `End` TEARS THE WHOLE VBA SESSION DOWN, and it is the only moment those
-        // activations are observably over.
+        // `End` tears the whole VBA session down and fires no exit opcode for any frame it
+        // kills. The backstop alone cannot close them when the next chain starts deeper: rsp
+        // cannot tell "nested" from "the last chain was abandoned".
         //
-        // WHY THIS HOOK EXISTS AT ALL. `End` fires no exit opcode for any frame it
-        // kills, so the frames could only be closed by the stack-pointer backstop --
-        // which needs a later statement at a HIGHER rsp. A rebuild evaluates the
-        // sheet twice, and when the second pass starts DEEPER no such statement ever
-        // arrives: the new activations nested under the dead ones and the trace
-        // reported depth 8 where 4 was right. rsp alone cannot tell "deeper because
-        // nested" from "deeper because the last chain was abandoned"; the End opcode
-        // can, because it means exactly one thing.
-        //
-        // THIS THREAD ONLY, because the shadow stack is TLS. Another thread's frames
-        // are closed by its own backstop or the flush -- closing them from
-        // here would be writing rows for a stack we are not synchronised with.
-        //
-        // TICKS ARE A MEASUREMENT HERE, unlike the other two abrupt closes: the
-        // opcode fires when the session dies, not at whatever happened next.
+        // This thread only, because the shadow stack is TLS. Ticks are a measurement here: the
+        // opcode fires when the session dies.
         void OnEndBody()
         {
             ThreadState* s = State();

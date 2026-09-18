@@ -1,4 +1,5 @@
 #include "tracemodes.h"
+#include "notify.h"
 #include <windows.h>
 
 namespace core
@@ -27,8 +28,7 @@ namespace modes
 
         // The shipped default is a ring -- the production path, and
         // what the suites run. 64 MB is deep enough that a functional workload
-        // never laps the ~1 ms drain. LONG64 because 4096 MB does not fit a
-        // 32-bit LONG.
+        // never laps the ~1 ms drain. LONG64, as the accessors around it are.
         volatile LONG64 g_bufferBytes = 64ll * 1024 * 1024;
 
         // 1 = PAUSE by default: a full ring makes the calc wait until it is half empty, and loses nothing.
@@ -47,10 +47,11 @@ namespace modes
     bool  GetRetVal(Source s) { return Read(g_retval, s) != 0; }
     bool  GetObjects(Source s) { return Read(g_objects, s) != 0; }
 
-    void SetDepth (Source s, Depth d) { InterlockedExchange(&g_depth[Ix(s)],  static_cast<LONG>(d)); }
-    void SetArgs  (Source s, bool on) { InterlockedExchange(&g_args[Ix(s)],   on ? 1 : 0); }
-    void SetRetVal(Source s, bool on) { InterlockedExchange(&g_retval[Ix(s)], on ? 1 : 0); }
-    void SetObjects(Source s, bool on) { InterlockedExchange(&g_objects[Ix(s)], on ? 1 : 0); }
+    // Every setter announces itself, so whatever displays these is told. Control path only.
+    void SetDepth (Source s, Depth d) { InterlockedExchange(&g_depth[Ix(s)],  static_cast<LONG>(d)); NotifyStateChanged(); }
+    void SetArgs  (Source s, bool on) { InterlockedExchange(&g_args[Ix(s)],   on ? 1 : 0); NotifyStateChanged(); }
+    void SetRetVal(Source s, bool on) { InterlockedExchange(&g_retval[Ix(s)], on ? 1 : 0); NotifyStateChanged(); }
+    void SetObjects(Source s, bool on) { InterlockedExchange(&g_objects[Ix(s)], on ? 1 : 0); NotifyStateChanged(); }
 
     const wchar_t* DepthNameW(Depth d)
     {
@@ -89,10 +90,10 @@ namespace modes
     bool VbaEnabled() { return GetDepth(Source::Vba) != Depth::Off; }
 
     std::size_t GetBufferBytes() { return static_cast<std::size_t>(InterlockedCompareExchange64(&g_bufferBytes, 0, 0)); }
-    void        SetBufferBytes(std::size_t bytes) { InterlockedExchange64(&g_bufferBytes, static_cast<LONG64>(bytes)); }
+    void        SetBufferBytes(std::size_t bytes) { InterlockedExchange64(&g_bufferBytes, static_cast<LONG64>(bytes)); NotifyStateChanged(); }
 
     bool GetPauseOnFull() { return InterlockedCompareExchange(&g_pauseOnFull, 0, 0) != 0; }
-    void SetPauseOnFull(bool pause) { InterlockedExchange(&g_pauseOnFull, pause ? 1 : 0); }
+    void SetPauseOnFull(bool pause) { InterlockedExchange(&g_pauseOnFull, pause ? 1 : 0); NotifyStateChanged(); }
 
     // Cached for the life of the process: a ship-vs-investigate choice, not
     // something to flip mid-session.

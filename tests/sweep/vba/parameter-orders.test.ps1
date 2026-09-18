@@ -1,27 +1,12 @@
-# THE SAME TYPES IN DIFFERENT ORDERS -- fixed permutations, in the gate.
+# The same types in different orders: fixed permutations, in the gate.
 #
-# The grid (every-parameter-type-byval-and-byref) proves each type decodes with
-# ONE parameter. The parameter-list fuzzer throws
-# random lists at it. Between them sits the case that actually breaks: the SAME
-# set of types, ORDERED DIFFERENTLY, checked every regression run.
+# The argument label is the frame slot, and a `ByVal Variant` occupies three, so in `(Variant,
+# Long)` the Long is `a4` and in `(Long, Variant)` it is `a1`. Wrong slot arithmetic still
+# produces something that looks like a value.
 #
-# WHY ORDER IS A DIMENSION AND NOT A DETAIL. The argument label is the FRAME
-# SLOT, and slots are not parameters -- a `ByVal Variant` is a 24-byte VARIANT
-# and occupies THREE. So in `(Variant, Long)` the Long is `a4`, and in
-# `(Long, Variant)` it is `a1`. Every parameter after a ByVal Variant is offset,
-# and getting that arithmetic wrong reads the wrong slot while still producing
-# something that LOOKS like a value. Handwritten cases put the awkward type
-# first or last; they rarely put it in the middle, twice.
-#
-# FIXED, NOT RANDOM, AND THAT IS THE POINT. A fuzzer explores; it also passes
-# quietly on a seed that never generated the bad shape. These permutations run
-# on EVERY regression, so a slot-arithmetic regression cannot survive one green
-# run -- and when one fails it names the same case every time, which a seed
-# does not.
-#
-# EACH VALUE CARRIES ITS POSITION. Two Longs both holding 7 would let the
-# decoder transpose them and still pass, so a Long at position 3 holds 1003.
-# A swap is a failure rather than a coincidence.
+# Fixed rather than random, so a slot-arithmetic regression fails every run and names the same
+# case each time. Each value carries its position (a Long at position 3 holds 1003), so a
+# transposition fails.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -219,12 +204,9 @@ End Sub
     Check 'every-parameter-lands-on-its-own-slot-in-every-order' ($wrong.Count -eq 0) `
           ("checked=$checked " + $(if ($wrong.Count) { ($wrong | Select-Object -First 3) -join ' | ' } else { 'all correct' }))
 
-    # ---- THE ORDER-SPECIFIC ASSERTION, stated outright ---------------------
-    #
-    # P1/P2/P3 are the SAME three types in three orders. A ByVal Variant costs
-    # three slots, so the Long sits at a4, a1 and a1 respectively -- and if the
-    # arithmetic were wrong, at least one of the three would still be right by
-    # luck. Naming them here means the failure says WHICH order broke.
+    # The order-specific assertion. P1/P2/P3 are the same three types in three orders; a ByVal
+    # Variant costs three slots, so the Long sits at a4, a1 and a1. Naming them means the
+    # failure says which order broke.
     $p1 = if ($entry.ContainsKey('P1')) { [string]$entry['P1'].args } else { '' }
     $p2 = if ($entry.ContainsKey('P2')) { [string]$entry['P2'].args } else { '' }
     $p3 = if ($entry.ContainsKey('P3')) { [string]$entry['P3'].args } else { '' }

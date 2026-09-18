@@ -1,29 +1,15 @@
-# STRESS driver: a real workbook per case -- event wiring, buttons, class
-# modules, sheet code, cross-workbook dependencies, .xlam add-ins -- because
-# everything this suite exists for needs its own workbook and in some cases
-# its own OPEN, since that is the trigger. Each .test.ps1 is SELF-CONTAINED:
-# it carries its own case data and hands it here -- the file is the whole
-# test, nothing to regenerate.
+# Stress driver: a real workbook per case (event wiring, buttons, class modules, sheet code,
+# cross-workbook dependencies, .xlam add-ins), because in some cases the open itself is the
+# trigger. Each .test.ps1 is self-contained: it carries its own case data and hands it here.
 #
-# THE POINT IS TO BE UNREASONABLE. Real-world VBA is bad enough; these are
-# worse on purpose -- 500-deep recursion, 60-parameter signatures, a Change
-# handler that calls Calculate and re-enters the interpreter mid-frame, two
-# modules exporting the same procedure name, a procedure body past the p-code
-# walker's ceiling. A tracer that survives these survives the real thing.
+# The cases are unreasonable on purpose: 500-deep recursion, 60-parameter signatures, a Change
+# handler that calls Calculate and re-enters the interpreter mid-frame, two modules exporting
+# the same procedure name, a procedure body past the p-code walker's ceiling.
 #
-# EVERY case is additionally checked for the invariants that must hold no
-# matter what: frames opened == frames closed, no hook faults, the circuit
-# breaker still closed, and no procedure lost to a full table. A case's own
-# Expect adds only what is specific to it.
-#
-# What moved into StretchXL and is deliberately NOT here any more: Excel
-# lifecycle and restarts (fresh session per case IS the isolation), the
-# per-case kill deadline (the manager's TIMEOUT dumps both processes first),
-# the dialog watchdog (the manager dismisses, records, and fails unless the
-# case declared dialogs expected), WER crash attribution (the session's exit
-# code is read directly). The -Oracle / -NoArm / -NoXll instrument modes stay
-# with the original script in tests\ -- they are investigations, not the
-# regression.
+# Every case is also checked for the invariants that must hold no matter what: frames opened ==
+# frames closed, no hook faults, the circuit breaker still closed, and no procedure lost to a
+# full table. A case's own Expect adds only what is specific to it. Excel's lifecycle,
+# deadlines, the dialog watchdog and crash attribution are StretchXL's.
 
 # A1 FROM ROW AND COLUMN NUMBERS. UsedRange.Value2 arrives as a block with no
 # addresses on it, and its top-left is wherever the used range starts -- so the
@@ -147,12 +133,10 @@ function Invoke-StressCase($Case) {
         try { $null = $app.Workbooks.Item(1).VBProject }
         catch { Complete-Test -Skip -Detail 'VBA project access is not trusted on this machine' }
 
-        # Per-INVOCATION work dir (session pid + this test process's pid): in a
-        # dirty reused session, an earlier invocation of this same case may
-        # still hold its files open -- measured: a .xlam dependency left
-        # loaded made SaveAs over the same path fail on the case's second
-        # visit to the session (found by the first shuffled reuse soak, seed
-        # 424242). Unique paths keep the build writable...
+        # Per-invocation work dir (session pid + this test process's pid): in a reused session
+        # an earlier invocation of this case may still hold its files open, such as a loaded
+        # .xlam dependency, and SaveAs over the same path fails. Unique paths keep the build
+        # writable...
         $caseDirWork = Join-Path $sx.WorkDir ("stress_{0}_{1}" -f $sx.ProcId, $PID)
         New-Item -ItemType Directory -Force $caseDirWork | Out-Null
         $bookPath = Join-Path $caseDirWork ("{0}.xlsm" -f $c.Name)

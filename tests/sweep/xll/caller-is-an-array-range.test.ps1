@@ -1,34 +1,16 @@
-# WHEN Application.Caller IS A RANGE, THE TRACE MUST SAY SO.
+# When Application.Caller is a range, the trace must say so.
 #
-# A legacy CSE array formula entered across B2:D4 is ONE formula occupying nine
-# cells, and xlfCaller answers with the whole range -- xltypeSRef carrying
-# rwFirst/rwLast and colFirst/colLast, or xltypeRef for the multi-area case.
+# A legacy CSE array formula entered across B2:D4 is one formula occupying nine cells, and
+# xlfCaller answers with the whole range: xltypeSRef carrying both corners, or xltypeRef for the
+# multi-area case. A dynamic array does not exercise this: it spills from a single anchor cell,
+# which is its caller.
 #
-# WHY THIS EXISTS. The decoder read rwFirst/colFirst and threw the other two
-# away, so a nine-cell caller was written as "B2": not wrong enough to notice,
-# and wrong in the direction that reads as a fact. Nothing caught it. The suites
-# do use FormulaArray -- in modes\traceparam-surface and modes\tracesummary --
-# but only on XRayXL's OWN functions, which the tracer refuses to hook
-# (xllarm.cpp counts them as ownModule), so no traced call had ever had a
-# multi-cell caller. 6.6 million rows of soak did not have one either: every
-# array in that workload was a DYNAMIC array, which spills from a single anchor
-# cell and whose caller is therefore that one cell.
+# The single-cell caller is asserted in the same run, so a decoder that rendered everything as a
+# range fails. Both sources are checked, because the XLL hook and the VBA hook reach the same
+# DecodeCaller.
 #
-# THE CONTROL CASE IS HALF THE TEST. A range-rendering bug that rendered
-# everything as a range would pass a range-only test, so the single-cell caller
-# is asserted in the same run, from the same decoder.
-#
-# BOTH SOURCES, because caller.h's "ONE DECODER FOR BOTH SIDES" is a claim this
-# can check: the XLL hook and the VBA interpreter hook reach the same
-# DecodeCaller, so a difference between them here means they do not.
-#
-# AND A FUNCTION THAT RETURNS AN ARRAY, entered over a range that matches it.
-# TxRetQArray hands back a 2x2 xltypeMulti, so that row pair puts a multi-cell
-# CALLER and a multi-cell RETURN on the same span: the caller decoder and the
-# return decoder run over the same call, and a fix to one that disturbed the
-# other would show here and nowhere else. The two are independent questions --
-# where the formula LIVES and what it GAVE BACK -- and the trace answers them
-# in different columns, which is the thing worth pinning.
+# TxRetQArray returns a 2x2 xltypeMulti over a matching range, which puts a multi-cell caller
+# and a multi-cell return on the same span.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

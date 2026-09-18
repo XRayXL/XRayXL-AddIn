@@ -10,13 +10,8 @@ namespace vba
 {
     namespace
     {
-        // ---------------------------------------------------------------
-        // x64 layouts, from the published prior art (Azzopardi's VBATrace)
-        // and cross-checked here by the invariants
-        // each structure carries. Offsets, not addresses: these describe the
-        // shape of an interpreter structure, and the shape is what a tracer is
-        // entitled to depend on once it has been checked.
-        // ---------------------------------------------------------------
+        // x64 layouts from the published prior art (Azzopardi's VBATrace), cross-checked by the
+        // invariants each structure carries. Offsets, not addresses.
 
         // RTMI / p-code trailer
         constexpr std::uint32_t kRtmi_pParent      = 0x00;

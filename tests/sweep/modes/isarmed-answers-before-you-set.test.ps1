@@ -1,20 +1,10 @@
-# XRayXL_IsArmed -- ASK BEFORE YOU SET, instead of setting and reading the echo.
+# XRayXL_IsArmed: ask before you set, instead of setting and parsing the refusal.
 #
-# The setters refuse while anything is armed (the modes are read once, at
-# arm, so a mid-session change would let the hot path see a value move under
-# it). That refusal is an echoed STRING -- fine for a human, awkward for a
-# caller, which had to attempt a set and parse the reply to find out it was not
-# allowed. This answers directly.
+# Either source counts, because either one refuses a set. The test drives the setter and IsArmed
+# against each other, so the two are shown never to disagree.
 #
-# EITHER SOURCE COUNTS, because either one refuses a set. The function calls the
-# same AnythingArmed() the setters test, so the two cannot disagree -- which is
-# the property worth asserting, and this test asserts it by driving the setter
-# and IsArmed against each other rather than by reading the source.
-#
-# VOLATILE MATTERS HERE. Arming happens through XRayXL_Arm, a different call, so
-# a non-volatile cell would keep reporting the answer from whenever it last
-# calculated. That is asserted from a CELL, not through Application.Run, since
-# Run recalculates nothing and would pass either way.
+# Asserted from a cell, not through Application.Run: arming happens through a different call, so
+# only a volatile function's cell shows the new answer, and Run recalculates nothing.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -31,7 +21,7 @@ try {
     # A set must be ACCEPTED while it says false -- that is the contract the
     # caller is relying on.
     $echo = Set-XRayTraceParam $sx 'XLL' 'DEPTH' 'ALL'
-    Check 'set-accepted-while-not-armed' ($echo -notmatch 'refused') $echo
+    Check 'set-accepted-while-not-armed' ($echo -notmatch '#Err') $echo
 
     $mark = Get-LogLength $paths.Log
     [void](Invoke-XRayCommand $sx 'XRayXL_Arm')
@@ -43,7 +33,7 @@ try {
     # ...and the refusal it predicts actually happens. Asserting the answer
     # without this would leave IsArmed free to be confidently wrong.
     $echo2 = Set-XRayTraceParam $sx 'XLL' 'DEPTH' 'TOP'
-    Check 'set-refused-while-armed' ($echo2 -match 'refused') $echo2
+    Check 'set-refused-while-armed' ($echo2 -match '#Err') $echo2
 
     # ---- VOLATILE: a CELL must notice, without being edited ---------------
     $ws = $app.ActiveSheet
@@ -61,7 +51,7 @@ try {
 
     Check 'false-after-disarm' (-not (IsArmed)) "IsArmed said '$(IsArmed)'"
     $echo3 = Set-XRayTraceParam $sx 'XLL' 'DEPTH' 'ALL'
-    Check 'set-accepted-again-after-disarm' ($echo3 -notmatch 'refused') $echo3
+    Check 'set-accepted-again-after-disarm' ($echo3 -notmatch '#Err') $echo3
 
     # ---- the VBA source alone must also count -----------------------------
     # Either source refuses a set, so IsArmed has to be true when only VBA is

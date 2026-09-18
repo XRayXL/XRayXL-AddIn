@@ -1,14 +1,10 @@
 @{
-    # An INSTRUMENT, deliberately outside tests\sweep\ so a full sweep never runs
-    # it: it measures a TREND rather than defending a behaviour, it takes
-    # minutes, and it has no pass threshold to assert -- the numbers are the
-    # result. Same reasoning as tests\instruments\vbahammer.
-    #   .\StretchXL\StretchXL.ps1 -Parallel 1 -Path .\tests\instruments\tracesoak -OutDir <dir>
+    # An instrument, outside tests\sweep\ so a full sweep never runs it: it measures a trend,
+    # takes minutes and has no pass threshold.
+    #    .\StretchXL\StretchXL.ps1 -Parallel 1 -Path .\tests\instruments\tracesoak -OutDir <dir>
     #
-    # BOTH sources, because the question is what ONE arming costs over a long
-    # session and the answer must include the XLL hooks and the VBA dispatch
-    # patches together. The traced add-in first: its UDFs have to resolve in
-    # the saved formulas.
+    # Both sources, because one arming includes the XLL hooks and the VBA dispatch patches
+    # together. The traced add-in first: its UDFs have to resolve in the saved formulas.
     RegisterXll = @(
         '..\..\..\build\x64\Release\TracedAddin\TracedAddin64.xll'
         '..\..\..\build\addin\XRayXL64.xll'

@@ -1,26 +1,16 @@
-# A PURE VBA MACRO, NO UDF AND NO XLL IN SIGHT -- the plainest thing VBA does:
-# a Sub is run, it READS values off a worksheet, COMPUTES over them through a
-# chain of nested Function calls, and WRITES the result back. No cell ever calls
-# a function; nothing crosses into the XLL. This is the control that proves VBA
-# tracing is GENERAL -- it observes the interpreter, not merely UDFs reached
-# from a recalculation.
+# A pure VBA macro, with no UDF and no XLL: a Sub reads values off a worksheet, computes over
+# them through nested Function calls and writes the result back. It shows VBA tracing observes
+# the interpreter, not only UDFs reached from a recalculation. Asserted:
 #
-# WHAT IS ASSERTED, and how each could be wrong rather than a box ticked:
-#
-#   present   every procedure that ran must have a row -- a Sub that executed
-#             but produced none is exactly the invisibility this tool exists
-#             to prevent, and a macro entered by Application.Run reaches the
-#             interpreter differently from a UDF entered by a recalc
-#   named     each is NAMED, not reported as a trailer address
-#   paired    entry and exit by SPAN, both directions
-#   nested    the call CHAIN is real: XR_SumWeighted runs inside XR_PureMacro,
-#             and each XR_Weight runs inside XR_SumWeighted -- a flattened tree
-#             would name every procedure yet parent every one at 0
-#   looped    XR_Weight is called five times in a For Each; all five must be
-#             present and all five parented on the one XR_SumWeighted frame
-#   effect    the macro actually WROTE its result -- end to end, not just
-#             entered and abandoned
-#   outcome   every exit is `returned` -- nothing raised
+#    present   every procedure that ran has a row
+#    named     each is named, not reported as a trailer address
+#    paired    entry and exit by span, both directions
+#    nested    XR_SumWeighted runs inside XR_PureMacro, and each XR_Weight inside
+#              XR_SumWeighted
+#    looped    XR_Weight is called five times in a For Each; all five are present and
+#              parented on the one XR_SumWeighted frame
+#    effect    the macro wrote its result
+#    outcome   every exit is `returned`
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

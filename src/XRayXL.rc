@@ -1,24 +1,10 @@
-// THE XLL'S VERSION RESOURCE.
+// The XLL's version resource. The deployed file keeps a stable name across versions, so this is
+// the only thing that says which build is installed.
 //
-// So a stray copy of this file can be identified without a build
-// log: right-click > Properties > Details, or
-// [Diagnostics.FileVersionInfo]::GetVersionInfo(<path>) from PowerShell.
-// That matters more here than for most add-ins, because the deployed file
-// keeps a STABLE name across versions (version.props explains why), so this
-// resource is the only thing that says which build is installed.
-//
-// THE NUMBERS ARRIVE AS THREE NUMERIC DEFINES from version.props, routed
-// through XRayXL.vcxproj's ResourceCompile item, and the version STRING is
-// composed here rather than passed in. That is not a stylistic choice: a
-// define whose value is a quoted string does not survive the resource
-// compiler's command line, and the failure is silent and total. Passed as
-// /DXRAY_VER_STR="0.1.0" the quotes are stripped, rc still exits 0, and EVERY
-// string in the block below comes out EMPTY -- including the ones that are
-// hard-coded here. Numeric defines plus stringize is the shape that works.
-//
-// The fallbacks exist only so a hand-run rc.exe still produces something, and
-// they are deliberately an OBVIOUS non-version: a resource reading 0.0.0
-// means the define plumbing broke, which is louder than a plausible number.
+// The numbers arrive as three numeric defines from version.props and the string is composed
+// here: a define whose value is a quoted string does not survive rc.exe's command line, and
+// every string in the block then comes out empty with exit code 0. The 0.0.0 fallback is meant
+// to look broken.
 
 #include <winver.h>
 
@@ -37,21 +23,10 @@
 #define XRAY_VERSION_TEXT \
     XRAY_STR(XRAY_VER_MAJOR) "." XRAY_STR(XRAY_VER_MINOR) "." XRAY_STR(XRAY_VER_PATCH)
 
-// WHICH CONFIGURATION THIS WAS BUILT AS. Arrives as a NUMBER for the same
-// reason the version does -- a define whose value is a quoted string does not
-// survive rc.exe's command line -- and version.props derives it from
-// $(Configuration) so there is one source for it.
-//
-// This is NOT taken from _DEBUG. _DEBUG says what MSBuild happened to hand the
-// resource compiler; this says what we were asked to build. They are usually
-// the same and the difference is the whole point: the suites load the tracer
-// from build\addin\, a path that names no configuration, and both
-// configurations carry the SAME version number, so the resource is the only
-// thing that can tell a Debug XLL from a Release one.
-//
-// Anything but 0 or 1 means the define never arrived. Like the 0.0.0 version
-// fallback, that reads as an obvious non-answer rather than a plausible wrong
-// one, and it is marked debug so nothing mistakes it for a shippable build.
+// Which configuration this was built as, as a number for the same reason. From $(Configuration)
+// via version.props rather than _DEBUG: the suites load the tracer from build\addin\, which
+// names no configuration, and both configurations carry the same version. Anything but 0 or 1
+// means the define never arrived, and is marked debug.
 #ifndef XRAY_BUILD_DEBUG
 #define XRAY_BUILD_DEBUG 2
 #endif
@@ -98,11 +73,8 @@ BEGIN
             VALUE "OriginalFilename", XRAY_FILE_NAME
             VALUE "FileVersion",      XRAY_VERSION_TEXT
             VALUE "ProductVersion",   XRAY_VERSION_TEXT
-            // Debug and Release carry the same FileVersion, so this is what
-            // separates them by eye. Tools should read the VS_FF_DEBUG flag
-            // above instead -- [Diagnostics.FileVersionInfo]::GetVersionInfo()
-            // exposes it as .IsDebug, where a custom string like this one
-            // needs VerQueryValue to reach.
+            // Separates Debug from Release by eye. Tools should read the VS_FF_DEBUG flag
+            // above, which FileVersionInfo exposes as .IsDebug.
             VALUE "BuildConfig",      XRAY_CONFIG_TEXT
         END
     END
@@ -110,4 +82,80 @@ BEGIN
     BEGIN
         VALUE "Translation", 0x409, 0x04B0
     END
+END
+
+/////////////////////////////////////////////////////////////////////////////
+// The Options dialog. Every page's controls are in this one template, shown or hidden by page;
+// optionsdlg.cpp places them all in pixels, so the coordinates here are only placeholders.
+
+#include <windows.h>
+#include "ui/optionsres.h"
+
+// The licence shown on the About page is the repository's own file, compiled in.
+IDR_LICENSE RCDATA "..\\LICENSE"
+
+IDD_XRAY_OPTIONS DIALOGEX 0, 0, 400, 186
+STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER |
+      WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "XRayXL Options"
+FONT 9, "Segoe UI", 400, 0, 0x1
+BEGIN
+    LISTBOX         IDC_CATEGORIES, 8, 8, 80, 146,
+                    LBS_OWNERDRAWFIXED | LBS_HASSTRINGS | LBS_NOTIFY |
+                    LBS_NOINTEGRALHEIGHT | NOT WS_BORDER | WS_TABSTOP
+    CONTROL         "", IDC_PAGEICON, "Static", SS_OWNERDRAW, 100, 9, 16, 16
+    LTEXT           "", IDC_ARMEDNOTE, 100, 148, 290, 18, SS_LEFT
+
+    // ---- Capture -------------------------------------------------------
+    LTEXT           "What XRayXL records.", IDC_CAP_HDR, 122, 13, 268, 11
+    LTEXT           "XLL add-in functions", IDC_XLL_SEC1, 100, 36, 290, 9
+    CONTROL         "", IDC_XLL_RULE1, "Static", SS_OWNERDRAW, 100, 40, 290, 1
+    LTEXT           "Depth:", IDC_XLL_DEPTHLBL, 107, 56, 82, 9
+    COMBOBOX        IDC_XLL_DEPTH, 196, 54, 110, 60, CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP
+    CONTROL         "Capture &argument values", IDC_XLL_ARGS, "Button", BS_OWNERDRAW | WS_TABSTOP, 198, 78, 192, 10
+    CONTROL         "Capture &return values", IDC_XLL_RET, "Button", BS_OWNERDRAW | WS_TABSTOP, 198, 94, 192, 10
+    LTEXT           "VBA procedures", IDC_VBA_SEC1, 100, 110, 290, 9
+    CONTROL         "", IDC_VBA_RULE1, "Static", SS_OWNERDRAW, 100, 114, 290, 1
+    LTEXT           "Depth:", IDC_VBA_DEPTHLBL, 107, 126, 82, 9
+    COMBOBOX        IDC_VBA_DEPTH, 196, 124, 110, 60, CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP
+    CONTROL         "Capture ar&gument values", IDC_VBA_ARGS, "Button", BS_OWNERDRAW | WS_TABSTOP, 198, 140, 192, 10
+    CONTROL         "Capture re&turn values", IDC_VBA_RET, "Button", BS_OWNERDRAW | WS_TABSTOP, 198, 152, 192, 10
+    CONTROL         "Describe &objects (Range, Worksheet, Workbook)", IDC_VBA_OBJ, "Button", BS_OWNERDRAW | WS_TABSTOP, 198, 164, 192, 10
+
+    // ---- Output --------------------------------------------------------
+    LTEXT           "Where the trace goes.", IDC_OUT_HDR, 122, 13, 268, 11
+    LTEXT           "Trace output", IDC_OUT_SEC1, 100, 36, 290, 9
+    CONTROL         "", IDC_OUT_RULE1, "Static", SS_OWNERDRAW, 100, 40, 290, 1
+    LTEXT           "Output folder:", IDC_OUT_DIRLBL, 107, 50, 82, 9
+    EDITTEXT        IDC_OUT_DIR, 107, 60, 283, 13, ES_AUTOHSCROLL | ES_READONLY | NOT WS_TABSTOP | NOT WS_BORDER
+    LTEXT           "Trace file:", IDC_OUT_FILELBL, 107, 76, 82, 9
+    EDITTEXT        IDC_OUT_FILE, 107, 86, 283, 13, ES_AUTOHSCROLL | ES_READONLY | NOT WS_TABSTOP | NOT WS_BORDER
+    CONTROL         "&Tail in PowerShell", IDC_OUT_TAIL, "Button", BS_OWNERDRAW | WS_TABSTOP, 107, 102, 96, 15
+
+    // ---- Advanced ------------------------------------------------------
+    LTEXT           "The output buffer, and the add-in's own log.", IDC_ADV_HDR, 122, 13, 268, 11
+    LTEXT           "Buffer", IDC_ADV_SEC1, 100, 36, 290, 9
+    CONTROL         "", IDC_ADV_RULE1, "Static", SS_OWNERDRAW, 100, 40, 290, 1
+    LTEXT           "Buffer size:", IDC_ADV_BUFLBL, 107, 56, 82, 9
+    EDITTEXT        IDC_ADV_BUF, 196, 54, 52, 13, ES_AUTOHSCROLL | NOT WS_BORDER
+    LTEXT           "64MB, 512KB, or 0 = synchronous.", IDC_ADV_BUFHINT, 196, 68, 136, 9
+    LTEXT           "When full:", IDC_ADV_FULLLBL, 107, 80, 82, 9
+    COMBOBOX        IDC_ADV_FULL, 196, 78, 110, 60, CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Logging", IDC_ADV_SEC2, 100, 96, 290, 9
+    CONTROL         "", IDC_ADV_RULE2, "Static", SS_OWNERDRAW, 100, 100, 290, 1
+    LTEXT           "Log level:", IDC_ADV_LVLLBL, 107, 112, 82, 9
+    COMBOBOX        IDC_ADV_LVL, 196, 110, 110, 60, CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Takes effect at once, armed or not.", IDC_ADV_LVLNOTE, 196, 126, 194, 9
+    LTEXT           "Log file:", IDC_ADV_LOGLBL, 107, 138, 82, 9
+    EDITTEXT        IDC_ADV_LOG, 107, 148, 283, 13, ES_AUTOHSCROLL | ES_READONLY | NOT WS_TABSTOP | NOT WS_BORDER
+
+    // ---- About ---------------------------------------------------------
+    LTEXT           "About XRayXL", IDC_ABT_HDR, 122, 13, 268, 11
+    LTEXT           "", IDC_ABT_OWNER, 107, 36, 283, 9
+    CONTROL         "Third Party Notices", IDC_ABT_NOTICES, "Static", SS_LEFT | SS_NOTIFY, 107, 58, 90, 9
+    LTEXT           "GNU General Public License, version 3", IDC_ABT_LICLBL, 107, 70, 283, 9
+    EDITTEXT        IDC_ABT_LICENSE, 107, 80, 283, 80, ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL | NOT WS_BORDER
+
+    CONTROL         "OK", IDOK, "Button", BS_OWNERDRAW | BS_DEFPUSHBUTTON | WS_TABSTOP, 278, 169, 54, 15
+    CONTROL         "Cancel", IDCANCEL, "Button", BS_OWNERDRAW | WS_TABSTOP, 336, 169, 54, 15
 END

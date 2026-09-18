@@ -2,9 +2,8 @@
 #include <windows.h>
 #include <cstddef>
 
-// A BOUNDED LOCK-FREE MPSC BYTE QUEUE -- the emitter's one piece of
-// subtle memory ordering, kept apart from the CSV formatting and file I/O so it
-// can be reasoned about and stress-tested on its own.
+// A bounded lock-free MPSC byte queue, kept apart from the CSV formatting and file I/O so it
+// can be stress-tested on its own.
 //
 // Many producers (the calc-thread hooks) deposit variable-length records; one
 // consumer (the drain thread) pops them in order. A record is a 16-byte header
@@ -19,19 +18,14 @@
 //              wrap. Only the payload wraps.
 //   +10  payload (payloadLen bytes; MAY wrap the end of the buffer)
 //
-// commitTag is the whole trick. A producer reserves a byte range by CAS on the
-// tail, writes the payload and the length, then RELEASES by storing its own
-// start position as the tag. The consumer reads a header only when the position
-// is BOTH reserved (pos < tail) AND committed (commitTag == pos), so it never
-// sees a half-written record nor a stale one from an earlier wrap (whose tag is
-// a different, smaller position). Init fills with 0xFF so an untouched slot's
-// tag can never equal a real position -- positions are >= 0, and the first
-// record is position 0.
+// A producer reserves a range by CAS on the tail, writes the payload and length, then commits
+// by storing its own start position as the tag. The consumer reads a header only when the
+// position is both reserved (pos < tail) and committed (commitTag == pos), so it never sees a
+// half-written record or a stale one from an earlier wrap. Init fills with 0xFF, which no
+// position can equal.
 //
-// A DATA STRUCTURE ONLY: nothing here knows about CSV, the seq column, the
-// drain's lifecycle or files. Its one concession is that TryDeposit signals a
-// caller-supplied wake event when it blocks, so a full ring need not wait for
-// the drain's next poll.
+// TryDeposit signals a caller-supplied wake event when it blocks, so a full ring need not wait
+// for the drain's next poll.
 
 namespace emit
 {
@@ -55,12 +49,10 @@ namespace emit
         bool        Active()        const { return m_cap != 0; }
         std::size_t CapacityBytes() const { return m_cap; }
 
-        // PRODUCER, any thread. Copies `n` bytes as one record. On a full ring:
-        // DROP counts a drop and returns false. PAUSE counts one pause, signals
-        // `wake` (may be null) so the drain runs, and waits -- as does every
-        // producer after it -- until the drain has emptied the ring to half and
-        // the record fits (returns true). Returns false without blocking when
-        // `n` can never fit (larger than the whole ring) or the ring is inactive.
+        // Producer, any thread. Copies `n` bytes as one record. On a full ring DROP counts a
+        // drop and returns false; PAUSE signals `wake` and waits until the drain has emptied
+        // the ring to half. Returns false without blocking when `n` can never fit or the ring
+        // is inactive.
         bool  TryDeposit(const char* data, int n, HANDLE wake);
 
         // CONSUMER, single thread only. Pops the next committed record into

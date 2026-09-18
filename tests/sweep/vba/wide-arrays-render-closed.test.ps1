@@ -1,31 +1,15 @@
-# A RENDERED ARRAY MUST SAY WHERE IT ENDS.
+# A rendered array must say where it ends.
 #
-# Both columns build an array's text into a FIXED buffer and let it truncate.
-# That was harmless while a result cell showed four elements at %g -- sixty
-# characters into 256. Two changes made in one sitting removed the headroom
-# without either of them looking like it touched arrays:
+# Both columns build an array's text into a bounded buffer, and sixty-four doubles at fifteen
+# significant digits is roughly 1300 characters. The closing `}` and the `,...` truncation
+# marker are appended last, so they are the first things lost, and what comes out would read as
+# a complete array that happens to end:
 #
-#   * the element cap became 64, shared by both columns, because the SAME array
-#     showed 64 elements as an argument and 4 as a result;
-#   * doubles moved to %.15g, because 1234567.89012345 was arriving as
-#     1.23457e+06.
+#    Double[1..64]{1.123456789012,2.123456789012,...,17.12345678
 #
-# Sixty-four doubles at fifteen significant digits is roughly 1300 characters.
-# The buffer is 256, and it is the CLOSING `}` and the `,...` truncation marker
-# that get appended LAST -- so they are the first things lost. What comes out
-# reads as a complete array that happens to end:
-#
-#   Double[1..64]{1.123456789012,2.123456789012,...,17.12345678
-#
-# A truncated array that ANNOUNCES it is truncated is fine; this project shows
-# 64 of a million elements routinely. An array that stops mid-number with no
-# marker is a confident wrong answer, and the rule is that a field is written
-# empty rather than wrong.
-#
-# SO THE ASSERTION IS SHAPE, NOT CONTENT. Every rendered array must open with a
-# type and bounds, and must CLOSE -- and if it does not carry all of its
-# elements it must say so. Both columns are checked on the same arrays, because
-# they have separate buffers and each has to hold on its own.
+# So the assertion is shape, not content: every rendered array opens with a type and bounds and
+# closes, and says so if it does not carry all of its elements. Both columns are checked on the
+# same arrays, because they have separate buffers.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -174,12 +158,9 @@ try {
     Check 'a-truncated-array-says-it-was-truncated' ($silent.Count -eq 0) `
           ("silently short: " + $(if ($silent.Count) { $silent -join ' | ' } else { 'none' }))
 
-    # ---- the control -------------------------------------------------------
-    # Three Longs fit anything. If these are unclosed the fault is not width.
-    # The ARGUMENTS column prefixes its slot -- `a1:Ref&=Long[1..3]{1,2,3}` --
-    # so the array text is matched where it sits rather than anchored to the
-    # start of the field. (Anchoring it was this file's own first bug, and it
-    # failed the control while the product was right.)
+    # The control: three Longs fit anything. The arguments column prefixes its slot, as in
+    # `a1:Ref&=Long[1..3]{1,2,3}`, so the array text is matched where it sits rather than
+    # anchored to the start of the field.
     $ctl = @($seen | Where-Object { -not $_.Wide })
     $ctlBad = @($ctl | Where-Object { $_.Text -notmatch 'Long\[1\.\.3\]\{1,2,3\}$' })
     Check 'the-narrow-control-renders-whole' ($ctlBad.Count -eq 0) `

@@ -17,8 +17,8 @@ End Function
      Expect={ param($t)
         if ($t.framesOpened -lt 3) { return "expected >=3 frames, got $($t.framesOpened)" }
         $null }
-     # The Calc trigger dirties the sheet and then rebuilds, which evaluates A1 twice (measured,
-     # see end-statement-midchain). Each pass enters BadTop from the cell, so it reads unhandled.
+     # The Calc trigger dirties the sheet and then rebuilds, which evaluates A1 twice. Each pass
+     # enters BadTop from the cell, so it reads unhandled.
      Calls=@(0, 3 | ForEach-Object {
         @{ Function='BadTop';  Depth='1'; Parent=-1; Caller='cell'; Cell='A1'; Outcome='unhandled' }
         @{ Function='BadMid';  Depth='2'; Parent=$_;       Outcome='unwound' }

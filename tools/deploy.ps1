@@ -1,13 +1,9 @@
-# One-shot install: copy the freshly-built XLL into a single load-from folder.
+# One-shot install: copy the freshly built XLL into a single load-from folder. The add-in is one
+# native XLL with no runtime dependencies beyond Windows.
 #
-# The add-in has exactly one file to install. There is no managed ribbon
-# assembly, no runtimeconfig/deps, no nethost.dll and no probe pack -- the add-in
-# is one native XLL with no runtime dependencies beyond Windows itself.
-#
-# This is the canonical "installed" location. Point Excel's Add-ins list at
-# build\addin\XRayXL64.xll (XRayXL32.xll for a 32-bit build) once; re-running this after a rebuild refreshes it
-# in place. (Close Excel first -- a loaded XLL is locked and cannot be
-# overwritten.)
+# Point Excel's Add-ins list at build\addin\XRayXL64.xll (XRayXL32.xll for a 32-bit build) once;
+# re-running this after a rebuild refreshes it in place. Close Excel first: a loaded XLL is
+# locked.
 param(
     [string]$Config  = "Release",
     [ValidateSet('x64', 'Win32')][string]$Platform = "x64",

@@ -30,16 +30,11 @@ try {
     Write-TestCase -Name 'app-hwnd-matches' -Pass:$ok2 -Fail:(-not $ok2) `
                    -Detail "app.Hwnd=$appHwnd session.Hwnd=$([int64]$sx.Hwnd)"
 
-    # 3. A real object-model round trip THROUGH the binding: write a value
-    #    into the baseline workbook, read it back. Proves the proxy is live,
-    #    not a husk that answered two property reads from cache.
+    # 3. A real object-model round trip through the binding: write a value into the baseline
+    # workbook and read it back, which proves the proxy is live.
     #
-    #    EVERY LINK IN THE CHAIN IS HELD AND RELEASED. The first version of
-    #    this test wrote it as one dotted chain, which leaks an intermediate
-    #    RCW per dot -- and its session sat as a refcount zombie for the full
-    #    close deadline, dump on file. This is the pattern a well-behaved
-    #    test follows (Complete-Test also sweeps stragglers, but a test that
-    #    relies on the sweep is leaning on the safety net, not the contract).
+    # Every link in the chain is held and released: a dotted chain leaks an intermediate RCW per
+    # dot, and the session then sits as a refcount zombie until the close deadline.
     $booksRef = $sx.App.Workbooks
     $bookRef  = $booksRef.Item(1)
     $sheetsRef = $bookRef.Worksheets
@@ -48,11 +43,9 @@ try {
     $cellRef.Value2 = 42137
     $readBack = [int]$cellRef.Value2
     $cellRef.Value2 = $null                       # leave the baseline as found
-    # THE WRITE DIRTIED THE WORKBOOK, and a dirty workbook turns the session
-    # close into a hidden "Save changes?" dialog that waits forever -- this
-    # test hung its session for the full deadline until this line existed
-    # (dump on file). A test that modifies the baseline restores Saved unless
-    # save behaviour is the thing it is testing.
+    # The write dirtied the workbook, and a dirty workbook turns the session close into a hidden
+    # "Save changes?" dialog that waits forever. A test that modifies the baseline restores
+    # Saved.
     $bookRef.Saved = $true
     foreach ($r in @($cellRef, $sheetRef, $sheetsRef, $bookRef, $booksRef)) {
         [void][Runtime.InteropServices.Marshal]::ReleaseComObject($r)

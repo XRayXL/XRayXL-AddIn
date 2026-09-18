@@ -1,33 +1,19 @@
-# WHERE ELSE CAN AN ERROR COME FROM? -- class modules, constructors, forms.
+# Where else can an error come from? Class modules, constructors, forms. Each reaches the
+# interpreter by a different route from a Sub in a standard module:
 #
-# The error chain was built and proved against ordinary Subs in a standard
-# module. Five other shapes reach the interpreter by a different route, and each
-# is a plausible way the chain breaks:
+#    class method       an ordinary call on an object -- the control
+#    Class_Initialize   invoked by the interpreter as part of `New`, not by a call opcode
+#    Property Get       a different call shape again
+#    Property Let       and so is assignment
+#    Class_Terminate    driven by refcount, so it can fire anywhere
+#    UserForm method    a form module is a class with a designer attached
 #
-#   class method       an ordinary call on an object -- the control
-#   Class_Initialize   invoked by the interpreter as part of `New`, NOT by a
-#                      call opcode. If it opens no frame the way a Sub does, the
-#                      raise lands with nothing on the shadow stack and is held
-#                      for the next frame -- which would be the CALLER, giving
-#                      it somebody else's throw.
-#   Property Get       a different call shape again
-#   Property Let       and so is assignment
-#   Class_Terminate    driven by refcount, so it can fire anywhere -- including
-#                      somewhere with no relation to the code that dropped the
-#                      last reference
-#   UserForm method    a form module is a class with a designer attached
+# The per-shape outcome is reported rather than asserted. What is asserted must hold whatever
+# the interpreter does:
 #
-# EXPLORATORY, AND HONEST ABOUT IT. The chain for these is NOT known in advance,
-# so the per-shape outcome is REPORTED rather than asserted. What IS asserted is
-# the part that must hold whatever the interpreter does:
-#
-#   - the catcher resumed, so it must read `handled`
-#   - every exit row carries an outcome
-#   - a raise is either attributed to a frame or COUNTED as unattributable
-#     (errNoFrame); silently vanishing is the one outcome that is a bug
-#
-# That way a surprise shows up as a reported difference instead of a red test
-# asserting a guess.
+#    - the catcher resumed, so it must read `handled`
+#    - every exit row carries an outcome
+#    - a raise is either attributed to a frame or counted as unattributable (errNoFrame)
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -182,14 +168,9 @@ try {
             Raises = $raises; NoFrame = $errNoFrame; Ex = $threw
         }
 
-        # ---- what must hold whatever the interpreter does ------------------
-        #
-        # EXCEPT FOR Class_Terminate, WHICH VBA DOES NOT PROPAGATE. Measured:
-        # raising there produced three message boxes (the harness dismissed
-        # them) and no handler ever ran, so there is nothing to mark `handled`.
-        # That is Excel's behaviour, not the tracer's -- the row still reads
-        # `threw`, which is the honest answer, and asserting a catcher here
-        # would be asserting something VBA does not do.
+        # What must hold whatever the interpreter does, except for Class_Terminate, which VBA
+        # does not propagate: raising there shows message boxes (the harness dismisses them) and
+        # no handler runs, so there is nothing to mark `handled`. The row still reads `threw`.
         if ($which -ne 'term') {
             Check "$which-catcher-handled" ($nHandled -ge 1) `
                   "chain: $($chain -join ' -> ')"

@@ -3,6 +3,9 @@
 #include "vba/vbaderive.h"
 #include "vba/vbapatch.h"
 #include "core/log.h"
+#include "core/notify.h"
+#include "core/excel_om.h"
+#include "core/tracemodes.h"
 #include "emit/csv.h"
 #include "core/render.h"
 
@@ -20,18 +23,26 @@ namespace app
             r.detail = "already armed";
             return r;
         }
+        // Excel loads VBA lazily and the VBA side is armed once, here: if it is wanted and absent, ask Excel for it.
+        if (core::modes::VbaEnabled())
+        {
+            std::ostringstream vl;
+            core::excelom::EnsureVbaLoaded(vl);
+            if (!vl.str().empty()) core::Log::Note(vl.str());
+        }
+
         core::Log::Note(vba::ArmCounting());
-        return xll::Arm();
+        xll::ArmReport r = xll::Arm();
+        // Armed state is mirrored by the ribbon, which may not be what asked.
+        core::NotifyStateChanged();
+        return r;
     }
 
     void Disarm(bool shuttingDown)
     {
-        // THE OUTPUT RING, REPORTED FIRST -- the VBA disarm below tears the
-        // ring down, after which capacity and drops read as nothing. The count
-        // is already final: drops are producer-counted at deposit and the calc
-        // has finished. Since the file carries no drop marker, this line --
-        // on every path, XLL-only, VBA-only or both -- plus the Disarm return
-        // value and the status summary are the ONLY places loss is reported.
+        // The ring is reported first: the VBA disarm below tears it down, after which capacity and
+        // drops read as nothing. The file carries no drop marker, so this line, the Disarm return
+        // value and the status summary are the only places loss is reported.
         if (emit::csv::RingCapacityBytes() > 0)
         {
             const long long drops  = emit::csv::RingDrops();
@@ -57,6 +68,9 @@ namespace app
         vba::LogDisarmDiagnostics();
 
         xll::Disarm(shuttingDown);
+
+        // not while shutting down: the subscriber is the ribbon, and that would call into Office mid-teardown
+        if (!shuttingDown) core::NotifyStateChanged();
     }
 
     bool IsArmed() { return xll::IsArmed() || vba::IsVbaArmed(); }

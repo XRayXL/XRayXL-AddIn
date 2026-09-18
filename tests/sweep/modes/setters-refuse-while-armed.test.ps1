@@ -31,12 +31,12 @@ try {
 
     $failed = 0
     $e1 = Set-XRayTraceParam $sx 'XLL' 'DEPTH' 'OFF'
-    $ok = ($e1 -match 'refused while armed')
+    $ok = ($e1 -match '#Err - cannot change settings while armed')
     Write-TestCase 'xll-setter-refused-while-armed' -Pass:$ok -Fail:(-not $ok) -Detail $e1
     if (-not $ok) { $failed++ }
 
     $e2 = Set-XRayTraceParam $sx 'VBA' 'DEPTH' 'ALL'
-    $ok = ($e2 -match 'refused while armed')
+    $ok = ($e2 -match '#Err - cannot change settings while armed')
     Write-TestCase 'vba-setter-refused-while-armed' -Pass:$ok -Fail:(-not $ok) -Detail $e2
     if (-not $ok) { $failed++ }
 

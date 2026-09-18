@@ -1,11 +1,5 @@
-// XRayXL -- the XLL vehicle.
-//
-// A PURE XLL: Excel loads this module, calls it and unloads it -- one owner,
-// one lifetime. No COM server, no ribbon and no dialog; arming is an XLL
-// command, Application.Run("XRayXL_Arm").
-//
-// The export surface is the xlAuto* entry points plus the commands and
-// functions in src/app/commands.cpp.
+// XRayXL -- the XLL vehicle. Everything is reachable without COM; it is also an in-proc COM server
+// for the ribbon buttons alone (src/ui/ribbon.cpp), the one part allowed to fail.
 
 #include "core/excel_api.h"
 #include "xlcall.h"
@@ -14,6 +8,7 @@
 #include "app/session.h"
 #include "core/text.h"
 #include "emit/csv.h"
+#include "ui/ribbon.h"
 
 
 #include <windows.h>
@@ -22,13 +17,9 @@
 
 namespace
 {
-    // THE PRODUCT VERSION, from version.props via the project file. It arrives
-    // as three NUMERIC defines and is assembled here, because a define whose
-    // value is a quoted string does not survive the resource compiler's
-    // command line -- and both consumers must read the same defines or the
-    // resource and the log can disagree about which build this is. The
-    // fallback is deliberately not a plausible version: 0.0.0 in a log means
-    // the plumbing broke, and that should look broken.
+    // The product version, from version.props as three numeric defines, because a quoted-string
+    // define does not survive the resource compiler's command line. The 0.0.0 fallback is meant to
+    // look broken.
 #if !defined(XRAY_VER_MAJOR) || !defined(XRAY_VER_MINOR) || !defined(XRAY_VER_PATCH)
 #define XRAY_VER_MAJOR 0
 #define XRAY_VER_MINOR 0
@@ -50,11 +41,8 @@ namespace
         return o.str();
     }
 
-    // THE BOTTOM RUNG OF THE BISECTION. With %TEMP%\XRayXL\inert.on present,
-    // xlAutoOpen returns before the module is pinned, before a log is opened,
-    // before anything at all -- an XLL Excel loads that does nothing whatever.
-    // If a crash survives that, nothing this add-in DOES is the cause; only its
-    // presence.
+    // With %TEMP%\XRayXL\inert.on present, xlAutoOpen returns before doing anything at all. If a
+    // crash survives that, only the add-in's presence is the cause.
     bool MarkerPresent(const wchar_t* name)
     {
         wchar_t tmp[MAX_PATH] = {};
@@ -66,19 +54,27 @@ namespace
     bool Inert() { return MarkerPresent(L"inert.on"); }
 }
 
-// THE EXPORT LIST LIVES IN XRayXL.def, AND ONLY THERE.
-//
-// Not __declspec(dllexport): Excel finds these by GetProcAddress under their
-// PLAIN names, and while an extern "C" __stdcall function is undecorated on
-// x64, on x86 the same declaration decorates to _xlAutoOpen@0 -- Excel would
-// find nothing, silently, in an add-in that otherwise loads fine. A .def names
-// the export undecorated on both, which is why it is kept while the build is
-// x64-only (32-bit is a stated stretch goal).
-//
-// One source, so a miss is LOUD: a function absent from the .def is not
-// exported at all, and commands.cpp reports its registration as FAILED.
+// The export list lives in XRayXL.def, and only there: Excel finds these by their plain names,
+// which a .def keeps undecorated on x86 too.
 
-// NO COM SERVER EXPORTS, and so no second lifetime owner for the module.
+// ---- the two COM exports, for the ribbon and nothing else ----------------
+
+extern "C" HRESULT __stdcall DllGetClassObject(REFCLSID rclsid, REFIID riid, void** ppv)
+{
+    return ui::ribbon::GetClassObject(rclsid, riid, ppv);
+}
+
+// Always S_FALSE: while loaded this module may have detours and dispatch slots in other modules,
+// so there is never a safe moment for COM to unload it.
+extern "C" HRESULT __stdcall DllCanUnloadNow()
+{
+    return S_FALSE;
+}
+
+namespace app
+{
+    const char* VersionText() { return kVersionText; }
+}
 
 extern "C" LPXLOPER12 __stdcall xlAddInManagerInfo12(LPXLOPER12 xAction)
 {
@@ -155,7 +151,10 @@ extern "C" int __stdcall xlAutoOpen()
     // automation client with no window and no COM object of ours in the process
     // (src/app/commands.cpp).
     app::RegisterCommands();
-    core::Log::Note("loaded: XLL commands registered; no COM server, no ribbon, no dialog.");
+    core::Log::Note("loaded: XLL commands registered.");
+
+    // last, so a ribbon that cannot load costs the session its buttons and nothing else
+    ui::ribbon::Start();
 
   } catch (...) { core::crashlog::Note("xlAutoOpen: exception contained"); }
     return 1;
@@ -170,6 +169,9 @@ extern "C" int __stdcall xlAutoClose()
     // unmapped code the next time Excel calls that add-in function, which is a
     // crash with our name nowhere near it.
     app::Disarm(true);
+
+    // after Disarm, so nothing is patched into anyone else's module if the disconnect were to fault
+    ui::ribbon::Stop();
 
     // Nothing else to bring down: the commands are registered with Excel, and
     // Excel forgets them when it unloads the XLL.
@@ -187,11 +189,8 @@ BOOL APIENTRY DllMain(HMODULE, DWORD reason, LPVOID lpReserved)
     if (reason == DLL_THREAD_DETACH) emit::csv::ReleaseThreadScratch();
     if (reason == DLL_PROCESS_DETACH)
     {
-        // lpReserved is non-null when the PROCESS is exiting, null for a real
-        // FreeLibrary. At process exit every other thread has already been
-        // terminated wherever it happened to be, quite possibly holding the heap
-        // lock -- so doing anything is both the worst moment for it and
-        // pointless.
+        // Non-null lpReserved means the process is exiting: the other threads were terminated
+        // wherever they were, possibly holding the heap lock, so do nothing.
         if (lpReserved != nullptr) return TRUE;
 
         // A genuine FreeLibrary -- unreachable with the module pinned, and

@@ -16,13 +16,8 @@ namespace
     volatile LONG g_filterInstalled   = 0;
     volatile LONG g_vectoredInstalled = 0;
 
-    // A FILE CALLED "crash" MUST MEAN A CRASH, so notes are buffered and
-    // written only when a fault report is. The last thing noted before a crash
-    // still leads the report; a hard kill discards them, which is the right
-    // trade -- they are session state, already in the levelled log, not
-    // evidence about a death.
-    //
-    // Fixed storage, no allocation: reachable from the crash path.
+    // Notes are buffered and written only with a fault report, so a file called "crash" always
+    // means a crash. Fixed storage, because this is reachable from the crash path.
     char          g_notes[8192]{};
     volatile LONG g_notesLen  = 0;
     volatile LONG g_notesLost = 0;   // dropped once the buffer filled

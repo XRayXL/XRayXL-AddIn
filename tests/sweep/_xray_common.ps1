@@ -8,21 +8,12 @@
 # the tracer's own. StretchXL knows none of this.
 
 function Clear-XRayStaleTraces([int]$ExcelPid) {
-    # A TRACE FILE FOR OUR OWN PID THAT PREDATES THIS SESSION IS A LEFTOVER, and
-    # must go before we arm. The name is keyed by pid (XRayXL_Trace_<id>_<pid>.csv)
-    # and the OS reuses pids freely, so a prior process's trace files sit in the
-    # directory under the number we now hold. That is normally harmless -- our
-    # own arm writes a NEWER file and Get-XRayTraceCsv takes the newest -- but the
-    # file is created LAZILY: a test that legitimately traces nothing (Excel
-    # refused the call upstream) writes NO file, so glob-newest falls back to the
-    # stale leftover, and Read-TraceFile throws on its older header. Measured:
-    # breakit/fuzz/04 (300 chars, #VALUE!, no call) failed exactly this way after
-    # the OS reused a pid whose leftover predated the `input` column.
+    # A trace file for our own pid that predates this session is a leftover, and must go before
+    # we arm: the OS reuses pids, and the file is created lazily, so a test that traces nothing
+    # would otherwise read the stale one.
     #
-    # MOVED ASIDE, NOT DELETED. Under -SessionMode Reuse the same-pid file is an
-    # earlier test's in THIS process -- the only evidence when that test failed.
-    # TraceFiles\earlier\ keeps it, and Get-XRayTraceCsv, which does not recurse,
-    # can no longer pick it. Parallel-safe: every file named here is our pid's.
+    # Moved aside, not deleted: under -SessionMode Reuse the same-pid file is an earlier test's
+    # in this process. TraceFiles\earlier\ keeps it, and Get-XRayTraceCsv does not recurse.
     if ($ExcelPid -le 0) { return }
     $dir = Join-Path (Get-XRayRoot) 'TraceFiles'
     $stale = @(Get-ChildItem (Join-Path $dir ("XRayXL_Trace_*_{0}.csv" -f $ExcelPid)) -ErrorAction SilentlyContinue)
@@ -33,14 +24,11 @@ function Clear-XRayStaleTraces([int]$ExcelPid) {
 }
 
 function Set-XRaySessionDefaults($Sx) {
-    # The settings every old runner applied before driving. Deliberately NOT
-    # touching Visible (the manager owns the window).
+    # The settings every driver applies before driving. Visible is the manager's.
     #
-    # A SESSION AN EARLIER TEST LEFT ARMED IS DISARMED FIRST. Every setter below
-    # refuses while armed, and a second arm is refused with nothing in the log, so
-    # under -SessionMode Reuse one test failing between its arm and its disarm
-    # failed every later test in the session. Measured: 25 such failures in one soak.
-    # No add-in in the session makes the call throw, which reads as not armed.
+    # A session an earlier test left armed is disarmed first: every setter below refuses while
+    # armed, so under -SessionMode Reuse one failed test would fail every later one. With no
+    # add-in in the session the call throws, which reads as not armed.
     $armedNow = $false
     try { $armedNow = [bool]$Sx.App.Run('XRayXL_IsArmed') } catch {}
     if ($armedNow) {
@@ -52,14 +40,9 @@ function Set-XRaySessionDefaults($Sx) {
     Clear-XRayStaleTraces $Sx.ProcId
     $app = $Sx.App
     $app.DisplayAlerts = $false
-    # EVENTS ON, the default, restored every test. Under -SessionMode Reuse a
-    # prior test can leave Application.EnableEvents = False -- caller-matches
-    # toggles it as part of what it measures and does not restore it -- and the
-    # next event test then sees its Worksheet_Change never fire, traced (rightly)
-    # as "no procedure from the Change event": a session-state flake, not a
-    # tracer bug. Measured: 1 such FAIL in a 639-test Reuse soak. Stress cases
-    # want events ON; the timeline driver disables them AFTER this, in its own
-    # set-up, so restoring the default here costs it nothing.
+    # Events on, the default, restored for every test: under -SessionMode Reuse a prior test can
+    # leave Application.EnableEvents False. The timeline driver disables them after this, in its
+    # own set-up.
     try { $app.EnableEvents = $true } catch {}
     # NO AUTORECOVER: a crashing run otherwise leaves recovery prompts --
     # blocked-macro banners from %TEMP% -- in front of whoever next opens
@@ -130,10 +113,8 @@ function Get-LogLength([string]$LogPath) {
 }
 
 function Wait-LogLine([string]$LogPath, [string]$Pattern, [int]$Mark, [int]$Seconds = 60) {
-    # Poll for a line matching $Pattern that arrived AFTER $Mark. Polling
-    # rather than sleeping a guessed interval: the first version of the old
-    # suite guessed 3s, arming took 3.3s, and a perfectly armed session was
-    # reported as unarmed.
+    # Poll for a line matching $Pattern that arrived after $Mark, rather than sleeping a guessed
+    # interval: arming can take several seconds.
     $dl = (Get-Date).AddSeconds($Seconds)
     while ((Get-Date) -lt $dl) {
         $all = @(Get-Content $LogPath -ErrorAction SilentlyContinue)
@@ -285,20 +266,11 @@ function Get-XRaySummaryCalls($Summary, [string]$Function) {
 }
 
 function Close-OwnLeftover($App, [string]$Leaf) {
-    # A test that builds a workbook, saves it and reopens it (AsLoaded) leaves
-    # that workbook OPEN when it finishes -- deliberately: under -SessionMode
-    # Reuse the next test inherits a dirty Excel, which is the realism that
-    # mode exists for. But the workbook's name is keyed by Excel's pid, which
-    # is the SAME for every test in a reused session, so the next test of the
-    # same family finds its own file name already open: Remove-Item fails
-    # silently and SaveAs throws "Unable to get the SaveAs property of the
-    # Workbook class". Measured: 27 failures in one shuffled Reuse sweep,
-    # every one the second-or-later test of a family in its session, none
-    # first.
-    #
-    # So a test closes ITS OWN earlier leftover, by leaf, before it saves --
-    # the stress driver has done this since the migration soak -- and touches
-    # nothing else of the session's dirt.
+    # A test that builds, saves and reopens a workbook leaves it open when it finishes, which is
+    # the realism -SessionMode Reuse exists for. The workbook's name is keyed by Excel's pid, so
+    # in a reused session the next test of the same family finds its own file name already open
+    # and SaveAs throws. So a test closes its own earlier leftover, by leaf, before it saves,
+    # and touches nothing else.
     if (-not $App -or -not $Leaf) { return }
     try {
         $prev = $App.Workbooks.Item($Leaf)
@@ -517,10 +489,9 @@ function ConvertTo-XRayGrid($Value) {
     # read rather than assumed -- indexing from 0 silently drops a row.
     if ($null -eq $Value) { return @() }
     if ($Value -isnot [array]) { return @(,@([string]$Value)) }
-    # Application.Run FLATTENS an XLL array to a 1-D object[] (measured:
-    # rank=1, bounds 0..7 for a 4x2). The cells stay in row-major order, so
-    # the content is intact and only the shape is lost -- which is why the
-    # SHAPE is asserted through a spilled cell instead, where it is real.
+    # Application.Run flattens an XLL array to a 1-D object[] in row-major order, so the content
+    # is intact and only the shape is lost. The shape is asserted through a spilled cell
+    # instead.
     if ($Value.Rank -eq 1) { return ,@($Value | ForEach-Object { [string]$_ }) }
     $rows = @()
     for ($r = $Value.GetLowerBound(0); $r -le $Value.GetUpperBound(0); $r++) {
@@ -575,17 +546,11 @@ $script:TraceHeader = 'seq,input,kind,source,span,parent,depth,thread,qpc,module
 $script:TraceKinds   = @('entry', 'exit', 'depth-capped')
 $script:TraceSources = @('XLL', 'VBA')
 
-# ---- THE SHAPE CHECK, IN .NET ---------------------------------------------
+# The shape check, in .NET: a PowerShell loop over every character costs about twice what
+# Import-Csv does, and the soak reads traces with millions of rows.
 #
-# A PowerShell loop over every character of every line costs about twice what
-# Import-Csv costs on the same file -- measured at 41.8s against 22.2s over
-# 500,000 rows -- and the soak reads traces with millions. The scan is one
-# pass of trivial work, so it belongs in compiled code; what is expensive is
-# running the interpreter once per character.
-#
-# ONE ROW IS ONE LINE: the writer turns CR and LF inside a field into spaces
-# (rowcsv.cpp Escape), so no field spans lines. A doubled quote inside a quoted
-# field flips the state twice, which is correct.
+# One row is one line: the writer turns CR and LF inside a field into spaces (rowcsv.cpp
+# Escape). A doubled quote inside a quoted field flips the state twice, which is correct.
 if (-not ('XRayCsvShape' -as [type])) {
     Add-Type -TypeDefinition @'
 public static class XRayCsvShape
@@ -622,11 +587,9 @@ function Test-TraceColumnCount([string]$Path, [int]$Want) {
 
 
 function Read-TraceFile([string]$Path) {
-    # A MISSING file is an empty result: "never armed" is a fact, not a
-    # fault, and a test asserting rows-exist will say so itself. A PRESENT
-    # file that violates the contract THROWS -- every test that reads the
-    # trace is thereby a format regression, and the message names the
-    # violation instead of leaving 'no rows' to be diagnosed from scratch.
+    # A missing file is an empty result: "never armed" is a fact, not a fault. A present file
+    # that violates the contract throws, so every test that reads the trace also checks its
+    # format.
     if (-not (Test-Path $Path)) { return @() }
 
     # Format dispatch. CSV is the only shipped format; a second format
@@ -678,20 +641,10 @@ function Read-TraceFile([string]$Path) {
 }
 
 function Get-MaxNestDepth($Rows) {
-    # HOW DEEPLY DID CALLS NEST? Reconstructed from the entry/exit INTERLEAVING,
-    # independently of the `depth` column, so the two can be checked against each
-    # other. Span B is inside span A when A opens before B and closes after
-    # it on the same thread; a span's depth is the number of spans enclosing
-    # it, plus one.
-    #
-    # This matters because without it a flattened call tree is invisible.
-    # Every other assertion in the fuzz driver -- entry/exit pairing, no
-    # orphans, no reused span ids, one function per span, caller='cell' --
-    # holds just as well when a genuinely nested call is emitted as two
-    # sequential ones. That exact bookkeeping has broken before: a suppressed
-    # entry once failed to increment while the exit decremented anyway, and
-    # nothing caught it, because nothing re-entered until an add-in called
-    # another add-in.
+    # How deeply did calls nest? Reconstructed from the entry/exit interleaving, independently
+    # of the `depth` column, so the two can be checked against each other. Span B is inside span
+    # A when A opens before B and closes after it on the same thread. Without this a genuinely
+    # nested call emitted as two sequential ones satisfies every other assertion.
     $spans = @{}
     foreach ($r in $Rows) {
         if (-not $r.span) { continue }
@@ -719,25 +672,14 @@ function Get-MaxNestDepth($Rows) {
 }
 
 function Select-BookRows($Rows, [string]$BookLeaf) {
-    # SCOPE A ROW SET TO ONE WORKBOOK. Under -SessionMode Reuse, an armed
-    # CalculateFull recalculates EVERY workbook still open in the session, so
-    # a leftover book from an earlier test contributes rows attributed to ITS
-    # cells -- and A1, and common function names like TxB, collide across
-    # books. A soak found both: an xll test read A1 and got a leftover book's
-    # TxB, and the top-level test counted a leftover book's UDF as an extra
-    # frame. The tracer was RIGHT in each case; the assertion was reading
-    # another book's rows. A row's `sheet` carries the workbook ([Book]Sheet),
-    # so this keeps only this test's -- plus cell-less rows (macros, events,
-    # Run), which some tests assert on directly.
+    # Scope a row set to one workbook. Under -SessionMode Reuse an armed CalculateFull
+    # recalculates every workbook still open, so a leftover book contributes rows whose cells
+    # and function names collide with this test's.
     #
-    # An exit row never carries a caller, so keeping every cell-less row would
-    # keep other books' exits too. So scope by the span, which both rows of an
-    # activation carry: a row belongs to this book if it names it or shares a
-    # span with a row that does; a row sharing a span with no book is a genuine
-    # cell-less activation and is kept.
-    # The book is inside the caller description now -- "[Book.xlsm]Sheet!B2" --
-    # so naming a book means having a `cell` caller whose address mentions it.
-    # A trace with no rows arrives as $null, which a pipeline passes on as one empty row.
+    # Scoped by span, which both rows of an activation carry: a row belongs to this book if its
+    # `cell` caller names it or it shares a span with a row that does. A row sharing a span with
+    # no book is a genuine cell-less activation (a macro, an event, Run) and is kept. A trace
+    # with no rows arrives as $null, which a pipeline passes on as one empty row.
     $Rows = @($Rows | Where-Object { $null -ne $_ })
     $mine = @{}; $theirs = @{}
     foreach ($r in $Rows) {
@@ -776,19 +718,11 @@ $script:CallerKinds = @{
     'unknown'     = $true     # an XLOPER type we have not seen
 }
 
-# THE TWO HALVES OF A `cell` DESCRIPTION. callerref is one external address --
-# "[Book1]Sheet1!B2:D4" -- because that is what Excel's own
-# Range.Address(,,,True) returns and what a reader can paste back. A test that
-# wants only the reference, or only the book+sheet, asks here rather than
-# writing its own regex: twenty copies of a pattern is twenty chances to
-# disagree about what the format is.
-# AN EXTERNAL ADDRESS, QUOTED OR NOT. Excel quotes the `[Book]Sheet` prefix when
-# either name needs it -- a hyphen, a space, or a sheet name starting with a
-# digit -- and DOUBLES any apostrophe inside it. `callerref` matches Excel's own
-# `Range.Address(,,,True)`, so a reader has to accept both forms.
-#
-# Defined once. Three places were matching this shape with their own pattern and
-# would have had to be corrected together.
+# The two halves of a `cell` description. callerref is one external address,
+# "[Book1]Sheet1!B2:D4", which is what Range.Address(,,,True) returns. Excel quotes the
+# `[Book]Sheet` prefix when either name needs it (a hyphen, a space, a sheet name starting with
+# a digit) and doubles any apostrophe inside, so both forms are accepted. Defined once, for
+# every test that needs only the reference or only the book and sheet.
 $script:ExternalAddress = "^(?:\[[^\]]+\][^!]+|'\[[^\]]+\](?:[^']|'')*')!"
 
 # The two accessors do not need to know about quoting at all: an address has
@@ -818,18 +752,10 @@ $script:Outcomes = @('returned', 'threw', 'unwound', 'handled', 'abandoned', 'un
 $script:Trusts = @('exit', 'end', 'backstop', 'flush', 'async')
 
 function Test-RowInvariants($Rows) {
-    # The caller invariants, assertable on ANY correct trace
-    # (docs/TraceRowModel.md). An entry-kind row always NAMES its caller
-    # ('never asked' and 'asked' must not look alike); the kind is one of the
-    # closed set; a description is present exactly when the kind says one
-    # should be; an exit row carries neither -- it is the same activation as
-    # the entry it pairs with. Returns problem strings; empty means the
-    # invariants hold. Every driver runs this.
-    #
-    # THIS REPLACED A THREE-WAY AGREEMENT: cell and sheet had to agree with
-    # each other AND with caller, which is what the row-0 trap defeated once.
-    # One description that cannot disagree with itself removes the failure mode
-    # rather than re-checking it.
+    # The caller invariants, assertable on any correct trace (docs/TraceRowModel.md). An entry
+    # row always names its caller; the kind is one of the closed set; a description is present
+    # exactly when the kind says one should be; an exit row carries neither. Returns problem
+    # strings; empty means the invariants hold. Every driver runs this.
     $problems = @()
     foreach ($r in $Rows) {
         if ($r.kind -eq 'entry') {

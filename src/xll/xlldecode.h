@@ -2,12 +2,9 @@
 #include "xlltypeplan.h"
 #include "xllregs.h"
 
-// Rendering a captured argument or return value as short readable text.
-//
-// Every pointer here came from somebody else's add-in and is dereferenced under
-// SEH. A value that cannot be read confidently is written EMPTY, never guessed:
-// a range check that passes on nonsense yields a readable, complete-looking,
-// entirely fabricated string.
+// Renders a captured argument or return value as short text. Every pointer came from somebody
+// else's add-in and is read under SEH; a value that cannot be read confidently is written
+// empty, never guessed.
 
 namespace xll
 {

@@ -6,8 +6,7 @@
 
 try {
     $sx = Connect-TestExcel
-    # Held and released, not a dotted chain -- see binding.test.ps1 for the
-    # measured reason.
+    # Held and released, not a dotted chain, which leaks an RCW per dot (binding.test.ps1).
     $booksRef = $sx.App.Workbooks
     $bookCount = $booksRef.Count
     [void][Runtime.InteropServices.Marshal]::ReleaseComObject($booksRef)

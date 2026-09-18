@@ -1,15 +1,6 @@
-; THE ONE PLACE THIS MODULE'S EXPORTS ARE DECLARED.
-;
-; Nothing here carries __declspec(dllexport) -- deliberately. Excel looks these
-; up by their PLAIN names, and while an extern "C" __stdcall function is
-; undecorated on x64, on x86 it decorates to _xlAutoOpen@0: an add-in that
-; loads perfectly and exports nothing Excel can find. A .def names them
-; undecorated on both targets, so this file is what keeps a future 32-bit
-; build working (x64 is the supported target).
-;
-; ONE SOURCE, SO A MISS IS LOUD. A function missing from this list is not
-; exported at all; the registration in src/app/commands.cpp then logs it as
-; FAILED, rather than a second declaration silently covering for it.
+; The module's only export list. A .def exports plain names on x86 as well as x64, where __stdcall
+; would decorate them and Excel would find nothing. A function missing here is not exported, and
+; commands.cpp logs its registration as FAILED.
 
 EXPORTS
     xlAutoOpen
@@ -17,34 +8,25 @@ EXPORTS
     xlAutoFree12
     xlAddInManagerInfo12
 
-; ARM AND DISARM, REACHABLE WITHOUT COM.
-;
-; These are XLL commands registered with Excel at load, so they are callable as
-;   Application.Run("XRayXL_Arm")
-; from VBA or from any automation client -- with no window, no focus, and no
-; COM object of ours in the process.
-;
-; No COM class factory is exported: serving a COM add-in from this DLL would give
-; it a second lifetime owner. See src/app/commands.cpp.
+; Office serves ribbon controls only to a COM add-in, so this DLL is an in-proc server for one CLSID
+; (src/ui/ribbon.cpp). PRIVATE keeps these out of the import library, which is what LNK4104 asks
+; for.
+    DllGetClassObject PRIVATE
+    DllCanUnloadNow PRIVATE
+
+; Arm and disarm as XLL commands, callable as Application.Run("XRayXL_Arm") with no window, no focus
+; and no COM object of ours. The ribbon presses these; it does not replace them.
     XRayXL_Arm
     XRayXL_Disarm
+    XRayXL_Options
     XRayXL_SetTraceParam
     XRayXL_GetTraceParam
     XRayXL_GetTraceSummary
     XRayXL_IsArmed
     XRayXL_FaultProbe
 
-; WHAT GETS TRACED. Registered as FUNCTIONS rather than commands,
-; because each takes arguments and returns an answer -- a command has neither
-; channel:
-;   Application.Run("XRayXL_SetTraceParam", "XLL", "DEPTH", "ALL")
-;   Application.Run("XRayXL_GetTraceParam", "VBA", "DEPTH")
-;   Application.Run("XRayXL_GetTraceSummary")
-; Source is XLL or VBA, or omitted for both; Name is DEPTH (OFF/TOP/ALL), ARGS,
-; RETVAL or CALLER. The setter refuses while armed and refuses when the caller
-; is a cell.
-;
-; XRayXL_XLLTrace and XRayXL_VBATrace were removed here: they wrote the
-; same state but could not express DEPTH=TOP, so setting them silently turned
-; TOP into ALL. See src/app/commands.cpp.
-;
+; What gets traced. Functions rather than commands, because each takes arguments and returns an
+; answer:
+;    Application.Run("XRayXL_SetTraceParam", "XLL", "DEPTH", "ALL")
+;    Application.Run("XRayXL_GetTraceParam", "VBA", "DEPTH")
+;    Application.Run("XRayXL_GetTraceSummary")

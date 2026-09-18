@@ -41,8 +41,7 @@ namespace csv
         // be named.
         std::wstring     g_planned;                       // decided at arm; read under g_cs
         volatile LONG64  g_rows = 0;
-        // ONE counter for every source. Each once numbered its own rows from 1,
-        // so `seq 1` appeared twice in a file.
+        // One counter for every source, so a `seq` value appears once in a file.
         volatile LONG64  g_seq  = 0;   // WRITER-stamped: dense, file order
         volatile LONG64  g_in   = 0;   // PRODUCER-stamped at emit: holes = drops
         // Span ids for both sources. Never reset, so a call running across a re-arm cannot reuse one.
@@ -55,14 +54,9 @@ namespace csv
             WriteFile(g_file, text, len, &written, nullptr);
         }
 
-        // THE ONE PLACE THE TRACE FILE IS NAMED -- csv owns the file,
-        // so no caller passes a path. The id is a monotonic OS tick, so it
-        // always rises: across arms, a new Excel process and a reboot, unlike a
-        // per-process counter. High-resolution, so two arms never collide; the
-        // pid groups one process's files and breaks any final tie.
-        // Wide to UTF-8 properly: narrowing each wchar_t is fine only for ASCII,
-        // and %TEMP% carries a user name -- a non-ASCII one would be mangled in
-        // the very line that says where the output went.
+        // The one place the trace file is named. The id is a monotonic OS tick, so it rises
+        // across arms, processes and reboots; the pid breaks any tie. The path goes to UTF-8
+        // properly, since %TEMP% carries a user name that may not be ASCII.
         std::string Narrow(const std::wstring& w)
         {
             if (w.empty()) return std::string();
@@ -102,13 +96,9 @@ namespace csv
             return t_frag;   // may be null -- WriteRow then drops the row rather than fault
         }
 
-        // CREATE THE FILE, ONCE, ON THE FIRST RECORD THAT REACHES A WRITER
-        // -- the drain in ring mode, the producer in sync mode, never the
-        // arm path, so a session that traces nothing leaves no empty file.
-        // Takes g_cs recursively (the sync path and Close hold it already, the
-        // drain does not) so create-and-publish is single-threaded, and
-        // publishes g_file LAST, because readers gate on it. The header goes in
-        // here, so it is always the first bytes of the file.
+        // Creates the file on the first record that reaches a writer, never on the arm path, so
+        // a session that traces nothing leaves no empty file. Takes g_cs recursively and
+        // publishes g_file last, because readers gate on it.
         bool EnsureFile()
         {
             if (g_file != INVALID_HANDLE_VALUE) return true;
@@ -135,12 +125,8 @@ namespace csv
             return ok;
         }
 
-        // ---- THE RING -------------------------------------------
-        //
-        // The byte queue itself is ring.h/ring.cpp. What stays here is what
-        // belongs to THIS FILE rather than to the data structure: the drain
-        // thread and its wake/stop events, the write-coalescing batch, seq
-        // stamping, and the WriteFile.
+        // The ring. The byte queue is ring.h; here are the drain thread, its events, the write
+        // batch, seq stamping and the WriteFile.
         emit::ByteRing   g_ring;
 
         // THE DRAIN as one thing -- thread, stop/wake events, and the
@@ -190,11 +176,9 @@ namespace csv
             if (g_drain.used) { WriteRaw(g_drain.batch, static_cast<DWORD>(g_drain.used)); g_drain.used = 0; }
         }
 
-        // A high-resolution waitable timer paces the poll at ~1 ms, so the ring
-        // absorbs about a millisecond of burst rather than a whole calculation.
-        // kernel32 rather than winmm's timeBeginPeriod, to add no link
-        // dependency; without the timer (pre-1803) a 1 ms wait is correct but
-        // coarser.
+        // A high-resolution waitable timer paces the poll at about 1 ms. kernel32 rather than
+        // timeBeginPeriod, to add no link dependency; without it (pre-1803) the wait is correct
+        // but coarser.
         #ifndef CREATE_WAITABLE_TIMER_HIGH_RESOLUTION
         #define CREATE_WAITABLE_TIMER_HIGH_RESOLUTION 0x00000002
         #endif
@@ -341,9 +325,8 @@ namespace csv
         const bool joined = quiet && RingTeardown();   // stop, final drain (may create the file), join, free
         Lock();
         if (!joined) g_ringAbandoned = true;
-        // NO in-file drop marker: the CSV carries only real rows and the
-        // loss is reported out of band. The trade is that
-        // a CSV read on its own can no longer tell it dropped rows.
+        // No in-file drop marker: the CSV carries only real rows and loss is reported out of
+        // band.
         if (g_file != INVALID_HANDLE_VALUE)
         {
             // A writer still running may use the handle, so it is left open rather than closed under it.
@@ -379,9 +362,18 @@ namespace csv
     {
         if (!g_csReady) return std::wstring();
         Lock();
-        std::wstring p = g_path;
+        // the planned name until the file exists
+        std::wstring p = g_path.empty() ? g_planned : g_path;
         Unlock();
         return p;
+    }
+    bool FileExists()
+    {
+        if (!g_csReady) return false;
+        Lock();
+        const bool made = !g_path.empty();
+        Unlock();
+        return made;
     }
     long long RowsWritten() { return g_rows; }
     std::size_t RingCapacityBytes() { return g_ring.CapacityBytes(); }

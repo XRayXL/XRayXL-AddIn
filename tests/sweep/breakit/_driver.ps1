@@ -81,12 +81,10 @@ function Invoke-FuzzCase($Case) {
             Write-Output ("nesting: depth {0} (expected {1})" -f $gotDepth, $c.NestDepth)
         }
 
-        # No trace rows is two different facts. If the CELL shows an Excel
-        # error, Excel refused the call upstream and the decoder was never
-        # reached -- for hostile input that is survival, and worth knowing
-        # (measured: 300 chars into a 255-max byte count is refused by Excel
-        # itself, #VALUE!, no call; 400 wide chars are legal and traced).
-        # No rows AND no error means the call vanished, which is a failure.
+        # No trace rows is two different facts. If the cell shows an Excel error, Excel refused
+        # the call upstream and the decoder was never reached: 300 chars into a 255-max byte
+        # count gives #VALUE! and no call, while 400 wide chars are legal and traced. No rows
+        # and no error means the call vanished, which is a failure.
         $refusedUpstream = ($entries.Count -eq 0 -and $now -like '#*')
         if ($entries.Count -eq 0 -and -not $refusedUpstream) {
             $problems += "nothing was traced and the cell shows no error ('$now') -- the call vanished"

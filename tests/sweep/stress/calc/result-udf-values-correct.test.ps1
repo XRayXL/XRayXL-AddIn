@@ -13,8 +13,8 @@ End Function
      Expect={ param($t)
         if ($t.framesOpened -lt 10) { return "expected >=10 activations, got $($t.framesOpened)" }
         $null }
-     # Every cell is evaluated twice by the Calc trigger (measured, see end-statement-midchain), in an
-     # order Excel decides. Precise(n) returns n*1.5 + 0.25.
+     # Every cell is evaluated twice by the Calc trigger, in an order Excel decides. Precise(n)
+     # returns n*1.5 + 0.25.
      CallsAnyOrder=$true
      Calls=@(1..2 | ForEach-Object {
         foreach ($cell in @(@('A1', 1), @('A2', 2), @('A3', 4), @('A4', 8), @('A5', 16)) + @(1..20 | ForEach-Object { , @("B$_", $_) })) {

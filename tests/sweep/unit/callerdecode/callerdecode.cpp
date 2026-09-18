@@ -1,23 +1,12 @@
-// EVERY THING xlfCaller CAN SAY, DECODED -- without Excel.
+// Everything xlfCaller can say, decoded without Excel.
 //
-// WHY THIS EXISTS. A live probe driving real callers proves the common ones: a
-// cell formula gets its cell, and a macro, an event and Application.Run
-// correctly get no cell at all. It cannot reach the rest. A GRAPHIC-OBJECT caller -- the case where Excel returns the button's NAME --
-// requires a real mouse click on a shape, and this project will not simulate
-// mouse input on a machine somebody is working on. The stress harness has the
-// same limitation and says so: it dispatches a button's macro through
-// Application.Run, which is not a click, so the UI hit-test is never exercised.
+// A live probe proves the common callers: a cell formula, a macro, an event and
+// Application.Run. It cannot reach the rest: a graphic-object caller needs a real mouse click
+// on a shape, and Application.Run on a button's macro is not a click. So src/core/caller.cpp's
+// DecodeCaller is pure, and this feeds it a synthetic XLOPER12 of every kind.
 //
-// So the decoder was split. src/core/caller.cpp's DecodeCaller is pure -- an
-// XLOPER12 in, a Caller out, no Excel, no globals -- and this feeds it a
-// synthetic one of every kind. The branches a live probe can never reach are
-// then checked against a stated expectation instead of being written and hoped
-// for, which is how the row-0 column-0 trap survived in this codebase for
-// months as a comment describing a guard that was not there.
-//
-// It is a UNIT test of a decoder, not evidence about Excel. What each xltype
-// MEANS is Microsoft's documentation; what this checks is that the decoder says
-// the right thing about each.
+// A unit test of a decoder, not evidence about Excel: what each xltype means is Microsoft's
+// documentation.
 //
 // Built by XRayXL.sln into build\x64\Release\unit\.
 #include <windows.h>
@@ -45,10 +34,7 @@ static std::vector<XCHAR> Pascal(const wchar_t* text)
     return v;
 }
 
-// KIND AND DESCRIPTION, the two columns the trace carries. The old signature
-// took (what, cell) and checked a THREE-way agreement between cell, sheet and
-// isCell -- the pairing the row-0 trap defeated once. One description that
-// cannot disagree with itself leaves only isCell to keep honest.
+// Kind and description, the two columns the trace carries, plus isCell.
 static void Check(const char* label, const XLOPER12& op, const char* sheet,
                   const char* wantKind, const char* wantDesc)
 {
@@ -97,9 +83,8 @@ int main()
         Check("sheet name with an apostrophe", op, "[Book1]It's", "cell", "'[Book1]It''s'!A1");
     }
 
-    // ---- THE TRAP: a reference with no sheet -----------------------------
-    // Excel calls functions for its own purposes with no calling cell, and
-    // those arrive as row 0 column 0 with no sheet. Reported as "A1" once.
+    // The trap: a reference with no sheet. Excel calls functions for its own purposes with no
+    // calling cell, and those arrive as row 0 column 0, which must not decode as "A1".
     {
         XLOPER12 op{}; op.xltype = xltypeSRef;
         op.val.sref.count = 1;
@@ -120,10 +105,8 @@ int main()
         // the multi-cell case went untested for so long.
         Check("xltypeRef, single cell C5", op, "[Book1]Sheet2", "cell", "[Book1]Sheet2!C5");
 
-        // ONE AREA, MANY CELLS -- what a CSE array formula actually produces.
-        // "A multi-cell array formula | A multi-cell reference"
-        // [published: XLL SDK, xlfCaller]. The decoder read only the first
-        // corner until 12 September 2026 and wrote "C5" for all nine cells.
+        // One area, many cells: what a CSE array formula produces. Both corners must be
+        // decoded.
         mref.reftbl[0].rwLast = 6; mref.reftbl[0].colLast = 4;
         Check("xltypeRef, multi-cell C5:E7", op, "[Book1]Sheet2", "cell", "[Book1]Sheet2!C5:E7");
         mref.reftbl[0].rwLast = 0; mref.reftbl[0].colLast = 0;
@@ -152,7 +135,7 @@ int main()
 
     // ---- THE REMAINING ROWS OF THE SDK TABLE -----------------------------
     // Each reduces to a shape handled above, but each is a separate ROW in
-    // [published: XLL SDK, xlfCaller] and so gets its own case: the table and
+    // and so gets its own case: the table and
     // this file should map one to one, or a row can quietly have no test.
     {
         // "A conditional formatting expression | A reference to the cell to
@@ -176,7 +159,7 @@ int main()
         // name of the calling sheet." A STRING, so it decodes down the same
         // path as a graphic object -- which is why the trace reads
         // `object:[Book1]Sheet1` for an Auto macro and why that is correct
-        // rather than a misclassification. [measured: caller-matches-application-caller]
+        // rather than a misclassification.
         auto s = Pascal(L"[Book1]Sheet1");
         XLOPER12 op{}; op.xltype = xltypeStr; op.val.str = s.data();
         Check("Auto_Open: the calling sheet's name", op, nullptr, "name", "[Book1]Sheet1");
@@ -197,20 +180,14 @@ int main()
         op.val.array.rows = 1; op.val.array.columns = 2; op.val.array.lparray = two;
         Check("toolbar tool, built-in (numbers)", op, nullptr, "toolbar", "5/2");
 
-        // A CUSTOM toolbar answers with its NAME, not a number
-        // [published: XLL SDK, xlfCaller]. Rendered with NumOf/%g that string
-        // came out as `0` -- the name lost, and indistinguishable from a real
-        // zero. Quoted now, so the two can never read alike.
+        // A custom toolbar answers with its name, not a number, so the name is quoted and never
+        // reads like a number.
         auto barName = Pascal(L"XRayProbeBar");
         two[0].xltype = xltypeStr; two[0].val.str = barName.data();
         Check("toolbar tool, custom (named)", op, nullptr, "toolbar", "\"XRayProbeBar\"/2");
         two[0].xltype = xltypeNum; two[0].val.num = 5;
 
-        // A MENU IS FOUR ELEMENTS: {bar ID, menu, submenu, command}
-        // [published: XLL SDK, xlfCaller]. This harness asserted THREE until
-        // 12 September 2026 -- and passed, because the decoder was wrong the
-        // same way. A test written from the same misreading as the code
-        // confirms the misreading.
+        // A menu is four elements: {bar ID, menu, submenu, command}.
         XLOPER12 four[4]{};
         four[0].xltype = xltypeNum; four[0].val.num = 1;
         four[1].xltype = xltypeNum; four[1].val.num = 2;
@@ -231,9 +208,7 @@ int main()
         Check("array, null lparray", op, nullptr, "array", "2");
     }
 
-    // ---- no caller on a sheet -------------------------------------------
-    // What a macro, an event handler and Application.Run actually return, as
-    // measured live against Excel.
+    // No caller on a sheet: what a macro, an event handler and Application.Run return.
     {
         XLOPER12 op{}; op.xltype = xltypeErr;
         op.val.err = xlerrRef;

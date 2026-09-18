@@ -47,14 +47,10 @@ namespace xll
 
         using core::QpcMicros;
 
-        // THE ADDRESS EXCEL CALLS, from a registration's module and export
-        // name -- the one step Arm, the late arm and the coverage check share.
-        // The module is tried as Excel reported it and then by its leaf, since
-        // the loaded name is not always the registered path. Our own module is
-        // never a target: its functions are the one add-in whose internals we
-        // control, exactly the population that hides the failures worth
-        // finding. Declines are counted into `count` when it is given; the
-        // coverage check passes nullptr, since it is asking, not arming.
+        // The address Excel calls, from a registration's module and export name. The module is
+        // tried as Excel reported it and then by its leaf, since the loaded name is not always
+        // the registered path. Our own module is never a target. Declines are counted into
+        // `count` when it is given.
         void* ResolveExport(const std::wstring& module, const std::wstring& procedure,
                             Declines* count)
         {
@@ -69,16 +65,8 @@ namespace xll
             return addr;
         }
 
-        // ---- ONE EXPORT, HOOKED ------------------------------------------
-        //
-        // The steps Arm() and ArmLate() share once ResolveExport has given
-        // them an address. What differs stays with the caller: Arm times the
-        // work, ArmLate skips what is already hooked, and the display name is
-        // the caller's too -- Arm asks Excel only once a function has been
-        // hooked, ArmLate was handed it by xlfRegister.
-        //
-        // Returns the Target, or nullptr with `why` set and the decline counted
-        // -- typetext and stub space here, the detour inside Install().
+        // Hooks one export once ResolveExport has its address; shared by Arm and ArmLate.
+        // Returns the Target, or nullptr with `why` set and the decline counted.
         struct HookTiming { long long parseUs = 0, installUs = 0; };
 
         Target* HookExport(void* addr, const std::wstring& procedure, const std::wstring& typeText,
@@ -139,11 +127,8 @@ namespace xll
             const regwatch::Captured& c = caps[i];
             if (c.module[0] == 0 || c.procedure[0] == 0) continue;
 
-            // A REGISTRATION EXCEL REFUSED IS NOT A FUNCTION. Excel declines
-            // any registration attempted DURING a calculation, and the watch
-            // still sees the attempt -- hooking it would patch a function no
-            // formula can name, then report calls under a name Excel never
-            // accepted. The id alone cannot say so: an add-in may ask for no result.
+            // Excel refuses any registration attempted during a calculation, and the watch
+            // still sees the attempt. Hooking it would patch a function no formula can name.
             if (c.refused) { declinedByExcel++; continue; }
 
             void* addr = ResolveExport(c.module, c.procedure, &DeclineCounts());
@@ -232,16 +217,11 @@ namespace xll
         log << "  " << b2 << "\n";
     }
 
-    // WATCH FOR LATE REGISTRATIONS -- ArmLate, off a worker thread. The
-    // cost of sitting on every add-in's C API call was measured before anything
-    // was built on it: undetectable across 96,002 intercepted calls. A failure
-    // to install is NOT a failure to arm; it costs late registrations, which
-    // UnhookedRegistrations still counts at disarm.
+    // Watches for late registrations. A failure to install is not a failure to arm; it costs
+    // late registrations, which UnhookedRegistrations still counts at disarm.
     void InstallRegisterWatch()
     {
-        // An A/B toggle, so the watch's cost can be measured rather than
-        // argued about. The variable exists to take the watch AWAY for a
-        // control run; unset means on.
+        // An A/B toggle that takes the watch away for a control run; unset means on.
         wchar_t off[8]{};
         const bool disabled =
             (GetEnvironmentVariableW(L"XRAYXL_NOREGWATCH", off, 8) > 0 && off[0] == L'1');
@@ -320,11 +300,9 @@ namespace xll
                 continue;
             }
 
-            // The name a user would recognise, not the export name -- Excel
-            // hands it over directly (ResolveFunctionText), so no cache, no
-            // calibration, no heap walk. Falls back to the export name rather
-            // than leaving the row anonymous, and the arm line reports how many
-            // resolved so an unnamed function stays visible.
+            // The name a user would recognise, which Excel hands over directly
+            // (ResolveFunctionText). Falls back to the export name, and the arm line reports
+            // how many resolved.
             const std::wstring real =
                 ResolveFunctionText(r.module, r.procedure, r.typeText);
             NarrowInto(real.empty() ? r.procedure : real, t->name, sizeof(t->name));
@@ -357,9 +335,8 @@ namespace xll
 
         InstallRegisterWatch();
 
-        // The VBA side was armed by the session before this ran, so this early
-        // return costs it nothing: a workbook with VBA and no registered XLL
-        // functions -- the ordinary VBA-only case -- once traced nothing here.
+        // The session arms the VBA side before this runs, so returning early here costs a
+        // VBA-only workbook nothing.
         if (rep.armed == 0)
         {
             DisableAll();
@@ -403,10 +380,8 @@ namespace xll
         return rep;
     }
 
-    // How many registrations exist NOW that we are not hooking. Coverage is
-    // bounded by enumerating once at Arm, which is an acceptable design
-    // property; being SILENT about it is not, so it is asked at Disarm and
-    // reported.
+    // How many registrations exist now that we are not hooking. Arm enumerates once, so the
+    // shortfall is asked for at Disarm and reported.
     int UnhookedRegistrations()
     {
         std::vector<Registration> regs;

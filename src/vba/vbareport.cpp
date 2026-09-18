@@ -138,12 +138,9 @@ namespace vba
             if (p->trailer) { if (p->function[0]) ++named; else ++unnamed; }
         }
         o << " named=" << named << " unnamed=" << unnamed;
-        // A FULL TABLE IS NOT A COUNTER, IT IS A DEGRADATION, and it has to say
-        // so. `named`/`unnamed` describe the table's own slots, so a procedure
-        // that never got one is invisible to both and the line reads healthy
-        // while rows go out with no module and no function name. `tableFull`
-        // counts frame pushes, not procedures, so it cannot say how many
-        // procedures were lost -- only that some were.
+        // A full table is a degradation and has to say so: `named`/`unnamed` count table slots,
+        // so a procedure that never got one is invisible to both. `tableFull` counts frame
+        // pushes, not procedures.
         if (t.tableFull)
             o << " WARNING: the procedure table (" << Procs().Size() << " entries) filled;"
                  " " << t.tableFull << " frame push(es) could not be recorded, so those"

@@ -81,14 +81,13 @@ End Function
         $ref = @($entries | Where-Object { $_.function -eq 'RefV' })
         if ($ref.Count -eq 0) { return 'RefV never traced' }
         $refArg = ArgOf $ref[0] 2
-        # THE DISTINCTION IS SHARPER NOW, not gone. With OBJECTS on, the Range is
-        # described rather than shown as an address -- so the two shapes read:
+        # With OBJECTS on the Range is described, so the two shapes read:
         #
-        #   =TakeV("na", NA())   ->  #N/A                      the parameter HOLDS the error
-        #   =RefV("ref", A1)     ->  Range(...!A1)=#N/A        it holds a RANGE whose value is
+        #    =TakeV("na", NA())   ->  #N/A                      the parameter HOLDS the error
+        #    =RefV("ref", A1)     ->  Range(...!A1)=#N/A        it holds a RANGE whose value is
         #
-        # Both are `IsError` to VBA. Only one of them is an error value, and the
-        # row must not conflate them.
+        # Both are `IsError` to VBA. Only one of them is an error value, and the row must not
+        # conflate them.
         if ($refArg -notmatch "^Range@0x[0-9A-F]+\('?\[") {
             return "a cell REFERENCE passed to a Variant parameter rendered [$refArg]; Excel hands a Range object there, and the trace must say what the parameter holds" }
         if ($refArg -notmatch '#N/A') {

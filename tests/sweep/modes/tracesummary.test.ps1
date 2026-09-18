@@ -1,14 +1,6 @@
-# XRayXL_GetTraceSummary -- what has actually been traced.
-#
-# One row per function that was CALLED, with its call count, from both
-# sources. The counts are not gathered by this function: both sides already
-# keep them on the hot path (Target::calls, Proc::calls), so it only formats
-# what is already true -- building an array on the hot path would break the
-# no-allocation rule.
-#
-# Read LIVE, while armed, from a worksheet. That is safe because entries are
-# only ever added and counters only rise, so a racing reader sees a slightly
-# stale count and never garbage.
+# XRayXL_GetTraceSummary: one row per function that was called, with its call count, from both
+# sources. Read live, while armed, from a worksheet: entries are only added and counters only
+# rise, so a racing reader sees a slightly stale count and never garbage.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

@@ -14,10 +14,9 @@ End Sub
      }
      Trigger=@{ Kind='Run'; Name='RaiseTop'; MayRaise=$true; ExpectDialog=$true }
      Expect={ param($t)
-        # MEASURED: an unhandled Err.Raise under Application.Run DOES raise
-        # Excel's modal VBA dialog, which blocks the calling thread until the
-        # watchdog presses End. Frames abandoned that way fire no exit opcode,
-        # so the stack-pointer backstop is what has to balance them.
+        # An unhandled Err.Raise under Application.Run raises Excel's modal VBA dialog, which
+        # blocks the calling thread until the watchdog presses End. Frames abandoned that way
+        # fire no exit opcode, so the stack-pointer backstop has to balance them.
         if ($t.dialogs -lt 1) { return "expected the modal VBA dialog, none appeared" }
         if ($t.framesOpened -lt 3) { return "expected >=3 frames, got $($t.framesOpened)" }
         $why = Assert-VbaTraced $t 'RaiseTop','RaiseMid','RaiseLeaf'; if ($why) { return $why }

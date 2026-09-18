@@ -2,22 +2,13 @@
 #include <windows.h>
 #include <string>
 
-// Parsing an XLL registration type string into a decode plan.
+// Parses an XLL registration type string into a decode plan. Two rules:
 //
-// Two rules the obvious implementation gets wrong:
+//    1. The Excel-2007 codes are two characters: C% D% F% G% K% O%.
+//    2. Type O / O% is one type code occupying three ABI slots (rows, columns, array),
+//       so the type index and the ABI slot index are different numbers.
 //
-//   1. The Excel-2007 codes are TWO CHARACTERS: C% D% F% G% K% O%. A
-//      per-character walk counts "K%" as two arguments.
-//   2. Type O / O% is ONE type code occupying THREE ABI slots (rows, columns,
-//      array), so the type index and the ABI slot index are different numbers.
-//
-// double f(string, double[], double) registers as "QD%K%E", which a naive walk
-// reads as FIVE arguments instead of three, then reads each from the wrong
-// register. "QQ" and "QEE" come out right by accident, having no '%': the
-// defect bites every signature carrying a string or an array, and no other.
-//
-// Nothing here is specific to any add-in framework -- who generated a
-// registration string is not knowable from here, and does not matter.
+// double f(string, double[], double) registers as "QD%K%E": three arguments, not five.
 
 namespace xll
 {

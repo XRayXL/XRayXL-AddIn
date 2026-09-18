@@ -3,16 +3,9 @@
 #include "core/ascii.h"
 #include "core/text.h"
 
-// BUILDING AN EXCEL ARRAY RESULT, in one place: a fixed array of XLOPER12
-// cells, a parallel pool of pascal-counted strings they point at, and a grid
-// XLOPER wrapping them, as a template sized by the caller.
-//
-// THREAD-LOCAL by construction of the instance. The functions using it are not
-// registered thread-safe, so Excel calls them on its main thread; a thread-local
-// instance stays correct should one ever be. Declare it `__declspec(thread)`.
-//
-// The LAST cell is reserved for Scalar(), so a single-cell reply can never
-// collide with a grid (which fills from cell 0).
+// An Excel array result: a fixed array of XLOPER12 cells, a pool of counted strings they point at,
+// and the grid XLOPER wrapping them. Declare the instance `__declspec(thread)`. The last cell is
+// reserved for Scalar(), so a single-cell reply never collides with a grid.
 namespace app
 {
     template <int Cells, int TextMax>

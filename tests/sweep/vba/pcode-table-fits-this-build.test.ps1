@@ -1,32 +1,15 @@
-# THE LENGTH TABLE IS THE ONE THING NOTHING VERIFIED AT ARM.
+# The p-code length table fits this build. A wrong length does not throw: it steps into the
+# middle of an operand and types the wrong parameter with confidence. Two facts:
 #
-# Every other derived fact refuses when it cannot be established: the dispatch
-# table, the slot set, the hook sites. `kSigLength` was different -- 990 pinned
-# lengths, keyed by slot index, copied in and used. A wrong one does not throw;
-# it steps into the middle of an operand, reads a byte as an opcode, and types
-# the wrong parameter with complete confidence. That happened, across whole
-# families, and the only number that showed it was the clean-walk fraction in a
-# log line nobody was asserting on. This test asserts on it.
+#    1. The opcode set is the one the table describes. The dispatch table's equivalence
+#       partition (for every slot, the lowest slot sharing its handler) names no address,
+#       so it survives rebasing, and the arm log says whether it matched.
+#    2. The table walks real compiler output cleanly. The case runs varied VBA (typed and
+#       Variant arithmetic, arrays, objects, a Property, error handling, loops, string
+#       work) and requires every procedure to walk from offset 0 to a clean exit with no
+#       resynchronisation.
 #
-# TWO FACTS, DELIBERATELY BOTH:
-#
-#   1. The opcode set is the one the table was measured against. The dispatch
-#      table's equivalence partition -- for every slot, the lowest slot sharing
-#      its handler -- is a fingerprint that names no address, so it survives
-#      every rebase and relocation and is identical on both measured builds. If
-#      a future VBE7 renumbers its slots, the structural checks still pass (a
-#      1700-slot run is still there) and every length silently means something
-#      else. This is the check that catches it, and the arm log says which.
-#
-#   2. The table walks real compiler output cleanly. The fingerprint proves the
-#      table APPLIES; only walking proves it is RIGHT. So the case runs varied
-#      VBA -- typed and Variant arithmetic, arrays, objects, a Property, error
-#      handling, loops, string work -- and requires every procedure to walk from
-#      offset 0 to a clean exit with no resynchronisation.
-#
-# AsLoaded, from a saved workbook, because a procedure compiled by Excel on open
-# is what a user has -- and because p-code written by the VBE at edit time is not
-# guaranteed to be what a reopened project holds.
+# AsLoaded, from a saved workbook: p-code compiled by Excel on open is what a user has.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

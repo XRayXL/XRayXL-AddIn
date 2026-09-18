@@ -41,13 +41,11 @@ namespace params
         return wcscmp(b, w) == 0;
     }
 
-    // THE OUTPUT BUFFER SIZE, in bytes, from a number with an optional unit.
-    // A bare number, or M/MB, is megabytes; K/KB is kilobytes -- so
-    // "10", "10M", "10MB" are 10 MB and "10K"/"10KB" are 10 KB, case-
-    // insensitive. 0 is synchronous. A native number argument (no text, no unit)
-    // is megabytes. Returns false if the text is not a number with an accepted
-    // unit; the caller enforces the ring floor and the 4 GB cap.
-    static constexpr double kBufMaxBytes = 4096.0 * 1024.0 * 1024.0;   // 4 GB
+    // The output buffer size in bytes. A bare number or M/MB is megabytes, K/KB is kilobytes,
+    // case-insensitive; 0 is synchronous. False if the text is not a number with an accepted unit,
+    // or is over the cap; the caller enforces the ring floor.
+    static constexpr double kBufMaxBytes = 240.0 * 1024.0 * 1024.0;
+    bool ParseBufferText(const wchar_t* b, unsigned long long& outBytes);
     bool ParseBufferBytes(LPXLOPER12 v, unsigned long long& outBytes)
     {
         double num = 0.0;
@@ -58,6 +56,23 @@ namespace params
         else if (t == xltypeStr)
         {
             wchar_t b[24]; ReadUpper(v, b, 24);
+            return ParseBufferText(b, outBytes);
+        }
+        else return false;
+        if (num < 0) return false;
+        const double bytes0 = num * static_cast<double>(unit);
+        if (bytes0 > kBufMaxBytes) return false;
+        outBytes = static_cast<unsigned long long>(bytes0);
+        return true;
+    }
+
+    // The text half, so the Options dialog and SetTraceParam accept the same words. Upper-cased by the caller.
+    bool ParseBufferText(const wchar_t* b, unsigned long long& outBytes)
+    {
+        if (!b) return false;
+        double num = 0.0;
+        unsigned long long unit = 1024ull * 1024ull;
+        {
             int i = 0; bool dot = false, any = false;
             wchar_t numbuf[24]; int nb = 0;
             while (b[i] && nb < 23 && ((b[i] >= L'0' && b[i] <= L'9') || (b[i] == L'.' && !dot)))
@@ -81,7 +96,6 @@ namespace params
             }
             num = whole + frac;
         }
-        else return false;
         if (num < 0) return false;
         const double bytes = num * static_cast<double>(unit);
         if (bytes > kBufMaxBytes) return false;

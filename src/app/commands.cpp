@@ -1,13 +1,8 @@
-// ARM AND DISARM AS XLL COMMANDS -- reachable from Application.Run, which works
-// from VBA and from any automation client without a window, without focus, and
-// without a COM object of ours anywhere.
+// Arm and disarm as XLL commands, reachable from Application.Run without a window, focus or a COM
+// object of ours. Commands (macro type 2), not functions: a worksheet function runs where most of
+// the Excel API is refused, and arming reads the object model.
 //
-// COMMANDS (macro type 2), NOT FUNCTIONS: a worksheet function runs in a context
-// where most of the Excel API is refused, and arming enumerates registrations
-// and reads the object model. Results go to the log.
-//
-// EVERY EXPORT BELOW IS DECLARED IN XRayXL.def, AND ONLY THERE. Add a
-// function here without adding it there and RegisterCommands reports it FAILED.
+// Every export below is declared in XRayXL.def, and only there.
 #include "core/tracemodes.h"
 #include "session.h"
 #include "exports.h"
@@ -16,6 +11,7 @@
 #include "core/crashlog.h"
 #include "core/excel_api.h"
 #include "core/log.h"
+#include "ui/optionsdlg.h"
 #include "emit/csv.h"
 #include "xlcall.h"
 
@@ -80,6 +76,13 @@ extern "C" int __stdcall XRayXL_Disarm(void)
 {
     core::Log::Note("command: XRayXL_Disarm");
     return RunGuarded(DisarmReturningDrops, -1);
+}
+
+// ---- XRayXL_Options: the Options dialog as a command, so a macro or a test can open it ----
+extern "C" int __stdcall XRayXL_Options(void)
+{
+    core::Log::Note("command: XRayXL_Options");
+    return RunGuarded([] { ui::options::Show(nullptr); return 1; }, 0);
 }
 
 // ---- what the worksheet-callable exports share (exports.h) ----------------
@@ -159,14 +162,8 @@ extern "C" LPXLOPER12 __stdcall XRayXL_FaultProbe(LPXLOPER12 arg)
     return GuardedOper(nullptr, FaultProbeBody, arg);
 }
 
-// ---- XRayXL_IsArmed: ASK BEFORE YOU SET --------------------------------
-//
-// The setters refuse while anything is armed, and that refusal is an
-// echoed string -- fine for a human, awkward for a macro, which had to set
-// something and parse the echo to discover it was not allowed.
-//
-// TRUE if EITHER source is armed, through the same function the setters test,
-// so the two can never disagree.
+// XRayXL_IsArmed: TRUE if either source is armed, by the same test the setters use, so a macro can
+// ask before it sets instead of parsing a refusal.
 namespace
 {
     __declspec(thread) XLOPER12 t_isArmed;
@@ -186,12 +183,9 @@ extern "C" LPXLOPER12 __stdcall XRayXL_IsArmed(void)
 
 namespace app
 {
-    // False if Excel refused the registration, which is worth knowing loudly:
-    // an add-in whose commands did not register looks exactly like one that
-    // loaded fine, until somebody tries to arm it.
-    //
-    // A COMMAND (type 2) takes nothing and returns an int; a FUNCTION (type 1)
-    // takes arguments and returns an echo. Same registration either way.
+    // False if Excel refused the registration; an add-in whose commands did not register otherwise
+    // looks like one that loaded fine. A command (type 2) takes nothing and returns an int; a
+    // function (type 1) takes arguments and returns an echo.
     enum class Reg { Command, Function };
     static bool Register(const std::wstring& dll, const wchar_t* proc, const wchar_t* name,
                          Reg kind, const wchar_t* type = L"QQ", const wchar_t* argNames = L"")
@@ -219,6 +213,8 @@ namespace app
         if (dll.empty()) { core::crashlog::Note("commands: no module path; NOTHING REGISTERED"); return; }
         const bool a = Register(dll, L"XRayXL_Arm",    L"XRayXL_Arm",    Reg::Command);
         const bool d = Register(dll, L"XRayXL_Disarm", L"XRayXL_Disarm", Reg::Command);
+        const bool op = Register(dll, L"XRayXL_Options", L"XRayXL_Options", Reg::Command);
+        (void)op;
         // Source, Name, Value -- three XLOPER12 arguments and an echo.
         const bool sp = Register(dll, L"XRayXL_SetTraceParam", L"XRayXL_SetTraceParam", Reg::Function, L"QQQQ", L"Source,Name,Value");
         // VOLATILE (the trailing !) throughout below: each of these changes

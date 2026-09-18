@@ -14,6 +14,7 @@
         '..\..\..\build\x64\Release\unit\paramparse_test.exe' = @('..\..\..\src', 'paramparse_test')
         '..\..\..\build\x64\Release\unit\pcode_scan_guard_test.exe' = @('..\..\..\src', 'pcode_scan_guard_test')
         '..\..\..\build\x64\Release\unit\proctable_test.exe' = @('..\..\..\src', 'proctable_test')
+        '..\..\..\build\x64\Release\unit\ribbonmodel_test.exe' = @('..\..\..\src', 'ribbonmodel_test')
         '..\..\..\build\x64\Release\unit\ring_stress.exe' = @('..\..\..\src', 'ring_stress')
         '..\..\..\build\x64\Release\unit\rowcsv_test.exe' = @('..\..\..\src', 'rowcsv_test')
         '..\..\..\build\x64\Release\unit\vbaderive_roles_test.exe' = @('..\..\..\src', 'vbaderive_roles_test')

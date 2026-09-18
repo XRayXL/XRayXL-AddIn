@@ -1,17 +1,9 @@
-# A REAL ERROR SWALLOWED BY On Error Resume Next IN THE SAME FRAME.
+# A real error swallowed by On Error Resume Next in the same frame.
 #
-# This is the accepted trade-off of the fix that stopped a cell write being
-# reported as a throw. A benign object-model raise and a real error caught in
-# place by `On Error Resume Next` are indistinguishable AT the
-# raise -- same opcode (497), same registers -- and both let the frame run on to
-# its own exit. So both now read `returned`. For the benign case that is right;
-# for a real error caught in the same frame the truest label is `handled`.
-#
-# This PINS the current behaviour so a future fix (reading Err.Number to tell a
-# real error from a benign raise) flips this test rather than passing silently.
-# It asserts what IS, names what it OUGHT to be, and fails loudly only on the one
-# reading that would be plainly wrong -- `threw`, which would mean the tracer
-# thought the error escaped when the code caught it and carried on.
+# A benign object-model raise and a real error caught in place are indistinguishable at the
+# raise (same opcode, 497, same registers), and both let the frame run on to its own exit, so
+# both read `returned`. This pins that, and fails loudly on `threw`, which would mean the tracer
+# thought the error escaped.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -62,13 +54,10 @@ try {
 
     # The macro DID run to completion (A1 written), so the error was handled.
     Check 'macro-ran-past-the-error' ($wrote -eq 'after') "A1='$wrote' (statement after the swallowed error ran)"
-    # BY DESIGN, NOT A GAP. `outcome` reports errors that PASS UP THE STACK --
-    # who threw, who it unwound through, who caught it. An error raised and
-    # swallowed inside ONE frame never crosses a frame boundary, so there is no
-    # chain to report and the activation did what the column says: it returned.
-    # `handled` is reserved for a frame that caught an error thrown BELOW it,
-    # which is the case a reader needs to find. Reading Err.Number to relabel
-    # this one would add a hot-path COM read to report a non-event.
+    # By design. `outcome` reports errors that pass up the stack. An error raised and swallowed
+    # inside one frame never crosses a frame boundary, and `handled` is reserved for a frame
+    # that caught an error thrown below it. Reading Err.Number to relabel this would add a
+    # hot-path COM read.
     Check 'same-frame-resume-next-reads-returned' ($outcome -eq 'returned') `
           "P2_ResumeNext outcome='$outcome' -- an error that never left its own frame must read 'returned'; 'handled' means a frame caught something thrown below it"
     # The one plainly-wrong reading: the code caught the error and carried on, so

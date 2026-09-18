@@ -45,6 +45,7 @@ decisions.
 | **4. VBA tracing** | `src/vba/` — `vbapatch` + `vbathunk.asm` (swap the slots), `vbapcode` + `vbapcode_tables.h` (the walk, and the pinned lengths it walks by), `vbatrace` (the shadow stack) + `vbareport` (its disarm report), `vbaargs`/`vbaretdecode` (read the values), `vbaidentity`/`vbaproctable`/`vbatrailer` (name the procedure) |
 | **5. Safety** | `src/core/crashlog.*`, `src/core/safemem.h`, and the SEH guards at every hook body |
 | The output | `src/emit/` — `ring` (the buffer), `rowcsv` (formatting), `csv` (the writer) |
+| The UI | `src/ui/` — `ribbon` (the COM add-in that serves the ribbon buttons), `ribbonmodel` (its decisions, with no COM in them) and `ribbonart` (Disarm's picture); `optionsdlg` (the Options dialog), `softdraw`, `softtext` and `glyphs` (its anti-aliased shapes, DirectWrite text and page glyphs), `traceactions` (copy and tail the trace file); `src/core/notify` tells it when state changed elsewhere |
 | Vendored | `src/third_party/` — MinHook, and Microsoft's `xlcall.h` |
 
 **`src/xll/` and `src/vba/` do not include each other.** What they share lives in `src/core/`; what drives both lives in `src/app/`. The `xll` folder is deliberately absent from the include path, so a cross-folder include has to be written out and is easy to grep for.
@@ -106,6 +107,15 @@ What gets traced is set, and the session inspected, through registered functions
 `XRayXL_FaultProbe`, which faults on purpose to test the crash handler, is
 registered only when `XRAYXL_DIAG=1`.
 
+**The ribbon buttons and the Options dialog press these same commands and nothing
+else.** Neither holds state of its own: every control reads live state through
+the same accessors `XRayXL_GetTraceParam` reads, and the enablement rules are the
+command surface's own — the settings are greyed while armed because the setters
+refuse while armed. What the ribbon greys is still checked again in the handler,
+because `getEnabled` says what a user may press and enforces nothing. See
+[The ribbon buttons](#the-ribbon-buttons) and [The Options dialog](#the-options-dialog)
+below. `Application.Run("XRayXL_Options")` opens the dialog without the ribbon.
+
 Three settings take no `Source` — `BUFFERSIZE` (ring size in MB), `BUFFERWHENFULL`
 (`DROP`/`PAUSE`) and `LOGLEVEL` (`DEBUG`/`INFO`/`WARNING`/`ERROR`). Every
 per-source setting defaults to on, with `DEPTH=ALL` for both sources. **The
@@ -118,13 +128,149 @@ no longer describe the run it is attached to. (`LOGLEVEL` is the exception to
 
 | Export | Does |
 |---|---|
-| `xlAutoOpen` | Register the commands and trace-parameter functions. Open the log. |
-| `xlAutoClose` | Close the log. |
+| `xlAutoOpen` | Register the commands and trace-parameter functions. Open the log. Start the ribbon, last. |
+| `xlAutoClose` | Disarm, bring the ribbon down, close the log. |
 | `xlAutoFree12` | Free `XLOPER12`s we allocated. |
 | `xlAddInManagerInfo12` | Name in the add-in manager. |
+| `DllGetClassObject` | The ribbon add-in's class object — this CLSID only. |
+| `DllCanUnloadNow` | Always `S_FALSE`. |
 
-**That is the whole export surface** — the four lifecycle exports, plus the
-registered commands and functions above.
+**That is the whole export surface** — the four lifecycle exports, the two COM
+exports the ribbon needs, and the registered commands and functions above.
+
+## Arming asks Excel for VBA
+
+`VBE7.DLL` is loaded lazily and the VBA side is armed once, at arm time, so
+arming an Excel that has never opened a macro would leave the interpreter
+unpatched for that whole session. `app::Arm` therefore reads the active
+workbook's `VBProject` when VBA tracing is on and VBA is absent: Excel loads and
+initialises the interpreter to answer, and the arm proceeds normally.
+
+**Asked, not `LoadLibrary`d** — the dispatch table is found by the shape of a
+populated structure, and one Excel had never initialised could be scored
+plausibly and patched wrongly. `VBProject` rather than `Application.VBE`, because
+with VBA-project trust off the latter is refused before Excel loads anything
+while the former loads VBA and only then refuses the access; the refusal is
+ignored, since the load was the point. It lives in `app::Arm`, so the command and
+the ribbon behave identically.
+
+## The ribbon buttons
+
+Excel serves ribbon controls only to a **COM add-in**, so the XLL is one — briefly,
+and for nothing else. All of it lives in `src/ui/ribbon.{h,cpp}`; `dllmain.cpp`
+calls `Start` and `Stop` and forwards the two COM exports there, and nothing
+else in the codebase includes it.
+
+**It is the only part of the add-in allowed to fail.** It loads *after* the
+commands are registered, so by the time it is tried everything else already
+works. On any failure it logs, shows a message box **if this Excel has a visible
+window** — a hidden automation Excel gets the log line instead, because a modal
+box in one blocks the process until something times out — and returns.
+`XRAYXL_RIBBON=0` skips it entirely.
+
+**The controls.** Three large buttons — Arm, Disarm, Options — in a group appended
+to Excel's own Developer tab (`idMso='TabDeveloper'`). The ribbon is not a
+settings surface, so the settings live in a dialog. A built-in id that Office
+does not recognise is not a missing button: the whole customisation is ignored.
+A large button likewise needs a real `imageMso`, and an unrecognised one degrades
+it to small text silently. So every id used is one rendered on real Excel, and
+Disarm's picture is made, not named, through `loadImage` (`src/ui/ribbonart.cpp`):
+Excel's `MacroRecord` art re-inked with a square where the red dot was, so it
+matches Arm at any DPI.
+Beyond that,
+`ribbonmodel_test` checks the XML against the rendered list and the handlers, in
+both directions. The decisions — what each control is, whether it is enabled,
+what a setting reads and writes — are in `src/ui/ribbonmodel.{h,cpp}`, with no
+COM in them, which is what lets a test reach them.
+
+**Loading it.** The connect cannot be done from inside `xlAutoOpen` — Excel
+refuses it there — so it is deferred to the first idle turn of the main message
+pump by a `WM_TIMER`. It writes a CLSID, ProgId and Excel add-ins entry under
+`HKEY_CURRENT_USER` (`LoadBehavior=0`), calls `COMAddIns.Update`, connects
+itself through `COMAddIns`, and **deletes all three registry keys immediately** —
+by then Excel has built the object and taken the XML, so they have done their
+whole job, and leaving them would advertise the XLL as an in-proc COM server
+that outlives the add-in. Three attempts, 750 ms apart: the commonest failure is
+an XLL registered before Excel has built the window its object model is reached
+through, which is transient.
+
+**It waits for a workbook.** `COMAddIns` hangs off the `Application` object, and
+an XLL is never handed one: it is reached through the `EXCEL7` window of a
+workbook. On Excel's start screen there is no such window and so no object model
+at all, so the connect polls — patiently, and without a message box — and the
+buttons appear when the first workbook does. Excel would make the first move only
+for an add-ins entry left at `LoadBehavior=3`, which is exactly the registration
+that must not outlive the session.
+
+**Keeping it honest.** A ribbon control's state is *pulled*, never pushed, so a
+change made anywhere else — `Application.Run`, VBA, an automation client — has to
+tell the ribbon to re-ask. Every setter and both arming paths call
+`core::NotifyStateChanged`; the ribbon is the one subscriber, and answers by
+calling `IRibbonUI::Invalidate`. Nothing in `core/` or `app/` knows a ribbon
+exists, and the notification costs an atomic read when nobody has subscribed.
+
+**Shutting it down.** An exception escaping a COM object method does not unwind
+into the caller: `combase` catches it and **terminates the process**, with our
+frames already gone, so the report names `combase` and nothing else. Every entry
+point here that does real work runs under a filter that records the faulting
+address and the module that owns it first. Teardown happens on whichever of
+`OnBeginShutdown`, `OnDisconnection` or `xlAutoClose` arrives first, is written
+to run twice, and waits for nothing. `OnDisconnection` also disarms, because
+`xlAutoClose` is measured *not* to run for an XLL loaded by
+`Application.RegisterXLL` from automation — which would otherwise reach process
+exit with detours still on other people's functions.
+
+The add-in object is never published as `COMAddIn.Object`. An earlier version
+did, could not clear it at disconnection, and so left Excel holding a reference
+to it through teardown; the only thing that needed it was a UI-Automation test
+harness, and `Application.Run` replaced that.
+
+
+## The Options dialog
+
+A plain Win32 dialog (`src/ui/optionsdlg.{h,cpp}`, template in `XRayXL.rc`), made
+to look and behave like Excel's own Options — which is not a standard dialog
+(`NUIDialog`, drawn by Office), so every control here is owner-drawn and every
+colour, radius, size and spacing in the source is a value measured off Excel's.
+Nothing beyond Windows is used.
+
+- **It edits a draft.** The settings are read once when it opens and written once
+  on OK, through `ribbonmodel`'s accessors; Cancel changes nothing. While armed
+  the capture settings are greyed, by the same rule the setters apply.
+- **Shapes** are `src/ui/softdraw.{h,cpp}`: anti-aliased rounded rectangles and
+  strokes rendered from signed distance, because GDI's are aliased. A heavy edge
+  is drawn as Office draws it — two thin rings, not one band.
+- **Text** is `src/ui/softtext.{h,cpp}`: DirectWrite through a Direct2D DC render
+  target, greyscale, in the hinted GDI-compatible mode, which is what Office uses
+  and is pixel-identical to it. `d2d1.dll` and `dwrite.dll` are loaded when the
+  dialog first opens, so the XLL imports neither. There is no second path: if they
+  cannot be loaded the dialog logs why and does not open. The text boxes alone
+  draw their own text, in ClearType, as Excel's do.
+- **Layout is in pixels**, from one table of the 96-DPI positions; dialog units
+  cannot land on Excel's values. Excel's dialog does not scale uniformly — its
+  hairlines and outer margins are the same pixels at 100% and 150%, and a few
+  sizes are neither — so lines step with the whole-number scale and those sizes
+  run between the two measured values.
+- **DPI.** Office calls an add-in with the thread forced to system-DPI-aware, and
+  a window made in that state is bitmap-stretched on a monitor whose scale is not
+  the primary's. So the thread is switched to per-monitor-v2 for as long as the
+  dialog exists, as Microsoft's guidance for Office add-ins describes. A
+  per-monitor-v2 dialog is then rescaled by the dialog manager on a DPI change,
+  from the template's units, which fights a pixel layout; that is switched off
+  (`SetDialogDpiChangeBehavior`) and `WM_DPICHANGED` re-runs the one layout pass.
+  `XRAYXL_UI_DPI`, honoured only under `XRAYXL_DIAG=1`, lays the dialog out as if
+  at that DPI, so scaling can be looked at on a 96-DPI desk.
+- **The About page** shows the repository's own `LICENSE`, compiled in as a
+  resource, and a *Third Party Notices* link that opens
+  `THIRD-PARTY-NOTICES.txt` in Notepad. The link exists only if that file is
+  beside the XLL, which is where a release puts it.
+- **The trace file, its folder and the log file** are read-only boxes (Output and
+  Advanced), each with its own right-click menu in place of the edit control's:
+  *Copy Path* and *Open in File Explorer* for the folder; *Copy Path*, *Reveal in
+  File Explorer* and *Tail* for a file. The trace file has a Tail button too. The work is
+  `src/ui/traceactions.{h,cpp}`. The file's name is known from the moment of
+  arming, so Tail works before the first row is written; it waits for the file.
+- **The page glyphs** are `src/ui/glyphs.{h,cpp}`: hairline drawings in one ink.
 
 ## Export-surface discipline
 

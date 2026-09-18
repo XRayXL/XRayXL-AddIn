@@ -1,9 +1,6 @@
-# ARMING DOES NOT PAGE IN MEMORY NO PROCEDURE HAS USED.
-#
-# The procedure table holds 16,384 entries, about 11 MB, so a large project is
-# never refused. Clearing it by writing zeros brings all of it into Excel's
-# private working set at every arm, whatever the workbook holds. Measured on
-# the first arm of a fresh session, before any procedure has been recorded.
+# Arming does not page in memory no procedure has used. The procedure table holds 16,384
+# entries, about 11 MB, and clearing it by writing zeros would bring all of it into Excel's
+# private working set at every arm. Checked on the first arm of a fresh session.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

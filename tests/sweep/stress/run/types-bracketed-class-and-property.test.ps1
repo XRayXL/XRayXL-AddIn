@@ -51,16 +51,11 @@ End Property
         # NAME is compile-time and is simply not present in the p-code.
         if ($e['ClassParam'].typetext -ne 'Object') {
             return "ClassParam signature was [$($e['ClassParam'].typetext)], expected Object" }
-        # THE PROPERTY LET VALUE-PARAM, AND THE IMPLICIT `Me`.
-        #
-        # MS-VBAL: every method has an implicit ByVal `Me` (the current
-        # object). If that took an argument slot, every class method's
-        # arguments would be shifted by one and `a1` would be the object --
-        # silently wrong on every class in a workbook. It does not: a class
-        # Property Let reports ONE parameter holding the assigned value, so
-        # declared parameters still start at slot 1 exactly as in a standard
-        # module. Asserted exactly, because a lenient check here proves
-        # nothing about the thing worth checking.
+        # The Property Let value parameter, and the implicit `Me`. MS-VBAL gives every method an
+        # implicit ByVal `Me`; if it took an argument slot, every class method's arguments would
+        # be shifted by one. It does not: a class Property Let reports one parameter holding the
+        # assigned value, so declared parameters start at slot 1 as in a standard module.
+        # Asserted exactly.
         if (-not $e.ContainsKey('Val')) { return 'Property Let Val was not traced' }
         if ($e['Val'].typetext -ne 'Long') {
             return "Property Val signature was [$($e['Val'].typetext)], expected Long -- an implicit Me would shift it" }

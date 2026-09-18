@@ -9,47 +9,32 @@ namespace emit
 
 // The trace file, in one of two modes chosen by the buffer size.
 //
-// SIZE 0 -- SYNCHRONOUS. Formatted and written inside the hook, under a lock.
-// Kept only for crash-hunting: every row is on the OS's side of the fence
-// before the call returns, so even an uncatchable __fastfail leaves the trace
-// complete up to the fault. The cost is that one critical section serialises
-// every multithreaded-calc worker for the duration of a syscall -- a profiler
-// measuring through its own lock.
+// Size 0 is synchronous: written inside the hook under a lock, so even a __fastfail leaves the
+// trace complete up to the fault. It serialises every calc worker, so it is for crash-hunting
+// only.
 //
-// SIZE N -- A RING, the production path. The hot path reserves bytes in a
-// lock-free MPSC byte ring (no lock, no syscall) and a drain thread stamps the
-// seq, batches and writes. Rows are packed variable-length, so the whole budget
-// is usable. A process crash loses the in-flight ring; that is the trade size 0
-// exists to avoid.
+// Size N is a ring: the hot path reserves bytes in a lock-free MPSC ring and a drain thread
+// stamps the seq, batches and writes. A process crash loses the in-flight ring.
 //
-// WHEN THE RING FILLS (pauseOnFull): DROP loses the row rather than ever
-// stalling the traced thread; PAUSE waits, so a burst the drain cannot match
-// throttles the calc to the drain's rate. Either way the count is reported OUT
-// OF BAND -- disarm's return value, the status summary, the disarm log line --
-// and never in the file, so a lossy CSV reads as complete on its own.
-//
-// DISARM IS A FENCE: Close() drains and flushes before returning, so a read
-// after disarm is complete at any size.
+// When the ring fills, DROP loses the row and PAUSE waits for the drain. The count is reported
+// out of band, never in the file. Close() drains and flushes before returning.
 
 namespace csv
 {
-    // Opens the trace and writes the header. csv owns the file, so it owns the
-    // NAME -- no caller passes a path.
+    // Opens the trace and writes the header. Counted: each armed source opens and closes, and
+    // only the last close tears down. The first opener's settings win.
     //
-    // Counted: each armed source opens and closes; only the last close tears down.
-    //
-    // `bufferBytes` 0 is synchronous; N rounds DOWN to a power-of-two byte
-    // capacity, reported by RingCapacityBytes(). False only if a NEW file could
-    // not be created. The settings of the FIRST opener win: the second is
-    // joining a session in progress, not configuring one.
+    // `bufferBytes` 0 is synchronous; N rounds down to a power of two, reported by
+    // RingCapacityBytes(). False only if a new file could not be created.
     bool Open(std::size_t bufferBytes, bool pauseOnFull);
     void Close();
     bool IsOpen();      // armed, not "the file exists" -- creation is lazy
 
-    // What was written. Empty until the first record creates the file;
-    // survives Close so the disarm report can still name it. Returns a COPY --
-    // the drain may set it as it creates the file.
+    // The trace's name, decided at Open although the file is created lazily. A copy: the drain may set it.
     std::wstring Path();
+
+    // Whether the file has been created yet; Path() names it either way.
+    bool FileExists();
 
     long long RowsWritten();
 
@@ -62,14 +47,9 @@ namespace csv
     // One span sequence for both sources: increasing, unique for the life of the process.
     unsigned long long NextSpan();
 
-    // csv::Row and the CSV format live in rowcsv.h; re-exported here so
-    // callers still reach `csv::Row` through csv.h.
-    //
-    // `seq` and `input` are NOT Row fields -- they are prefixes stamped at
-    // write: `seq` by the writer (dense, file order), `input` by the
-    // producer at emit, so its holes are where rows were dropped.
-    // WriteRow materialises the row before returning; nothing in Row outlives
-    // the call.
+    // `seq` and `input` are not Row fields: they are prefixes stamped at write, `seq` by the
+    // writer and `input` by the producer, so its holes are where rows were dropped. WriteRow
+    // materialises the row before returning.
     void WriteRow(const Row& row);
 
     // Frees this thread's row scratch. Called as a thread ends, never at process exit.

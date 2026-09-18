@@ -1,41 +1,19 @@
-# `caller` REPRODUCES Application.Caller. That is the whole specification.
+# `caller` reproduces Application.Caller. That is the whole specification.
 #
-# The tracer asks Excel12(xlfCaller) ONCE PER ACTIVATION, at frame-open, on the
-# traced thread -- so a row is supposed to say what Application.Caller would
-# have returned had that call been the first line of the procedure. This test
-# does not predict what Excel answers; it INSERTS THAT CALL and compares.
+# The tracer asks Excel12(xlfCaller) once per activation, at frame-open, so a row says what
+# Application.Caller would have returned on the first line of the procedure. This test inserts
+# that call and compares, rather than predicting Excel's answer: the documented table says
+# nothing about nesting or event handlers.
 #
-# WHY DIFFERENTIAL RATHER THAN EXPECTED-VALUE. Application.Caller's documented
-# table says nothing about nesting, and two of the cases below are undocumented:
-# what an event handler sees when the user edits a cell, and what it sees when
-# the edit came from a macro that was itself invoked some other way. Writing
-# down a guess and asserting it would test the guess. Asserting AGREEMENT tests
-# the property we actually want, and it keeps testing it if Excel ever changes
-# its mind.
+# Each procedure reads Application.Caller in its own body, not in a helper, since whether the
+# VBA call stack affects the answer is part of the question.
 #
-# THE CAPTURE IS INLINE, ON PURPOSE. Each procedure reads Application.Caller in
-# its own body and only then hands the value to a formatter. Reading it inside a
-# helper would beg the question this test exists to answer -- whether the VBA
-# call stack affects the answer at all.
+# Not covered: a macro on a button. Application.Caller names the shape only for a real mouse
+# click, which this project will not simulate.
 #
-# NOT COVERED, AND IT CANNOT BE: a macro on a BUTTON. Application.Caller names
-# the shape only for a real mouse click -- confirmed against the literature, no
-# object-model route exists -- and this project will not simulate one on a
-# machine somebody is using (src/xll/caller.h). The button branch of the
-# decoder is therefore unexercised by this suite, and says so here rather than
-# looking like coverage.
-#
-# WHAT THIS MEASURED, first run: the caller is INHERITED, not reset per
-# activation. Auto_Open reported object:[<book>]<sheet> and the Worksheet_Change
-# nested inside it reported THE SAME STRING. So a handler that fires because an
-# outer macro touched a cell reports the OUTER macro's caller, not its own
-# absence of one -- which means a button-driven edit would name the button in
-# the event handler's row. That prediction now rests on a measurement of the
-# same mechanism rather than on the click we cannot make.
-#
-# Case 4 CANNOT show this and is kept only as a regression guard: its outer and
-# inner callers are both #REF!, so comparing them says "inherited" whatever the
-# truth is. The verdict is drawn from case 5.
+# The caller is inherited, not reset per activation: a Worksheet_Change nested inside Auto_Open
+# reports Auto_Open's caller. Case 4 cannot show this, because its outer and inner callers are
+# both #REF!; the verdict is drawn from case 5.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -174,12 +152,9 @@ try {
         $r = @($rows | Where-Object { $_.function -eq $proc })
         if ($r.Count -eq 0) { return $null }
         $x = $r[0]
-        # TRANSLATED INTO THE VBA FORMATTER'S VOCABULARY, deliberately. The VBA
-        # side keeps its own words -- that is what makes it an independent
-        # witness -- so the adapter is here, not there. It says `object:` for
-        # any string (the trace's kind is `name`, because a string may be a
-        # shape OR an Auto macro's sheet), and a bare `array` for anything
-        # IsArray covers, which includes a toolbar and a menu.
+        # Translated into the VBA formatter's vocabulary here, so the VBA side stays an
+        # independent witness. It says `object:` for any string (the trace's kind is `name`) and
+        # a bare `array` for anything IsArray covers, which includes a toolbar and a menu.
         if ($x.caller -eq 'cell') { return "cell|$(Get-CallerCell $x)|$(Get-CallerSheet $x)" }
         if ($x.caller -eq 'name') { return "object:$($x.callerref)" }
         if ($x.caller -in @('toolbar','menu','array')) { return 'array' }
@@ -204,16 +179,9 @@ try {
         return $false
     }
 
-    # RESULTS GO TO A SCRIPT VARIABLE, NOT DOWN THE PIPELINE.
-    #
-    # This returned @{Tracer=..;Vba=..} and callers wrote `$x = Compare-Proc ...`.
-    # In PowerShell a function's return value is EVERYTHING it wrote to the
-    # pipeline -- so the assignment swallowed the `STRETCH case=` line that Check
-    # emits, and seven of the ten cases never reached the harness. It reported
-    # cases=3/3 and passed. The assertions still ran (Check keeps its own
-    # failure count, so a real disagreement would still fail the test) but
-    # their verdicts were invisible, and $x.Vba worked only by accident,
-    # through member enumeration over the resulting array.
+    # Results go to a script variable, not down the pipeline: a function's return value is
+    # everything it wrote to the pipeline, so an assignment would swallow the `STRETCH case=`
+    # lines Check emits.
     $script:lastCmp = $null
     function Compare-Proc($res, [string]$proc, [string]$label) {
         $t = Get-TracerCaller $res.Rows $proc
@@ -258,18 +226,13 @@ try {
     $both = ($null -ne $outer.Tracer) -and ($null -ne $inner.Tracer)
     Check 'nested-both-frames-traced' $both "outer='$($outer.Tracer)' inner='$($inner.Tracer)'"
 
-    # ---- 5. THE DISCRIMINATING NESTING, if Excel plays along ---------------
-    # Case 4 cannot separate "inherited" from "reset", because Application.Run
-    # and an event handler give the SAME answer (#REF!) -- both hypotheses
-    # predict the same rows. Auto_Open is documented to answer with the document
-    # NAME, so if that context survives into the nested Change, the inner frame
-    # says the document and the question is settled; if it says none:ref, it is
-    # settled the other way.
+    # 5. The discriminating nesting. Application.Run and an event handler both answer #REF!, so
+    # case 4 cannot separate "inherited" from "reset". Auto_Open is documented to answer with
+    # the document name, so the nested Change settles it either way.
     #
-    # RunAutoMacros because Workbooks.Open from automation does NOT run
-    # Auto_Open. Whether the caller context is set the same way through that
-    # route is exactly what is unknown, so a null answer here is a result, not a
-    # failure -- the ASSERTION is only ever that the tracer agrees with the VBA.
+    # RunAutoMacros, because Workbooks.Open from automation does not run Auto_Open. A null
+    # answer here is a result, not a failure: the assertion is only that the tracer agrees with
+    # the VBA.
     $r5 = Invoke-Trigger {
         $app.EnableEvents = $true
         try { $wb.RunAutoMacros(1) } catch { }      # 1 = xlAutoOpen
@@ -288,13 +251,8 @@ try {
     }
     Write-XRayObservation 'auto-open-is-a-distinctive-outer-caller' $aoDetail
 
-    # ---- WHAT EXCEL ACTUALLY DOES, recorded either way ---------------------
-    # Not an assertion: the answers to the two undocumented questions, written
-    # into the result so the run itself is the measurement.
-    # THE VERDICT COMES FROM CASE 5, NOT CASE 4. Case 4's outer and inner are
-    # both `none:ref`, so comparing them says "inherited" whatever the truth is
-    # -- a vacuous match. Only a DISTINCTIVE outer caller can tell the two
-    # hypotheses apart, which is the entire reason case 5 exists.
+    # What Excel does, recorded either way; not an assertion. The verdict comes from case 5:
+    # only a distinctive outer caller can tell the two hypotheses apart.
     if ($discriminated) {
         $verdict = if ($aoInner.Vba -eq $ao.Vba) {
             "INHERITED -- the nested handler reports the OUTER invocation's caller ('$($ao.Vba)')"

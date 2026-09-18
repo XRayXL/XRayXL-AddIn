@@ -1,31 +1,15 @@
-# EVERY DECLARED PARAMETER TYPE, BOTH WAYS -- ByVal and ByRef, one case each.
+# Every declared parameter type, ByVal and ByRef: twelve types, twenty-four cases, so the whole
+# grid is asserted rather than the entries some procedure happened to reach.
 #
-# The ByRef load family and the ByRef STORE family were both filled in a type at
-# a time, each entry found only when somebody happened to write a procedure that
-# used it. `String&` (743) was missing for as long as it was for exactly that
-# reason, and its absence was invisible: a parameter with no type renders its
-# raw qword, which looks like a decoding limit rather than a gap in a table.
+# ByVal and ByRef of the same declared type reach the decoder differently (one slot holds the
+# value, the other a pointer, through opcodes from different families) but describe the same
+# planted value, so they must render the same text.
 #
-# So this asserts the WHOLE GRID rather than the entries that happened to be
-# reached. Twelve declared types, ByVal and ByRef, twenty-four cases.
+# The signature is asserted separately and loosely: the declared type must appear in it, with
+# `&` for ByRef. That is what says the p-code walk recovered the type, since a BSTR and a
+# SAFEARRAY prove themselves whatever the opcode table knows.
 #
-# THE ASSERTION THAT MATTERS IS AGREEMENT BETWEEN THE TWO MODES. ByVal and ByRef
-# of the same declared type reach the decoder completely differently -- one slot
-# holds the value, the other holds a pointer to it, and they are different
-# opcodes from different families -- but they describe the SAME planted value,
-# so they must render the same text. That is a real invariant, and it does not
-# depend on this file predicting any opcode number or signature string.
-#
-# The signature is asserted separately and loosely (the declared type must
-# appear in it, with `&` for ByRef) because that is what says the p-code walk
-# recovered the type rather than the value validating itself: a BSTR and a
-# SAFEARRAY prove themselves whatever the opcode table knows, so a value-only
-# check would pass with the type table empty.
-#
-# TWO TYPES DELIBERATELY EXPECTED TO SHARE: `Date` is a `Double` and `Boolean`
-# is an `Integer` -- one opcode each, and the trace reports what VBA holds
-# rather than inventing a distinct name. Asserted as such so a future change
-# that split them would be noticed rather than silently accepted.
+# `Date` is a `Double` and `Boolean` is an `Integer`: one opcode each, asserted as such.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -457,13 +441,9 @@ try {
         for ($i = 0; $i -lt $r.Count; $i++) { Write-Output ('  {0,-14} {1}' -f "$f[$i]", $r[$i].args) }
     }
 
-    # A record has no scalar value, so its ADDRESS is the honest answer -- the
-    # same shape an object gets, so it can be followed between rows. It must be a
-    # plausible address, not merely address-shaped: the record's packed members
-    # (X=55, Y=66 -> 0x4200000037) match `^udt@0x...$` too.
-    #
-    # A stack address is 8-aligned and well above the first page; packed
-    # member data is neither, and that is what separates them.
+    # A record has no scalar value, so its address is the answer, the same shape an object gets.
+    # It must be a plausible address: a stack address is 8-aligned and well above the first
+    # page, while the record's packed members (X=55, Y=66 -> 0x4200000037) are neither.
     $udtVal = ValOf 'RUdt'
     $udtOk = $false
     if ($udtVal -match '^udt@0x([0-9A-F]+)$') {

@@ -1,22 +1,12 @@
-# WHAT THE RETURN TYPE DOES TO THE ARGUMENTS.
+# What the return type does to the arguments.
 #
-# Every other parameter case in this suite is a `Sub`, and that is why two
-# defects lived here for months. A Function returning `Variant` is handed the
-# address of the caller's result VARIANT in an argument slot -- the calling
-# convention pushes it last, so it arrives first -- and the walker counted it as
-# argument 1: `argcount` one too high, a leading `?` in the signature, and every
-# real argument reported one place to the right. It is not an exotic shape. It
-# is what a UDF is.
+# A Function returning `Variant` is handed the address of the caller's result VARIANT in an
+# argument slot, which arrives first and is not an argument. An omitted `Optional` is itself a
+# VARIANT carrying VT_ERROR / DISP_E_PARAMNOTFOUND, and must read `Missing` even when the p-code
+# declares the slot a Variant.
 #
-# The second defect rode on the same blind spot. An omitted `Optional` IS a
-# VARIANT carrying VT_ERROR / DISP_E_PARAMNOTFOUND, so when the p-code declared
-# the slot a Variant the Variant decoder rendered the marker's payload,
-# `Error(0x80020004)`, instead of the `Missing` the row model promises. The
-# existing case only ever asked it of a slot the p-code left untyped.
-#
-# So this asserts the SAME parameter list behind three different return types.
-# The arguments must read identically in all three: the return type is not
-# supposed to be visible from the argument side at all.
+# So this asserts the same parameter list behind three different return types. The arguments
+# must read identically in all three.
 $case = @{ Name='frame-returns'
      Setup=@'
 Public Function T_RetVar(ByVal a As Long, Optional b As Variant) As Variant

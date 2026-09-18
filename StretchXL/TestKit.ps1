@@ -344,16 +344,11 @@ function Complete-Test {
             }
         }
         else {
-            # Close the workbooks this test opened, then release the kit's refs.
-            # A reused session keeps its process, not its books: a book left
-            # open is recalculated into the next test's trace.
-            #
-            # Every book except the baseline goes, identified by name, because
-            # an unsaved Workbooks.Add() looks just like the baseline by shape,
-            # and an X-click close (one window) would leave it holding Excel open.
-            # Without a known baseline the "has a Path" rule applies, since
-            # closing the baseline would remove the manager's bind window.
-            # DisplayAlerts is off only around the closes.
+            # Close the workbooks this test opened, then release the kit's refs: a book left
+            # open is recalculated into the next test's trace. Every book except the baseline
+            # goes, identified by name, since an unsaved Workbooks.Add() looks just like the
+            # baseline. Without a known baseline the "has a Path" rule applies. DisplayAlerts is
+            # off only around the closes.
             try {
                 $ap = $sess.App
                 if ($ap) {

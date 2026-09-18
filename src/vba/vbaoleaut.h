@@ -2,41 +2,14 @@
 #include <cstdint>
 #include "../core/safemem.h"
 
-// OLE AUTOMATION VALUE TYPES -- VARIANT, SAFEARRAY, BSTR -- and the facts about
-// them that BOTH decoders need. It exists because two of those facts had been
-// written down twice and drifted apart; a fact about a documented structure
-// belongs in one place, and this is the place.
+// OLE Automation value types (VARIANT, SAFEARRAY, BSTR) and the facts about them both decoders
+// need, including the one SAFEARRAY header reader.
 //
-// THE ONE SAFEARRAY HEADER READER, for both the argument column and the return
-// column.
+// cbElements is range-checked, not held to the scalar widths: a record array's element is
+// sizeof(the UDT). The element width is checked against the element type instead.
 //
-// There were two, hand-maintained, and they had drifted: the same bytes could be
-// accepted as an array by one and refused by the other. That is the shape of the
-// `two-bstr-readers` defect already in the register, in a second structure --
-// which is the argument for one reader rather than two careful ones.
-//
-// WHAT EACH SIDE HAD THAT THE OTHER DID NOT, all of it kept here:
-//
-//   from the ARGUMENT reader   fFeatures masked against the documented bits;
-//                              per-dimension and total element bounds; pvData
-//                              required when the array is non-empty; the VT read
-//                              as 32 bits and range-checked; and the one real
-//                              cross-check -- element WIDTH against element TYPE.
-//   from the RETURN reader     a caller's `vtHint`, for an array reached through
-//                              a VARIANT that already named its element type; and
-//                              the refusal when no element type can be determined.
-//
-// ONE DIFFERENCE WAS NOT A MERGE. The return reader restricted `cbElements` to
-// {1,2,4,8,16,24}, which looks stricter than the argument reader's 1..65536 and
-// is not: a RECORD array's element is `sizeof(the UDT)` and can be any size, so
-// that test silently refused UDT arrays. The exact set is a crude proxy for "the
-// element size matches a known scalar width", and the width-against-type check
-// below does that properly, so the range is kept and the proxy dropped.
-//
-// BOUNDS ARE STORED IN RAW rgsabound ORDER -- rgsabound[0] is the LAST declared
-// dimension. Renderers walk them backwards to print declaration order, and that
-// reversal stays where it is read rather than being baked in here, so the stored
-// form matches the structure Windows documents.
+// Bounds are stored in raw rgsabound order, where rgsabound[0] is the last declared dimension;
+// renderers walk them backwards.
 
 namespace vba
 {
@@ -55,12 +28,9 @@ namespace vba
     constexpr std::uint16_t kVT_ERROR      = 10;
     constexpr std::uint32_t kParamNotFound = 0x80020004u;
 
-    // THE VBA NAME FOR A VARTYPE, and the only table of them. nullptr for one it
-    // cannot name. It does NOT mask VT_ARRAY or VT_BYREF off: those bits change
-    // what the value IS.
-    //
-    // 9 and 13 both say "Object": VBA draws no distinction between VT_DISPATCH
-    // and VT_UNKNOWN in anything a user can see.
+    // The VBA name for a VARTYPE; nullptr for one it cannot name. VT_ARRAY and VT_BYREF are not
+    // masked off: those bits change what the value is. 9 and 13 both say "Object", as VBA draws
+    // no distinction a user can see.
     inline const char* VtName(std::uint16_t vt)
     {
         switch (vt)
@@ -107,14 +77,9 @@ namespace vba
         }
     }
 
-    // DOES NAMING THE HELD TYPE ADD ANYTHING? A Variant's rendered value already
-    // carries its own type for some kinds -- a quoted string, `Error(0x...)`,
-    // `Nothing`, an array's element name -- and `Empty`/`Null` have no value to
-    // qualify. Saying it twice reads as two facts.
-    //
-    // This is a POLICY about rendering, kept apart from VtName, which is a FACT
-    // about the type. It replaced a second hand-copied name table that had to
-    // agree with VtName and was maintained separately.
+    // Does naming the held type add anything? A Variant's rendered value already shows its type
+    // for some kinds (a quoted string, `Error(0x...)`, `Nothing`, an array's element name), and
+    // `Empty`/`Null` have no value to qualify.
     inline bool VtNameWorthSaying(std::uint16_t base)
     {
         switch (base)
@@ -160,12 +125,9 @@ namespace vba
         return vt;
     }
 
-    // `vtHint` is the element type a caller already knew -- from the VARIANT that
-    // held this array -- and is used ONLY when the descriptor does not carry one.
-    // Pass 0 when there is no such knowledge.
-    //
-    // Returns false for anything that does not prove itself an array. A structure
-    // merely SHAPED like one is a guess, and the guess is what this refuses.
+    // `vtHint` is the element type a caller already knew from the VARIANT that held this array,
+    // used only when the descriptor carries none; pass 0 otherwise. False for anything that
+    // does not prove itself an array.
     inline bool ReadSafeArrayHeader(std::uint64_t psa, std::uint16_t vtHint, SaInfo& s)
     {
         s = SaInfo{};

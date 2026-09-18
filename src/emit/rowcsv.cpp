@@ -6,15 +6,12 @@ namespace emit
 
 namespace csv
 {
-    // THE HEADER AND THE COLUMN ORDER, TOGETHER, so changing one puts the other
-    // on the next line. docs/TraceRowModel.md quotes the header byte for byte
-    // and the suites' reader refuses a file that differs.
+    // The header and the column order together. docs/TraceRowModel.md quotes the header byte
+    // for byte and the suites' reader refuses a file that differs.
     //
-    // TWO SEQUENCE NUMBERS: `seq` is the WRITER's -- dense and strictly
-    // increasing in file order, the reliable one -- and `input` is the
-    // PRODUCER's, so a dropped row consumes a value that never lands and its
-    // HOLES show where data was lost. Both are prefixes added outside Fragment,
-    // so kColumns below counts only kind..trust.
+    // `seq` is the writer's, dense in file order; `input` is the producer's, so its holes show
+    // where rows were dropped. Both are prefixes added outside Fragment, so kColumns counts
+    // only kind..trust.
     const char* const kHeader =
         "seq,input,kind,source,span,parent,depth,thread,qpc,module,function,proc,typetext,"
         "caller,callerref,argcount,args,ret,rettype,outcome,ticks,trust\r\n";

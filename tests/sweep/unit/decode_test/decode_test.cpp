@@ -1,14 +1,12 @@
-// UNIT TEST for the shared value decoder (vba/vbaretdecode.cpp), off Excel.
+// Unit test for the shared value decoder (vba/vbaretdecode.cpp), off Excel.
 //
-// The decoder turns Excel/COM VARIANT/SAFEARRAY/BSTR bytes into trace text, and
-// its readers (core/safemem.h) read absolute addresses in THIS process under SEH.
-// So the test needs no seam and no Excel: build GENUINE COM structures with
-// OleAut32 (the same layout Excel produces), pass their real addresses to the
-// decoder, and assert the rendering -- including the nested-array render-in-place
-// that a per-level buffer used to cut at 512 bytes.
+// The decoder's readers (core/safemem.h) read absolute addresses in this process under SEH, so
+// the test needs no seam: it builds genuine COM structures with OleAut32, passes their real
+// addresses to the decoder and asserts the rendering, including a nested array rendered in
+// place.
 //
-// Built by XRayXL.sln into build\x64\Release\unit\, with vbaobject.cpp, which
-// the decoder calls to describe an object.
+// Built by XRayXL.sln into build\x64\Release\unit\, with vbaobject.cpp, which the decoder calls
+// to describe an object.
 
 #include "vbaretdecode.h"
 
@@ -97,9 +95,8 @@ int main()
         VariantClear(&v);
     }
 
-    // ---- a NESTED array: Variant[]{ Long[]{10,20}, Long[]{30,40} } -----------
-    // The render-in-place decoder must render the inner arrays IN FULL,
-    // not cut them to "[...]" as the old fixed per-level 512-byte temp would.
+    // A nested array: Variant[]{ Long[]{10,20}, Long[]{30,40} }. The inner arrays must render
+    // in full, not as "[...]".
     {
         SAFEARRAY* outer = MakeVector(VT_VARIANT, 2);
         VARIANT* ov = nullptr; SafeArrayAccessData(outer, reinterpret_cast<void**>(&ov));

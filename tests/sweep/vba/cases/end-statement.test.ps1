@@ -33,12 +33,9 @@ End Sub
         if ($t.framesOpened -ne $t.framesClosed) {
             return "LEAK across End: opened $($t.framesOpened), closed $($t.framesClosed)" }
 
-        # THE ONLY PLACE `abandoned` COMES FROM. Excel cannot take a running
-        # procedure away -- a user break arrives as trappable error 18 and an
-        # XLL is merely ASKED to stop, via xlAbort -- so the End opcode is the
-        # single trigger, and this is the single test that pins the word. Left
-        # unasserted, a writer that quietly said `returned` here would claim a
-        # return that never happened and nothing would notice.
+        # The only place `abandoned` comes from. Excel cannot take a running procedure away (a
+        # user break arrives as trappable error 18, and an XLL is merely asked to stop), so the
+        # End opcode is the single trigger and this is the test that pins the word.
         $ended = @($t.rows | Where-Object { $_.kind -eq 'exit' -and $_.function -like 'T_End*' })
         if ($ended.Count -lt 3) { return "expected 3 killed frames, saw $($ended.Count)" }
         $notAbandoned = @($ended | Where-Object { $_.outcome -ne 'abandoned' })

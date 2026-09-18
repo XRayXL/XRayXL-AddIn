@@ -1,11 +1,6 @@
-# INTEGRATION: every xll case on ONE SHEET, in ONE armed calculation.
-#
-# The per-case tests prove each decode in isolation; this proves them in a
-# BURST -- every traced formula calculating in one pass, adjacent rows
-# exercising span allocation and cell attribution against each other. Keyed by
-# CELL, not by function name: two cases deliberately share a function, and
-# keying by name once made one case assert against the other's row.
-# The case count is whatever tests/sweep/xll/cases holds, so it cannot go stale.
+# Integration: every xll case on one sheet, in one armed calculation, so adjacent rows exercise
+# span allocation and cell attribution against each other. Keyed by cell, not by function name,
+# since two cases share a function. The case count is whatever tests/sweep/xll/cases holds.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

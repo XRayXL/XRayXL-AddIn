@@ -1,18 +1,11 @@
-# VBA RETURN VALUES: EVERY DECLARED TYPE, ARRAYS, VARIANTS, AND THE WHOLE STACK.
+# VBA return values: every declared type, arrays, Variants, and the whole stack.
 #
-# The acceptance test for VBA return values. A VBA exit row carries the result of the
-# activation it closes, at ANY depth and whatever called it: the exit opcode
-# names the return kind (a Sub leaves through its own slot, so no caller
-# gate is needed), scalars and typed arrays are read from [R14-8], and a
-# Variant from the live VARIANT at [R14-0x18]. All measured against planted
-# answers, offline.
+# A VBA exit row carries the result of the activation it closes, at any depth: the exit opcode
+# names the return kind, scalars and typed arrays are read from [R14-8], and a Variant from the
+# live VARIANT at [R14-0x18].
 #
-# BOTH DIRECTIONS ARE ASSERTED. Each cell-visible value is checked against
-# the number EXCEL ITSELF put in the cell, so a plausible wrong decode still
-# fails; values at depth 2 and 3 are checked against their planted
-# constants. And every unsupported shape must come back EMPTY -- a regression
-# that starts "helpfully" filling those in is the defect this file exists to
-# catch. A typed String is live at the exit, and asserted.
+# Each cell-visible value is checked against the number Excel itself put in the cell; values at
+# depth 2 and 3 against their planted constants. Every unsupported shape must come back empty.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -355,10 +348,8 @@ End Function
         Check "$($v.Fn)-variant-array-decoded" (($x.ret -eq $v.Want) -and ($x.rettype -eq 'Variant')) ("ret='{0}' rettype='{1}' expected {2}" -f $x.ret, $x.rettype, $v.Want)
     }
 
-    # ---- OBJECTS: the pointer, rendered as the argument decoder renders it ----
-    # `<Class>@0x<addr>` since OBJECTS: the class replaces the word `object`
-    # and the ADDRESS stays, because that is what follows one object from an
-    # argument to a result. With OBJECTS off it is literally `object`.
+    # Objects: `<Class>@0x<addr>` with OBJECTS on, literally `object` with it off. The address
+    # is what follows one object from an argument to a result.
     $obj = '^[A-Za-z_][A-Za-z0-9_]*@0x[0-9A-Fa-f]+$'
     $x = Get-Return 'R_Obj'
     if (-not $x) { Check 'R_Obj-has-exit-row' $false 'no paired exit row' }

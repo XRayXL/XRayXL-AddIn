@@ -1,20 +1,15 @@
-# AN EARLY `Exit` MUST NOT TRUNCATE THE SIGNATURE, IN ANY KIND OF PROCEDURE.
+# An early `Exit` must not truncate the signature, in any kind of procedure.
 #
-# `Exit Sub`, `Exit Function` and `Exit Property` emit the same opcode as the
-# real end of the procedure, so a walk that stops at a terminator stops at the
-# first early return -- and every parameter whose first use came after it reads
-# `?unseen`, silently, because stopping there looks like a clean finish. A real
-# workbook showed 6,335 of them.
+# `Exit Sub`, `Exit Function` and `Exit Property` emit the same opcode as the real end of the
+# procedure, so a walk that stops at the first terminator leaves every parameter first used
+# after it as `?unseen`.
 #
-# The exit opcode is chosen by RETURN TYPE, not by the kind of procedure: a Sub
-# leaves by 635, a Double or Date by 627, Long 625, Boolean 624, String 630,
-# Object 631, an array 634, Variant 952, and a class member by 1664 when it
-# returns a value or 504 when it does not. That is why this case is a table of
-# return types rather than one example: pinning the four exits a simple probe
-# happens to meet would leave the other six stopping the walk.
+# The exit opcode is chosen by return type: a Sub leaves by 635, a Double or Date by 627, Long
+# 625, Boolean 624, String 630, Object 631, an array 634, Variant 952, and a class member by
+# 1664 when it returns a value or 504 when it does not. Hence a table of return types.
 #
-# Every procedure here takes `a` (tested before the exit) and `b` (used ONLY
-# after it), so a truncated walk shows up as `b` unresolved while `a` is typed.
+# Every procedure takes `a` (tested before the exit) and `b` (used only after it), so a
+# truncated walk shows up as `b` unresolved while `a` is typed.
 $case = @{ Name='early-exit-types'
      ClassSetup=@'
 Public Val As Double

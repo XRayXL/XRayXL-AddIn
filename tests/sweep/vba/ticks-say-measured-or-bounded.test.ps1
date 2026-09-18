@@ -1,30 +1,19 @@
-# IS `ticks` A MEASUREMENT, OR AN UPPER BOUND? -- the row says which.
+# Is `ticks` a measurement, or an upper bound? The row says which.
 #
-# CloseFrame stamps a row with the time it RUNS, and only one of its callers
-# runs when the activation actually ends:
+# CloseFrame stamps a row with the time it runs, and only one of its callers runs when the
+# activation actually ends:
 #
-#   exit opcode        fires at the end of the activation      -> a MEASUREMENT
-#   stack-pointer      fires at the NEXT statement, at a        -> an UPPER BOUND
-#     backstop         higher rsp
-#   flush at disarm    fires at the end of the session          -> an UPPER BOUND
+#    exit opcode        fires at the end of the activation      -> a MEASUREMENT
+#    stack-pointer      fires at the NEXT statement, at a        -> an UPPER BOUND
+#      backstop         higher rsp
+#    flush at disarm    fires at the end of the session          -> an UPPER BOUND
 #
-# WHY IT MATTERS MOST WHERE A USER IS LOOKING. A fully unhandled unwind fires
-# ZERO exit opcodes (docs/TraceRowModel.md, closed=): the frames balance only
-# because the stack pointer closes them on the way past. So every frame in a
-# blown-up call chain was closed by the backstop, and its `ticks` ran until
-# whatever happened next -- which for a tool that exists to find slow things
-# made abandoned calls look like the slowest in the trace. `qpc` is late for the
-# same reason, and that is what orders the merged XLL/VBA timeline.
+# A fully unhandled unwind fires no exit opcodes (docs/TraceRowModel.md), so every frame in a
+# blown-up call chain is closed by the backstop. The number is kept: the frame ended at or
+# before that instant.
 #
-# THE NUMBER IS KEPT, NOT BLANKED. Unlike the XLL side's `async`, where the
-# duration measures a dispatch and means nothing, this is a true upper bound --
-# the frame ended at or before that instant. A bound is a fact; presenting it as
-# a measurement was the defect.
-#
-# THE UNHANDLED ERROR IS RAISED FROM A CELL, NOT Application.Run. An unhandled
-# error under Run opens Excel's modal VBA error dialog and waits for a human --
-# that cost a test window once (StretchXL/StretchXL.md). The same error in a
-# FORMULA becomes #VALUE! and unwinds silently. Same unwind, no dialog.
+# The unhandled error is raised from a cell, not Application.Run, which would open Excel's modal
+# VBA error dialog. In a formula it becomes #VALUE! and unwinds silently.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -138,18 +127,9 @@ try {
     Check 'the-thrower-is-still-named' ($threw.Count -ge 1) `
           ("threw: " + (@($threw | ForEach-Object { $_.function }) -join ','))
 
-    # ---- AN UNCAUGHT ERROR MUST NOT CONTAMINATE WHAT COMES AFTER ----------
-    #
-    # Found by this test on its first run. Nothing catches the A2 error, so it
-    # unwound past every frame and left VBA -- but the in-flight flag stayed
-    # set, and the CLEAN chain in A1 then closed while an error was notionally
-    # still live and was stamped T_Fine=unwound, T_FineInner=unwound. A
-    # confident wrong answer about code that did nothing wrong, and it would
-    # have gone on mislabelling every activation for the rest of the session.
-    #
-    # The chain ends when the shadow stack empties: there is nothing left that
-    # could handle it. Asserted on the CLEAN rows, because those are the ones a
-    # regression would silently relabel.
+    # An uncaught error must not contaminate what comes after. Nothing catches the A2 error, so
+    # the chain ends when the shadow stack empties, and the in-flight flag must clear with it.
+    # Asserted on the clean rows in A1, which would otherwise read `unwound`.
     $fineWrong = @($fineRows | Where-Object { $_.outcome -ne 'returned' })
     Check 'an-uncaught-error-does-not-leak-into-later-calls' ($fineWrong.Count -eq 0) `
           ("clean rows: " + (@($fineRows | ForEach-Object { "$($_.function): ticks=$($_.ticks) trust=$($_.trust)" }) -join ' | '))

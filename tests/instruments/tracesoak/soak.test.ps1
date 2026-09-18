@@ -1,48 +1,19 @@
-# WHAT ONE ARMING COSTS OVER A LONG SESSION.
+# What one arming costs over a long session: arm once, then recalculate a complex sheet whose
+# formulas reach XLL functions and VBA in another workbook. A per-call, per-row or per-span leak
+# shows here.
 #
-# THE USE CASE THIS EXISTS FOR: arm once, then work. A complex sheet whose
-# formulas reach XLL functions and VBA in ANOTHER workbook, recalculated and
-# driven by macros for as long as someone would actually leave it armed. If
-# the tracer leaks per traced call, per emitted row, or per span, it shows
-# here and nowhere else in this repository.
+# The same workload runs twice in the same process, disarmed and then armed, and the difference
+# in growth per cycle is reported, because Excel grows on its own. Both phases follow a
+# discarded warm-up. The control runs first and Excel's growth decelerates, so the attributed
+# figure is conservative; a negative one means "not distinguishable from Excel".
 #
-# WHY NOTHING ELSE ANSWERS IT. The suites are correctness tests: arm, do one
-# bounded thing, assert, close -- far too short for a trend. tests\instruments\vbahammer
-# measures survival across THOUSANDS OF ARM/DISARM CYCLES, which is not a
-# user workload, and its loop does one recalc per arm, so its "per 1000 arms"
-# figure cannot separate "leaks when you arm" from "leaks while tracing".
-# Those are different defects. This measures the second one.
+# No threshold is asserted; it fails only if Excel dies or the workload cannot run. It is paced,
+# because flat out it finds the limits of VBA's string space rather than anything about the
+# tracer.
 #
-# THE CONTROL ARM IS THE POINT. Excel grows on its own: a long recalc session
-# leaks with no add-in involved. Measuring only the armed phase would book
-# Excel's own growth to XRayXL. So the SAME workload runs twice in the SAME
-# process -- once with the add-in loaded but DISARMED, once armed -- and what
-# is reported is the difference. Agreement between probes only proves what
-# the probes vary; the thing varied here is arming, and nothing else.
-#
-# WHAT IS COMPARED IS THE SLOPE, not the level. Absolute memory is dominated
-# by warm-up, so both phases are preceded by a discarded warm-up and the
-# result is growth PER CYCLE, measured over each phase separately.
-#
-# KNOWN BIAS, stated rather than hidden: the control runs first, so it absorbs
-# whatever warm-up the warm-up phase did not. Excel's own growth decelerates,
-# so the control's slope is if anything the steeper one and the attributed
-# figure is CONSERVATIVE -- it understates a real leak rather than inventing
-# one. A negative attributed figure means "not distinguishable from Excel",
-# not "the tracer frees memory".
-#
-# NO THRESHOLD IS ASSERTED. There is no honest one until there is a baseline,
-# and this is the thing that produces the baseline. It fails only if Excel
-# dies or the workload cannot run.
-#
-# IT IS PACED. Flat out, this workload runs hundreds of full rebuilds a second
-# and finds the limits of the worker's memory and VBA's string space rather
-# than anything about the tracer. A soak has to be long in wall clock at a rate
-# a person could produce.
-#
-#   XRAY_SOAK_SECONDS   seconds per measured phase (default 180; two phases)
-#   XRAY_SOAK_WARMUP    discarded warm-up seconds  (default 60)
-#   XRAY_SOAK_CYCLE_MS  minimum ms between cycles  (default 200, i.e. 5/sec)
+#    XRAY_SOAK_SECONDS   seconds per measured phase (default 180; two phases)
+#    XRAY_SOAK_WARMUP    discarded warm-up seconds  (default 60)
+#    XRAY_SOAK_CYCLE_MS  minimum ms between cycles  (default 200, i.e. 5/sec)
 
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\..\sweep\_xray_common.ps1')
@@ -164,38 +135,23 @@ End Sub
 
     $threads = Enable-MultiThreadedCalc $app
 
-    # ---- THE WORKLOAD -----------------------------------------------------
-    # ONE CYCLE = one full recalculation of both books, plus one macro run.
-    # Identical in both phases: the cycle is the denominator, so anything that
-    # made a cycle differ between phases would invalidate the comparison.
-    # REBUILD, not Calculate. CalculateFull serves a non-volatile UDF from its
-    # last result, so the cross-workbook and XLL formulas would run once and
-    # the complex sheet would sit idle.
-    # NOTHING LEAVES THIS FUNCTION. It is called bare inside the phase loop, so
-    # anything it emitted would pile up in the phase's output -- tens of
-    # thousands of objects over a long phase, enough to exhaust the worker.
+    # One cycle = one full recalculation of both books plus one macro run, identical in both
+    # phases. Rebuild, not Calculate: CalculateFull serves a non-volatile UDF from its last
+    # result. Emits nothing, since it is called bare inside the phase loop and output would pile
+    # up.
     function Invoke-SoakCycle {
         $t0 = [Diagnostics.Stopwatch]::StartNew()
         [void]$app.CalculateFullRebuild()
         [void]$app.Run('MA_Work')
-        # PACE FROM THE START OF THE CYCLE, not by sleeping a fixed amount
-        # after it: the armed phase's cycles take longer, and a fixed sleep
-        # would make the two phases differ by the sleep as well as by the
-        # work. Sleeping only the remainder holds the REQUESTED rate for both
-        # until tracing makes a cycle cost more than the interval, and the
-        # reported cycle counts show when that happened.
+        # Pace from the start of the cycle: a fixed sleep after it would make the phases differ
+        # by the sleep as well as the work.
         $rest = $CycleMs - $t0.ElapsedMilliseconds
         if ($rest -gt 0) { Start-Sleep -Milliseconds $rest }
     }
 
-    # Runs cycles for $Seconds and returns first/last samples plus the count.
-    # The FIRST sample is taken after the first $SampleEvery cycles, not at
-    # zero: the opening cycles of a phase carry its own transient, and a slope
-    # measured from a transient is a slope measured from noise.
-    # RETURNS ONE OBJECT AND EMITS NOTHING. Progress is carried back in the
-    # object and printed by the caller: a function that both streams progress
-    # and returns a result hands the caller an array with the result buried in
-    # it, which works by accident until the stream is long enough to matter.
+    # Runs cycles for $Seconds and returns first/last samples plus the count. The first sample
+    # is taken after the first $SampleEvery cycles, past the phase's own transient. Returns one
+    # object and emits nothing; the caller prints progress.
     function Measure-SoakPhase([string]$Label, [int]$Seconds) {
         $sw = [Diagnostics.Stopwatch]::StartNew()
         $n = 0; $first = $null; $last = $null

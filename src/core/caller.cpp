@@ -48,35 +48,21 @@ namespace core
             return 0.0;
         }
 
-        // ONE ELEMENT OF A TOOLBAR OR MENU ARRAY, BY ITS OWN TYPE.
-        //
-        // These were rendered with NumOf and "%g", which returns 0.0 for
-        // anything that is not a number -- silently. The SDK says a toolbar
-        // answer is "the toolbar number for built-in toolbars OR THE TOOLBAR
-        // NAME for custom toolbars", so a custom bar puts a STRING in that slot
-        // and it printed as `0`: the name lost, and indistinguishable from a
-        // real zero. A reader could not tell `toolbar:1/0` with a numeric 1
-        // from the same text produced by flattening a string.
-        //
-        // Quoted when it is a string, so the two can never read alike.
+        // One element of a toolbar or menu array, by its own type. A custom toolbar puts its name
+        // where a built-in one puts a number, so a string is quoted and never reads as a number.
 
-        // EXCEL'S OWN QUOTING RULE, measured rather than recalled.
+        // Excel's own quoting rule:
         //
-        //   [Plain1.xlsx]Sheet1!A1        a dot alone does NOT quote -- so an
-        //                                 ordinary saved workbook is bare
-        //   [Under_score.xlsx]Under_1!A1  underscore is safe
-        //   [Plain5.xlsx]A.B!A1           a dot in the SHEET is safe too
-        //   '[has-hyphen.xlsx]Sheet1'!A1  a hyphen quotes, either side
-        //   '[has space.xlsx]Sheet1'!A1   so does a space
-        //   '[Digits123.xlsx]1Sheet'!A1   and a SHEET NAME STARTING WITH A DIGIT
-        //   '[Plain4.xlsx]Bob''s'!A1  an apostrophe is DOUBLED inside
+        //    [Plain1.xlsx]Sheet1!A1        a dot alone does not quote
+        //    [Under_score.xlsx]Under_1!A1  underscore is safe
+        //    [Plain5.xlsx]A.B!A1           a dot in the sheet is safe too
+        //    '[has-hyphen.xlsx]Sheet1'!A1  a hyphen quotes, either side
+        //    '[has space.xlsx]Sheet1'!A1   so does a space
+        //    '[Digits123.xlsx]1Sheet'!A1   and a sheet name starting with a digit
+        //    '[Plain4.xlsx]Bob''s'!A1      an apostrophe is doubled inside
         //
-        // [measured: a planted-name probe over each of those shapes]
-        //
-        // The safe set is deliberately the one that was MEASURED and no wider.
-        // Quoting where Excel would not is a cosmetic difference in a reference
-        // that still pastes back; failing to quote where Excel would produces one
-        // that does not, so the doubt falls on the side of the quote.
+        // The safe set is no wider than this. Quoting too much still pastes back; quoting too
+        // little does not.
         void QuoteSheetPrefix(const char* prefix, char* out, int cap)
         {
             const char* sheet = std::strchr(prefix, ']');
@@ -155,11 +141,8 @@ namespace core
 
         const XLOPER12& caller = *static_cast<const XLOPER12*>(callerOper);
         const int t = caller.xltype & kXlTypeMask;
-        // BOTH CORNERS. A legacy CSE array formula entered across B2:D4 is ONE
-        // formula occupying nine cells and xlfCaller names all of them. Reading
-        // only rwFirst/colFirst wrote that as "B2" -- a cell no formula occupies
-        // on its own, indistinguishable from a real single-cell caller, and
-        // wrong in the direction that reads as a fact.
+        // Both corners: a CSE array formula across B2:D4 is one formula and xlfCaller names all
+        // nine cells, so the first corner alone would name a cell no formula occupies.
         int r0 = -1, c0 = -1, r1 = -1, c1 = -1;
 
         switch (t)
@@ -204,11 +187,8 @@ namespace core
 
         case xltypeMulti:
         {
-            // TWO elements is a toolbar tool {toolbar, position}; FOUR is a menu
-            // command {bar ID, menu, submenu, command}. Anything else is a shape
-            // this decoder has not seen, and is written as its size rather than
-            // forced into one of the two.
-            // [published: XLL SDK, xlfCaller]
+            // Two elements is a toolbar tool {toolbar, position}; four is a menu command {bar ID,
+            // menu, submenu, command}. Any other shape is written as its size.
             const int n = caller.val.array.rows * caller.val.array.columns;
             const XLOPER12* a = caller.val.array.lparray;
             if (a && (n == 2 || n == 4))
@@ -253,20 +233,14 @@ namespace core
 
         if (r0 < 0 || c0 < 0)
         {
-            // A REFERENCE THAT NAMES NOTHING: a zero-count SRef/Ref reaches
-            // here having set nothing, since the switch above fills `what` only
-            // for the non-reference kinds. caller.h promises `what` is never
-            // empty, and an empty one reads in the trace exactly like "we never
-            // asked". [measured]
+            // A zero-count SRef/Ref reaches here having set nothing, and caller.h promises `what`
+            // is never empty.
             if (!out.kind[0]) Say(out, "none", "emptyref");
             return;
         }
 
-        // "B2", or "B2:D4" when the caller spans more than one cell. The widest
-        // this can be is two far-corner refs and a colon -- "XFC1048575:XFD1048576",
-        // 21 characters -- so ref[32] holds any range Excel can produce. Refs are
-        // ASCII, so characters and bytes are the same count here; the SHEET name
-        // is the field where they are not.
+        // "B2", or "B2:D4" when the caller spans more than one cell. The widest is
+        // "XFC1048575:XFD1048576", 21 characters, so ref[32] holds any range.
         char ref[32];
         RefText(r0, c0, ref, sizeof(ref));
         if (r1 > r0 || c1 > c0)
@@ -278,11 +252,8 @@ namespace core
             _snprintf_s(ref, _TRUNCATE, "%s", span);
         }
 
-        // THE ROW-0 COLUMN-0 TRAP (caller.h): Excel calls functions for its
-        // own purposes with no calling cell, and those arrive as row 0 column 0
-        // with no sheet, decoding arithmetically to a confident "A1". A real
-        // calculation names a real sheet, so the cell is written only when the
-        // sheet resolved.
+        // Excel's own calls arrive as row 0 column 0 with no sheet, which decodes to a confident
+        // "A1", so the cell is written only when the sheet resolved.
         if (sheetName && sheetName[0])
         {
             // ONE FIELD: "[Book1]Sheet1!B2", or "…!B2:D4" for a CSE range, and
@@ -328,12 +299,8 @@ namespace core
                 if ((nm.xltype & kXlTypeMask) == xltypeStr)
                 {
                     Utf8From(nm.val.str, sheet, sizeof(sheet));
-                    // "Excel gave us a name we could not hold" is not the same
-                    // fact as "there is no sheet", and both arrive here as an
-                    // empty string. WideCharToMultiByte does not truncate on an
-                    // undersized buffer -- it fails -- so a name too long to
-                    // convert would otherwise be reported as a sheetless
-                    // caller, which is a false negative about a real cell.
+                    // WideCharToMultiByte fails rather than truncates, so a name too long to
+                    // convert would otherwise read as a sheetless caller.
                     nameDidNotFit = (nm.val.str != nullptr && nm.val.str[0] > 0 && sheet[0] == 0);
                 }
                 Excel12(xlFree, nullptr, 1, &nm);

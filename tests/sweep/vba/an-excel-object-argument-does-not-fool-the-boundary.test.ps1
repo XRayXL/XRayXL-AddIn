@@ -1,15 +1,8 @@
-# AN EXCEL OBJECT PASSED TO A VBA METHOD MUST NOT FOOL THE EXCEL-BOUNDARY SCAN.
+# An Excel object passed to a VBA method must not look like Excel starting the frame.
 #
-# The boundary that ends an error chain -- "Excel started this frame" -- is found
-# by scanning the stack between a VBA frame and its parent for a return address in
-# EXCEL.EXE (D92). A VBA-to-VBA call that PASSES an Excel object (a Range) could
-# leave an EXCEL.EXE pointer in that gap through the automation machinery. If the
-# scan mistook that for Excel starting the frame, the method's error would read
-# `unhandled` and stop, instead of reaching the VBA handler that catches it.
-#
-# So: a Sub with a handler calls a class method, passing Range("A1"); the method
-# raises. The error MUST cross back to the Sub. The method reads `threw`, the Sub
-# reads `handled` -- never `unhandled`.
+# A Sub with a handler calls a class method, passing Range("A1"), and the method raises. The
+# error must cross back to the Sub: the method reads `threw` and the Sub `handled`, never
+# `unhandled`.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

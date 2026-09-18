@@ -1,12 +1,9 @@
-// UNIT TEST for emit::csv::Close (emit/csv.cpp): the output ring must outlive
-// every producer that saw the session armed. Writer threads deposit rows
-// nonstop while the session is opened and closed in a loop. A 16 KB PAUSE ring
-// keeps them inside TryDeposit waiting for room, which is where Close freed it.
+// Unit test for emit::csv::Close (emit/csv.cpp): the output ring must outlive every producer
+// that saw the session armed. Writer threads deposit rows nonstop while the session is opened
+// and closed in a loop; a 16 KB PAUSE ring keeps them inside TryDeposit waiting for room.
 //
-// A STRESS TEST, NOT A DEMONSTRATION. It passed before the fix as well: freed
-// heap stays mapped, so a late deposit corrupts memory rather than faulting, and
-// nothing here can see that. It guards against a close that faults or hangs
-// under writers. Needs no Excel; the log and the output root are stubbed.
+// It guards against a close that faults or hangs under writers. It cannot see a late deposit
+// into freed heap, which stays mapped. Needs no Excel; the log and the output root are stubbed.
 //
 // Built by XRayXL.sln into build\x64\Release\unit\.
 
@@ -86,8 +83,8 @@ int main()
         emit::csv::Close();
     }
 
-    // A SYNCHRONOUS SESSION AFTER A DROPPING RING REPORTS NO DROPS. The counts survive
-    // Close for the summary, and once leaked into the next session's Disarm result.
+    // A synchronous session after a dropping ring reports no drops: the counts survive Close
+    // for the summary and must not reach the next session's Disarm result.
     emit::csv::Open(16 * 1024, false);
     for (int i = 0; i < 5000 && emit::csv::RingDrops() == 0; ++i) Sleep(1);
     const long long ringDrops = emit::csv::RingDrops();

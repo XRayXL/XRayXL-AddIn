@@ -143,26 +143,18 @@ namespace xll
             FinishWide(out, outSize, wbuf, len, cut);
         }
 
-        // ONE TABLE OF SPELLINGS, shared with the VBA column (core/excelerr.h):
-        // the same seven errors reach the tracer through two numberings and were
-        // named twice. `#ERR?` stays here rather than in the table -- a code
-        // outside Excel's set is not an Excel error, and this column has to print
-        // SOMETHING in a fixed-width grid, where the VBA column can print the
-        // number instead.
+        // Spellings shared with the VBA column (core/excelerr.h). `#ERR?` stays here: this
+        // column must print something in a fixed-width grid, where the VBA column can print the
+        // number.
         const char* ErrName(int e)
         {
             const char* n = core::ExcelErrName(e);
             return n ? n : "#ERR?";
         }
 
-        // ---- ONE GRID RENDERER ---------------------------------------------
-        //
-        // "<Elem>[1..<rows>,1..<cols>]{a,b,...}", row by row -- the shape a VBA
-        // array reads in -- for an FP, an FP12, a type-O triple and an XLOPER
-        // array alike. `cell` returns false when it cannot render
-        // element i, which ends the grid honestly: the marker compares against
-        // what was SHOWN, so a stopped read and a capped count report the same
-        // way, in the same words the VBA column uses.
+        // One grid renderer: "<Elem>[1..<rows>,1..<cols>]{a,b,...}", row by row, for an FP, an
+        // FP12, a type-O triple and an XLOPER array alike. `cell` returns false when it cannot
+        // render element i, which ends the grid.
         template <class CellFn>
         void RenderGrid(const char* elem, long long rows, long long cols, char* out, int outSize, CellFn cell)
         {
@@ -320,13 +312,9 @@ namespace xll
             Put(out, outSize, tmp);
         }
 
-        // ---- ONE VALUE, WHATEVER SLOT IT CAME FROM -------------------------
-        //
-        // An argument and a return of the same code decode identically; only
-        // the register differs, so both describers hand the bits here. `bits`
-        // is the integer register or stack slot, `dbl` the XMM one. False for
-        // a kind with no value of its own, which the describers name
-        // themselves. Empty output means the value could not be established.
+        // One value, whatever slot it came from: `bits` is the integer register or stack slot,
+        // `dbl` the XMM one. False for a kind with no value of its own. Empty output means the
+        // value could not be established.
         bool DescribeValue(Kind k, ULONG64 bits, double dbl, char* out, int outSize)
         {
             const void* p = reinterpret_cast<const void*>(bits);

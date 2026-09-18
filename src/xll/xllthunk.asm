@@ -4,22 +4,14 @@
 ; record the entry, call the ORIGINAL function, record the exit, and return
 ; whatever it returned.
 ;
-; WHY A REAL CALL, AND NOT A REWRITTEN RETURN ADDRESS.
-; Taking the exit edge by overwriting the callee's return address creates a CET
-; shadow-stack exposure: a mismatch is STATUS_STACK_BUFFER_OVERRUN, a fast-fail
-; that bypasses SEH, so no guard and no circuit breaker can see it. Here we
-; perform an ordinary `call`, so the shadow stack records our push and matches
-; it on `ret`. The hazard is avoided by construction rather than by an exemption
-; we must be careful not to disturb.
+; A real call, not a rewritten return address: overwriting the return address mismatches the CET
+; shadow stack, which is a fast-fail that bypasses SEH. An ordinary `call` is matched on `ret`.
 ;
-; STACK ARGUMENTS. Beyond the fourth, arguments live on the caller's stack. We
-; know the count from the registration string before arming, so we copy exactly
-; that many rather than a guessed maximum -- reading past the caller's frame is
-; how a tracer walks off the end of a stack near its limit.
+; Stack arguments: the count comes from the registration string, so exactly that many are
+; copied. Reading past the caller's frame can walk off the end of a stack near its limit.
 ;
-; REGISTERS. Only volatile registers are used for scratch (rax, rcx, rdx, r8,
-; r9, r10, r11). rbx and rbp are the two non-volatiles we take, and both are
-; pushed. Using rsi/rdi for the copy loop would silently corrupt the caller.
+; Registers: only volatile registers are scratch. rbx and rbp are taken and pushed; rsi/rdi
+; would corrupt the caller.
 ;
 ; FRAME. A frame pointer, with the outgoing area sized per call to the signature
 ; (up to Excel's 255 arguments). .setframe keeps it unwindable.
@@ -39,18 +31,13 @@
 ;   rsp+000h   32 bytes shadow space for the calls we make
 ;   rsp+020h   outgoing stack arguments, as many as this signature has
 ;
-; WHERE THE CALLER'S FIFTH ARGUMENT IS, derived rather than guessed:
+; Where the caller's fifth argument is:
 ;   at our entry            rsp_e -> [rsp_e+00h] return address
 ;                                    [rsp_e+08h..27h] 32 bytes of SHADOW SPACE
 ;                                    [rsp_e+28h] argument 4   <-- the fifth
 ;   push rbp, push rbx      rsp = rsp_e - 10h
 ;   sub rsp, 68h            rsp = rsp_e - 78h = rbp
 ;   so argument 4 sits at   rbp + 78h + 28h = rbp + 0A0h
-;
-; The first version of this used 248h -- forgetting the shadow space -- and so
-; read the RETURN ADDRESS as argument five, and forwarded that. The callee got
-; a garbage fifth argument and the trace printed 6.95155e-310. Caught by
-; tests\sweep\xll\cases\01-TxStackArgs.test.ps1, which exists for exactly this.
 ;
 ; Outgoing, the symmetry is different and must not be copied from the above:
 ; our `call` pushes 8 more, so the callee reads its argument 4 at ITS rsp+28h,

@@ -1,24 +1,13 @@
-# REAL-WORLD PARAMETER SHAPES, SAMPLED.
+# Real-world parameter shapes, sampled.
 #
-# GENERATED, NOT HAND-WRITTEN, and then COMMITTED rather than regenerated: the
-# suite needs no Office add-ins and no network to run, and regenerating it
-# against a moved upstream would churn the file for no gain, so replacing it is
-# a deliberate act and not a build step.
+# Generated once and committed, so the suite needs no Office add-ins and no network. The
+# signatures are real, mined from VBA source text in Office's own add-ins and open-source
+# libraries; the bodies, callers and argument values are ours. Only the shape of the parameter
+# list matters, since the argument walker decodes the frame at entry and never looks at the
+# body.
 #
-# The SIGNATURES are real, mined from VBA source text -- Office's own shipped
-# add-ins and open-source VBA libraries. The bodies, the callers and the
-# argument values are OURS, so nobody else's code runs: only the shape of the
-# parameter list is real, which is the part the argument walker consumes, since
-# it decodes the frame at entry and never looks at the body.
-#
-# Why this exists as a suite case at all: every VBA parameter case here was
-# written by us, and measured against real code that was a narrow diet -- 8
-# `Optional` parameters against 406 in Office's own add-ins, 10 implicit-ByRef
-# against 568. Two defects lived in that gap. 31 shapes are chosen from
-# 35213 mined ones by greedy set cover over the features that change the
-# FRAME -- return type, passing mode, declared type, Optional supplied and
-# omitted -- so the widest reach fits in one module: 31 procedures cover what
-# 35213 would, and the case stays a case rather than becoming a sweep.
+# 31 shapes are chosen from 35213 by greedy set cover over the features that change the frame:
+# return type, passing mode, declared type, Optional supplied and omitted.
 $case = @{ Name='frame-wild'
      Setup=@'
 Public gaBool() As Boolean
@@ -457,9 +446,7 @@ End Sub
         if ($t.faults -gt 0) { return "$($t.faults) guarded reads faulted" }
         $e = @{}
         foreach ($r in $t.rows) {
-            # 'W_*', not 'W_0*': the names are zero-padded to four digits, so
-            # W_1007 exists and a 'W_0*' filter silently dropped it -- which
-            # this case reported as "never entered", not as a filter bug.
+            # 'W_*', not 'W_0*': the names are zero-padded to four digits, so W_1007 exists.
             if ($r.kind -eq 'entry' -and $r.source -eq 'VBA' -and $r.function -like 'W_*') {
                 if (-not $e.ContainsKey($r.function)) { $e[$r.function] = @() }
                 $e[$r.function] += $r }

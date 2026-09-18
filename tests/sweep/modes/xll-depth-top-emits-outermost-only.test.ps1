@@ -1,19 +1,11 @@
-# XLL DEPTH=TOP emits only the OUTERMOST call.
+# XLL DEPTH=TOP emits only the outermost call. The echo alone proves nothing: a setter whose
+# effect cannot be observed reads exactly like one that works, so the rows are asserted.
 #
-# This case exists because the setting shipped INERT. XRayXL_SetTraceParam
-# accepted "XLL DEPTH TOP", echoed it and logged it, but the XLL side only
-# ever asked XllEnabled() -- GetDepth != Off -- so TOP and ALL behaved
-# identically. The echo was asserted; the behaviour was not. That is exactly
-# the failure the trace-mode surface exists to prevent -- a setter whose effect
-# cannot be observed reads exactly like one that works.
+# TxCallsBack2 re-enters Excel through xlUDF twice, so one formula gives three genuinely nested
+# XLL frames. ALL emits all three; TOP emits one.
 #
-# TxCallsBack2 re-enters Excel through xlUDF twice, so the same formula gives
-# genuinely nested XLL frames (measured at depth 3 by the breakit nesting
-# case). ALL emits all three; TOP emits one.
-#
-# AND THE COUNTS MUST NOT THIN. A filter changes what is EMITTED, never what
-# is COUNTED -- so XRayXL_GetTraceSummary must still show every one of the
-# three functions as called, even the two whose rows were dropped.
+# The counts must not thin: a filter changes what is emitted, never what is counted, so
+# XRayXL_GetTraceSummary must still show all three functions as called.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

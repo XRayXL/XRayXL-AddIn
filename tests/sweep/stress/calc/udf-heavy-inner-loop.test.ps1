@@ -17,8 +17,8 @@ End Function
         if ($t.statements -lt 400000) { return "expected >=400k statements, got $($t.statements)" }
         if ($t.faults -gt 0) { return "$($t.faults) guarded reads faulted under load" }
         $null }
-     # Each cell evaluated twice by the Calc trigger (measured, see end-statement-midchain), in an
-     # order Excel decides. The loop sums 1..20000 = 200010000, so Heavy(n) returns 200010000 + n.
+     # Each cell is evaluated twice by the Calc trigger, in an order Excel decides. The loop
+     # sums 1..20000 = 200010000, so Heavy(n) returns 200010000 + n.
      CallsAnyOrder=$true
      Calls=@(1..2 | ForEach-Object { 1..20 | ForEach-Object {
         @{ Function='Heavy'; Args="a1:Double=$_"; Ret="$(200010000 + $_)"; RetType='Double'

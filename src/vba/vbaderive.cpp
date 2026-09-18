@@ -12,12 +12,8 @@ namespace vba
 {
     namespace
     {
-        // ---------------------------------------------------------------
-        // Slot indices. NOT addresses -- see the header for why these are a
-        // legitimate constant and a derived address is not. Byte offsets from
-        // the prior art divided by 8; recorded here in slot form because that
-        // is the unit that is portable.
-        // ---------------------------------------------------------------
+        // Slot indices, not addresses: byte offsets divided by 8, because the slot is the
+        // portable unit.
         constexpr std::uint32_t kBosSlot[2] = { 0x1338 / 8, 0x3368 / 8 };   // 615, 1645
 
         constexpr std::uint32_t kExitSlot[] = {
@@ -31,43 +27,22 @@ namespace vba
         // How the exit slots group into runs that must share one handler; only multi-slot groups can fail.
         constexpr int kExitGroup[] = { 1,3,1,1,1,1,5,1,1,1,1,1,1,1,1,1,1,1,1 };
 
-        // THE RAISE OPCODE, which makes error attribution possible. 497 is the
-        // one that actually RAISES and fires four times per Err.Raise
-        // [measured]; two neighbours are decoys -- 718 fires when a
-        // handler is merely SET UP, 1272 on an Err object access.
-        //
-        // ITS PORTABILITY IS CHECKED, not assumed: the BoS pair and the exit
-        // slots are corpus-grade and 497 never was. Its fingerprint is handler
-        // SHARING -- 497 holds a handler of its own on every build measured,
-        // while its decoys sit in a five-slot group.
-        // [measured]
+        // The raise opcode, which makes error attribution possible. 497 is the one that raises,
+        // four times per Err.Raise; 718 fires when a handler is set up and 1272 on an Err
+        // object access. Its fingerprint is a handler of its own, where the other two share a
+        // five-slot group.
         constexpr std::uint32_t kRaiseSlot = 0xF88 / 8;   // 497
 
-        // THE `End` OPCODE, which tears the whole VBA session down. Microsoft's
-        // own PDB names slot 619 `lblEX_End`, between `lblEX_Debug` (618) and the
-        // GoSub `lblEX_Return` (620) this project already pins -- so the two
-        // slots either side of it are independently confirmed by what the tracer
-        // does with them today.
-        //
-        // ITS PORTABILITY IS INHERITED, NOT ASSUMED. The fingerprint is the same
-        // one the raise slot uses -- 619 holds a handler of its OWN -- and being
-        // a singleton is EXACTLY what the equivalence partition records. That
-        // partition is byte-identical across the corpus and is already verified
-        // at arm time (`kPartitionHash`), so a build where 619 stopped being a
-        // singleton could not match the hash. The check below is still made
-        // rather than argued, because a fingerprint that is never read is not a
-        // check.
+        // The `End` opcode, which tears the whole VBA session down. Microsoft's PDB names slot
+        // 619 `lblEX_End`. It holds a handler of its own, which kPartitionHash already pins;
+        // the check below is still made.
         constexpr std::uint32_t kEndSlot = 619;
 
         constexpr std::uint32_t kExpectedSlots = 1700;
 
-        // THE OPCODE SET WE MEASURED. FNV-1a 64 over the dispatch table's
-        // equivalence partition (for every slot, the lowest slot sharing its
-        // handler). Byte-identical on 7.1.10.33 and 7.1.11.58, whose handler
-        // addresses agree nowhere. A mismatch does not mean the table is the
-        // wrong run -- the structural checks answer that -- it means the opcode
-        // SET is not the one `kSigLength` describes, so the lengths do not apply.
-        // [measured]
+        // FNV-1a 64 over the dispatch table's equivalence partition (for every slot, the lowest
+        // slot sharing its handler). A mismatch means the opcode set is not the one kSigLength
+        // describes, so the lengths do not apply.
         constexpr std::uint64_t kPartitionHash = 0x077934407C79A117ULL;
         constexpr std::uint32_t kMinRun        = 256;   // a run shorter than this is noise
 
@@ -138,14 +113,10 @@ namespace vba
         return IsExitSlot(slot);
     }
 
-    // A class or form Function returns its value through a TRAILING argument
-    // slot -- the COM `[out, retval]` convention -- and leaves through
-    // ExitProcCbHresult (0x3400/8) or ExitProcFrameCbHresult (0x3408/8), whose
-    // own operand is the byte offset of that slot. Measured: a class
-    // `Function(ByVal a As Long, Optional b As Variant) As Long` ends
-    // `1664 ExitProcCbHresult operand=24`, and 24 is slot 3 of a 4-slot frame
-    // whose parameters are slots 1 and 2. A class Sub leaves through
-    // ExitProcHresult and has no such slot.
+    // A class or form Function returns its value through a trailing argument slot, the COM
+    // `[out, retval]` convention, and leaves through ExitProcCbHresult (0x3400/8) or
+    // ExitProcFrameCbHresult (0x3408/8), whose operand is the byte offset of that slot. A class
+    // Sub leaves through ExitProcHresult and has no such slot.
     bool ExitHasTrailingResultSlot(std::uint32_t slot)
     {
         return slot == kSlot_ExitProcCbHresult || slot == kSlot_ExitProcFrameCbHresult;
@@ -238,21 +209,13 @@ namespace vba
             return nullptr;
         }
 
-        // ---- 3. THE FINGERPRINT. THE EQUIVALENCE PARTITION, hashed: for every
-        // slot, the index of the lowest slot holding the same handler. Every
-        // address in the table differs between builds and this sequence does
-        // not, because it records only which slots AGREE. `kSigLength` is keyed
-        // by slot index and was measured against this opcode set, so a build
-        // that renumbered the slots would decode every procedure into fiction
-        // with nothing to say so. Identical on both measured builds, 847
-        // groups. [measured]
+        // 3. The fingerprint: the equivalence partition, hashed. Addresses differ between
+        // builds and this sequence does not, because it records only which slots agree.
+        // kSigLength is keyed by slot index, so a build that renumbered the slots must be
+        // refused.
         //
-        // The same pass counts the distinct handlers for the report -- a table
-        // whose slots nearly all coincide would be a run of something else --
-        // and finds the MOST FREQUENT handler, the shared invalid-opcode one:
-        // no real operation is implemented 600-odd times. Only a genuine
-        // majority-of-a-kind is reported as such; a commonest handler covering
-        // a handful of slots would not be the invalid handler.
+        // The same pass counts distinct handlers for the report and finds the most frequent
+        // one, the shared invalid-opcode handler.
         void FingerprintTable(const Image& img, SlotSet& s)
         {
             std::vector<std::uint64_t> handlers(s.slots, 0);
@@ -326,25 +289,9 @@ namespace vba
             return ok;
         }
 
-        // ---- 5. A SINGLETON SLOT, verified on its own terms.
-        //
-        // NEITHER the raise slot NOR the End slot is part of `verified`. Error
-        // attribution is one feature and `End` handling is another; tracing is
-        // the product. A slot that fails its check costs that one feature and
-        // nothing else, so it degrades rather than refusing the arm -- and it
-        // is reported, because a silently absent feature is the failure this
-        // project keeps paying for.
-        //
-        // THE CHECK IS THE FINGERPRINT THE CORPUS MEASURED: the slot holds a
-        // handler of its OWN. For 497 the two ruled-out decoys sit in a shared
-        // five-slot group, so a renumbering that slid another opcode into it
-        // would almost certainly land on a shared handler and be caught here;
-        // for 619 singleton-ness is the very thing `kPartitionHash` pins. And
-        // it must not be the BoS handler either -- that would mean the table
-        // moved under us in a way the count alone would miss.
-        //
-        // ONE FUNCTION FOR BOTH, because two copies of an address check is how
-        // they drift apart.
+        // 5. A singleton slot. Neither the raise slot nor the End slot is part of `verified`: a
+        // slot that fails costs its one feature, not the arm, and is reported. The check is
+        // that the slot holds a handler of its own, and not the BoS handler.
         void VerifySingletonSlot(const Image& img, SlotSet& s, std::uint32_t slot,
                                  const char* role, bool& okOut)
         {

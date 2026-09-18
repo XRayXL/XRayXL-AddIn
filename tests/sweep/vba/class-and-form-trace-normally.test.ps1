@@ -1,31 +1,18 @@
-# ORDINARY TRACING OUT OF CLASS MODULES AND FORMS -- no errors involved.
+# Ordinary tracing out of class modules and forms, with no errors involved.
 #
-# Every VBA case in the suite drives Subs and Functions in a STANDARD module.
-# That is one container out of three, and the other two reach the interpreter
-# differently: a class module is instantiated and its procedures called through
-# an object, a form module is a class with a designer attached, and constructors
-# and destructors are invoked by the interpreter rather than by a call opcode.
+# A class module's procedures are called through an object, a form module is a class with a
+# designer attached, and constructors and destructors are invoked by the interpreter rather than
+# by a call opcode. Asserted:
 #
-# The error work needed those shapes and so exercised them by accident. This
-# asserts the ORDINARY behaviour on purpose, because "the outcome column is
-# right" is a much weaker claim than "the rows are there at all, named, nested
-# and paired".
-#
-# WHAT IS ASSERTED, and why each is a way it could be wrong rather than a box
-# ticked:
-#
-#   present   a procedure that ran but produced no row is invisible, which is
-#             the whole failure mode this tool exists to prevent
-#   named     `Method` and `Value` must be NAMED, not reported as a trailer
-#             address -- identity resolution walks different structures for a
-#             class than for a standard module
-#   paired    entry and exit by SPAN, in both directions: an unpaired entry
-#             reads as a hang, an unpaired exit as a call that never happened
-#   nested    Class_Initialize runs INSIDE the caller that said `New`, so its
-#             parent must be that frame and not 0
-#   returns   the typed Functions and the Property GET carry a value; the
-#             Subs and the Property LET carry none -- both halves asserted
-#   outcome   all of it `returned` -- the negative control for the error work
+#    present   every procedure that ran has a row
+#    named     `Method` and `Value` are named, not reported as a trailer address:
+#              identity resolution walks different structures for a class
+#    paired    entry and exit by span, in both directions
+#    nested    Class_Initialize runs inside the caller that said `New`, so its parent
+#              is that frame and not 0
+#    returns   the typed Functions and the Property Get carry a value; the Subs and
+#              the Property Let carry none
+#    outcome   all of it `returned`
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -118,10 +105,8 @@ try {
 
     Check 'form-procedure-traced' ($names -contains 'FormAdd') ("saw: " + ($names -join ','))
 
-    # ---- named, not an address --------------------------------------------
-    # Identity resolution walks a different structure for a class than for a
-    # standard module; a procedure it cannot name is reported as its trailer
-    # address, which is honest but useless.
+    # Named, not an address: a procedure that identity resolution cannot name is reported as its
+    # trailer address.
     $unnamed = @($entries | Where-Object { $_.function -match '^0x[0-9A-F]+$' })
     Check 'no-procedure-reported-as-an-address' ($unnamed.Count -eq 0) `
           ("unnamed: " + (@($unnamed | ForEach-Object { $_.function }) -join ','))

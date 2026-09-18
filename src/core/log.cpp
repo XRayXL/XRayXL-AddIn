@@ -73,6 +73,12 @@ namespace Log
         return false;
     }
 
+    std::wstring Path()
+    {
+        const Held lock;
+        return g_path;
+    }
+
     void Open(const std::wstring& path)
     {
         const Held lock;

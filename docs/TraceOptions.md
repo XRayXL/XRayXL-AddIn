@@ -5,6 +5,15 @@ through `Application.Run`; the setters refuse a cell. This document is the
 reference for those settings and for the add-in's own log. What the resulting
 rows *mean* is [TraceRowModel.md](./TraceRowModel.md).
 
+The **XRayXL group** on the Developer tab is a front end to exactly these calls —
+three buttons, **Arm**, **Disarm** and **Options**, the last a dialog with four pages: Capture (a section
+per source, each a Depth drop-down and check boxes), Output (the trace folder
+and file), Advanced (the output buffer and the log level), and About (the version and
+the licence). It holds no settings of its own, so the two can never
+disagree: press OK and `XRayXL_GetTraceParam` reports what you chose; change
+something from a macro and the dialog shows it the next time it opens. Cancel
+changes nothing. `Application.Run "XRayXL_Options"` opens the same dialog.
+
 | Function | Does |
 |---|---|
 | `XRayXL_SetTraceParam(Source, Name, Value)` | Sets one setting |
@@ -32,7 +41,7 @@ nothing about the other.
 | `DEPTH` | `OFF` / `TOP` / `ALL` | `ALL` | Applies to **that source alone**: don't trace it / trace only the outermost call, the one Excel itself initiated / follow nested calls too |
 | `ARGS` | `TRUE` / `FALSE` | `TRUE` | Capture argument values |
 | `RETVAL` | `TRUE` / `FALSE` | `TRUE` | Capture return values |
-| `OBJECTS` | `TRUE` / `FALSE` | `TRUE` | Name an object argument or result, and describe a `Range`, `Worksheet` or `Workbook`. The one setting that calls Excel's object model from inside a traced call; `FALSE` renders every object as its address |
+| `OBJECTS` | `TRUE` / `FALSE` | `TRUE` | **VBA only** — `XLL`, or an omitted `Source`, is **refused**. Name an object argument or result, and describe a `Range`, `Worksheet` or `Workbook`. The one setting that calls Excel's object model from inside a traced call; `FALSE` renders every object as its address. An XLL argument is an `XLOPER` decoded structurally, with no object model to call, so there is nothing for it to gate |
 
 **`DEPTH` changes which rows appear, never their shape.** Under `TOP` the
 totals still count every frame, so the disarm report and
@@ -65,14 +74,34 @@ timings as little as possible. The defaults suit most sessions.
   everything up to the crash is already on disk.
 
 `BUFFERSIZE` accepts a unit — bare or `M`/`MB` is megabytes, `K`/`KB`
-kilobytes. A ring below 16 KB is refused. A row that cannot fit in the ring at
+kilobytes. A ring below 16 KB or above 240 MB is refused. A row that cannot fit in the ring at
 all — rows can reach 256 KB — is dropped and counted, even under `PAUSE`.
 
+## Arming loads VBA if it is not already loaded
+
+Excel loads VBA only when it needs it, and XRayXL patches the VBA interpreter
+once, when you arm. So if you arm an Excel that has never opened a macro, there
+would be nothing to patch and VBA would stay untraced for the rest of that
+session -- even after you opened a macro workbook.
+
+To avoid that, arming asks Excel to load VBA first, by reading the active
+workbook's VBA project. Excel loads it exactly as it would when you open any
+macro-enabled workbook. It happens only when you arm, and only when VBA tracing
+is on: set `VBA` `DEPTH` to `OFF` and XRayXL will not touch VBA at all.
+
 ## When settings can change
+
+**A refused call answers `#Err - ` and the reason**, and changes nothing. The
+value is the return of `Application.Run`, so the caller reads it directly.
 
 **Every setting is refused while armed** — disarm, set, re-arm — so a recording
 can never change shape halfway through. `LOGLEVEL` is the one exception: it
 affects only logging, never the trace, so it can be changed at any time.
+
+On the ribbon this is why **Arm** is greyed while a recording is running and
+**Disarm** while one is not, and why the capture settings in **Options** are
+greyed while armed — the log level is not. It is the same rule, shown rather
+than refused.
 
 The setters also refuse when called from a cell. A trace setting changed
 mid-calculation, or written by a formula, would no longer describe the run it
@@ -120,6 +149,7 @@ Read when Excel loads the add-in, so set them before launching Excel.
 | `XRAYXL_CRASHDUMP=1` | Write a full minidump on a crash, as well as the text report |
 | `XRAYXL_DIAG=1` | Diagnostics in the disarm report, and registers `XRayXL_FaultProbe`, which faults on purpose to test the crash handler |
 | `XRAYXL_NOREGWATCH=1` | Do not watch for functions registered after arming; only functions registered at arm time are traced |
+| `XRAYXL_RIBBON=0` | No ribbon buttons, and no COM object of ours in the process at all. Everything else is unaffected — it is the switch to reach for if you suspect the ribbon of anything |
 
 While `%TEMP%\XRayXL\inert.on` exists, the add-in loads and does nothing at all —
 no log, no commands, no hooks — which tells a crash caused by what it does from

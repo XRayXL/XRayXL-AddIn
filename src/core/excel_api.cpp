@@ -87,11 +87,8 @@ const char* OutputDirRefused() { return g_outputDirRefused; }
 // once sent the trace file somewhere the suites did not look.
 std::wstring EnsureAppSubdir(const wchar_t* leaf)
 {
-    // An explicit output root, so a suite can keep each run's trace and logs
-    // beside the test that produced them. Its own variable rather than an
-    // override of %TEMP%: redirecting TEMP would move all of Excel's temporary
-    // files -- autorecover, clipboard spooling -- and so change the behaviour
-    // of the thing being measured.
+    // An explicit output root, so a suite can keep each run's trace and logs beside its test. Not
+    // an override of %TEMP%, which would move Excel's own temporary files too.
     wchar_t over[MAX_PATH];
     const DWORD ov = GetEnvironmentVariableW(L"XRAYXL_OUTPUT_DIR", over, MAX_PATH);
     if (ov >= MAX_PATH) g_outputDirRefused = "it is MAX_PATH characters or longer";

@@ -1,20 +1,13 @@
 // The VBA tracer: identity and the shadow stack.
 //
-// The thunk calls in with the interpreter's rsp, and the p-code trailer -- the
-// RTMI identifying the running procedure -- is at rsp+0xB8. That one pointer
-// yields the call tree, nesting depth, recursion and per-procedure timings. A
-// trailer is per-procedure, so it is the accounting key; the NAME is walked
-// from it on every frame push (vbaidentity.h).
+// The thunk calls in with the interpreter's rsp, and the p-code trailer identifying the running
+// procedure is at rsp+0xB8. It is the accounting key; the name is walked from it on every frame
+// push (vbaidentity.h).
 //
-// THE HOT PATH, per statement: a few guarded reads, a compare, and usually a
-// return. No allocation, no lock, no call into VBE7. State is TLS, and the
-// procedure table is fixed-size and open-addressed, so a new procedure costs a
-// bounded probe and never allocates.
+// The hot path, per statement: a few guarded reads, a compare, and usually a return. No
+// allocation, no lock, no call into VBE7.
 //
-// RECURSION IS WHY THE SHADOW STACK EXISTS: a recursive call has the SAME
-// trailer as its caller, so nothing in the interpreter distinguishes the two.
-// The published prior art tracks a single "current procedure", to which
-// recursion is invisible.
+// The shadow stack exists for recursion: a recursive call has the same trailer as its caller.
 #pragma once
 #include <cstdint>
 #include <string>
@@ -42,12 +35,9 @@ namespace vba
         // Capped by the shadow stack; `deepestSeen` is the depth VBA reached.
         std::uint32_t maxDepth = 0;
 
-        // A LOWER BOUND on how deep the VBA stack actually got, counting
-        // activations the shadow stack had no room for; equals `maxDepth` when
-        // nothing overflowed. A bound and not a number because beyond the cap
-        // no rsp is stored to match a return against, so one unwind abandoning
-        // several capped activations decrements by one and the peak is
-        // undercounted. Never OVER-counted, so it is reported as ">=".
+        // A lower bound on how deep the VBA stack got, counting activations the shadow stack
+        // had no room for. Beyond the cap no rsp is stored, so one unwind abandoning several
+        // capped activations decrements by one. Never over-counted, so it is reported as ">=".
         std::uint32_t deepestSeen = 0;
         std::uint64_t faults = 0;       // guarded reads that faulted
 
@@ -83,23 +73,16 @@ namespace vba
         std::uint64_t framesOpened = 0; // frames we pushed
         std::uint64_t framesClosed = 0; // frames we popped
 
-        // How rsp moved while the trailer stayed the same. It falls exactly one
-        // step per VBA call and is stable within a frame (8 descents for
-        // T_Rec(8), 100 for T_Deep(100)), which is what makes (trailer, sp) an
-        // ACTIVATION. The cheapest way to see the fast path working: spSame
-        // should dominate.
+        // How rsp moved while the trailer stayed the same. It falls one step per VBA call and
+        // is stable within a frame. spSame should dominate when the fast path is working.
         std::uint64_t sameTrailerSameSp = 0;
         std::uint64_t sameTrailerDeeper = 0;   // rsp fell: a deeper frame
         std::uint64_t sameTrailerShallower = 0;// rsp rose: returned
 
-        // THE ACTIVATION BOUNDARY, from the p-code instruction pointer. A
-        // procedure's bytecode is [trailer - ProcSize, trailer) and RSI-2 is the
-        // current instruction, so an instruction at the FIRST byte is the
-        // prologue -- which runs exactly once per activation (459 activations,
-        // 28 shapes, three entry routes; no loop branches back to offset 0).
-        //
-        // It is what stops a UDF that RAISES from swallowing the next call: it
-        // never reaches its epilogue, so the next prologue closes its frame.
+        // The activation boundary, from the p-code instruction pointer. RSI-2 is the current
+        // instruction, so an instruction at the first byte of [trailer - ProcSize, trailer) is
+        // the prologue, which runs once per activation. It stops a UDF that raises from
+        // swallowing the next call.
         std::uint64_t ipEntries = 0;      // prologue statements seen
         std::uint64_t ipStaleClosed = 0;  // frames a prologue found still open
                                           // at the same rsp -- the defect, counted
@@ -120,25 +103,14 @@ namespace vba
         // guesses, and this is what says so. Zero in a clean session.
         std::uint64_t ipLateOpen = 0;
 
-        // NOT EVERY EXIT OPCODE ENDS A PROCEDURE: the "exit" family is
-        // statement epilogues and a GoSub `Return`
-        // fires one mid-activation. `exitOpUnreadable` closes nothing rather
-        // than guessing -- a missed close is corrected by the next prologue, the
-        // stack pointer or the flush, while a wrong one writes a row asserting a
-        // call VBA never made.
+        // Not every exit opcode ends a procedure: a GoSub `Return` fires one mid-activation.
+        // `exitOpUnreadable` closes nothing rather than guessing.
         std::uint64_t exitNotProcedureEnd = 0;
         std::uint64_t exitOpUnreadable = 0;
 
-        // WHO CALLED THIS VBA PROCEDURE. Once per ACTIVATION, never per
-        // statement: xlfCaller is a call INTO Excel from a traced thread, which
-        // is affordable at the first granularity and not at the second.
-        //
-        // Three counters for three different facts. `callerCell` is a real cell
-        // on a real sheet. `callerOther` is a caller that is not a cell and
-        // never could be -- a button names the OBJECT, the macro dialog gives
-        // #REF! -- which are answers, not failures. `callerUnavailable` is Excel
-        // declining, the only one saying something is wrong with where we asked
-        // from.
+        // Who called this VBA procedure, once per activation. `callerCell` is a real cell on a
+        // real sheet. `callerOther` is a caller that is not a cell, such as a button or the
+        // macro dialog: an answer, not a failure. `callerUnavailable` is Excel declining.
         std::uint64_t callerCell = 0;
         std::uint64_t callerOther = 0;
         std::uint64_t callerUnavailable = 0;
@@ -154,14 +126,8 @@ namespace vba
         // opcodes, because the value is what has to be mapped.
         std::uint64_t returnsUnmapped = 0;
 
-        // ---- ByRef ARGUMENTS A PROCEDURE CHANGED -------------------------
-        //
-        // ByRef is VBA's DEFAULT, so a procedure filling in its caller's
-        // variable is ordinary code and an entry-only args column tells half the
-        // story. The exit re-reads them and reports them WHEN THEY MOVED.
-        //
-        // Four counters because collapsing them would make "nothing changed"
-        // indistinguishable from "we never looked".
+        // ByRef arguments a procedure changed. The exit re-reads them and reports them when
+        // they moved. Four counters, so "nothing changed" is not "never looked":
         //   Eligible : the signature had a ByRef parameter. A superset.
         //   Changed  : re-read, and different -- the rows carrying exit args.
         //   Same     : re-read, and identical. A fact about the procedure.

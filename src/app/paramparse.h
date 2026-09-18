@@ -5,12 +5,8 @@
 namespace app
 {
 
-// PARSING THE TRACE-PARAM COMMAND SURFACE -- the XLOPER12 -> value
-// conversions behind XRayXL_SetTraceParam / GetTraceParam, kept apart from
-// commands.cpp so the grammar can be unit-tested without Excel. Nothing here
-// calls Excel: these read an
-// argument the host already delivered. The state changes and the echo stay in
-// commands.cpp.
+// The XLOPER12-to-value conversions behind XRayXL_SetTraceParam / GetTraceParam, kept apart from
+// commands.cpp so the grammar can be unit-tested without Excel.
 namespace params
 {
     // The argument's type with the free-flags masked off; xltypeMissing for null.
@@ -32,6 +28,9 @@ namespace params
     // case-insensitive; a native number is megabytes. False on a bad number or
     // unit, or above the 4 GB cap. The caller enforces the ring floor below.
     bool ParseBufferBytes(LPXLOPER12 v, unsigned long long& outBytes);
+
+    // The same rule from text alone, already upper-cased (the Options dialog).
+    bool ParseBufferText(const wchar_t* text, unsigned long long& outBytes);
 
     // The smallest ring accepted (bytes); 0 (synchronous) is the only smaller value.
     // A row too big for the ring is dropped and counted.

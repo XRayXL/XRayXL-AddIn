@@ -1,14 +1,9 @@
-# A USERFORM WITH A TIMER, END TO END -- the scenario that proves VBA tracing is
-# not confined to UDFs reached from a recalc, and that FORM code itself appears.
+# A UserForm with a timer, end to end: VBA tracing is not confined to UDFs reached from a
+# recalc, and form code itself appears.
 #
-# The chain: a standard-module Sub instantiates a UserForm (its
-# UserForm_Initialize -- FORM event code -- runs), calls the form's own method
-# Arm, which schedules Application.OnTime (Excel's timer). When Excel next idles
-# the scheduled handler XR_TimerTick runs: it reads the sheet's UsedRange,
-# dirties the UDF inputs and calls Worksheet.Calculate. The sheet holds one VBA
-# UDF (=XR_TimerUdf, itself calling XR_TimerHelper) and one XLL UDF (=TxB). So a
-# single armed session must capture, in one trace file, all four kinds of VBA
-# entry AND the XLL call:
+# A standard-module Sub instantiates a UserForm and calls its method Arm, which schedules
+# Application.OnTime. The handler XR_TimerTick dirties the UDF inputs and calls
+# Worksheet.Calculate on a sheet holding one VBA UDF and one XLL UDF. One trace file must hold:
 #
 #   UserForm_Initialize   FORM EVENT CODE -- the interpreter invokes it as part
 #                         of loading the form, not via a call opcode. THIS is the
@@ -20,12 +15,9 @@
 #   XR_TimerHelper        called BY the UDF -- VBA nesting inside a UDF
 #   TxB                   the XLL UDF in cell B1, source=XLL
 #
-# WHY OnTime and not a shown modeless form with a real timer control: a shown
-# form needs a pumped message loop to fire, which an automated COM driver cannot
-# reliably provide; OnTime is Excel's own timer and fires on the next idle after
-# the macro returns. The form is instantiated but never .Show'd -- Initialize
-# fires on first member access regardless, so the form code runs without a modal
-# block. (Chosen with the human in the loop.)
+# OnTime, not a shown form with a timer control: a shown form needs a pumped message loop, which
+# a COM driver cannot reliably provide. The form is never .Show'd; Initialize fires on first
+# member access.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -147,12 +139,9 @@ try {
     Check 'no-vba-procedure-reported-as-an-address' ($unnamed.Count -eq 0) `
           ("unnamed: " + (@($unnamed | ForEach-Object { $_.function }) -join ','))
 
-    # ---- NOTHING ERRORED, so nothing may read as though it did -----------
-    # Ordinary object-model VBA -- a cell write, Application.OnTime, .Calculate
-    # -- reaches the same raise opcode (497) as Err.Raise, and once stamped the
-    # touching frame `threw`, its nested calls `unwound` and its caller
-    # `handled`, though the macro ran clean. A frame is only unwound THROUGH by
-    # an error outside it, and a raiser that runs its epilogue did not throw.
+    # Nothing errored, so nothing may read as though it did. Ordinary object-model VBA (a cell
+    # write, Application.OnTime, .Calculate) reaches the same raise opcode (497) as Err.Raise,
+    # and a raiser that runs its epilogue did not throw.
     $vExit  = @($rows | Where-Object { ($_.kind -eq 'exit' -and $_.source -eq 'VBA') })
     $notRet = @($vExit | Where-Object { $_.outcome -ne 'returned' })
     Check 'no-benign-object-model-raise-reads-as-an-error' ($notRet.Count -eq 0) `

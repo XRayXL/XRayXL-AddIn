@@ -1,29 +1,14 @@
 #pragma once
 #include <string>
 
-// HOOKING FUNCTIONS THAT REGISTER AFTER WE ARMED -- arming enumerates
-// Application.RegisteredFunctions ONCE, so an add-in loaded later would never be
-// traced.
+// Hooks functions that register after arming, which the one enumeration at arm would miss.
 //
-// WHERE TO WATCH: an XLL does not call xlfRegister directly but goes through
-// Excel12, which resolves one exported entry point in EXCEL.EXE --
-// GetProcAddress(GetModuleHandle(NULL), "MdCallBack12"), at ordinal 46, the same
-// one this add-in's own Excel12 uses. Every C API call from every XLL passes
-// through it, so one hook on a documented export sees every registration: no
-// derivation, no signature, no scanning.
+// Every C API call from every XLL goes through one export of EXCEL.EXE, MdCallBack12, so one
+// hook there sees every registration.
 //
-// NOT PATCHED ON THE SPOT, because MinHook's patch suspends every thread in the
-// process and nothing in the hook knows which registration ends a burst -- so
-// inline patching costs one whole-process freeze PER FUNCTION:
-//
-//     RegisterXLL of a 47-function XLL, inline    2,829 ms
-//     RegisterXLL of a 47-function XLL, deferred     31 ms
-//
-// Both hook all 47. Captures are therefore collected and a worker applies them
-// as one batch a beat later. The worker cannot ask Excel anything -- the object
-// model is main-thread only and the C API is not callable from an arbitrary
-// thread -- so the capture copies everything the patcher will need, and the
-// worker touches only GetModuleHandle, GetProcAddress and MinHook.
+// Captures are batched and a worker patches them a beat later, because MinHook suspends every
+// thread for each patch. The worker cannot call Excel, so the capture copies everything the
+// patcher needs.
 
 namespace xll
 {

@@ -36,11 +36,8 @@ namespace vba
         if (!RdU16(trailer + kTrl_procSize, procSize16))  return Activation::Unavailable;
         const std::uint32_t procSize = procSize16;
 
-        // Bounds before arithmetic. `trailer <= procSize` would make the
-        // subtraction below wrap, and a wrapped code start compares equal to
-        // nothing useful -- but it would compare equal to SOMETHING, and a
-        // boundary that fires on a wrapped pointer is worse than one that
-        // declines.
+        // Bounds before arithmetic: `trailer <= procSize` would make the subtraction below
+        // wrap, and a boundary that fires on a wrapped pointer is worse than one that declines.
         if (procSize == 0 || procSize > kMaxProcSize)    return Activation::Unavailable;
         if (rsi < 2 || trailer <= procSize)              return Activation::Unavailable;
 

@@ -8,26 +8,18 @@
 //                           -> procMap[j] == trailer    j = this procedure
 //                           -> listEntry -> ppszFnNames[j]   the name
 //
-// EVERY STEP IS UNVERIFIED MEMORY UNTIL IT CHECKS OUT, so each is guarded and
-// validated before the next is taken -- against the structures' own invariants:
-// two constant markers, a reference count, and a back-pointer from the module
-// entry to the parent. A chain failing any check yields NO NAME rather than a
-// wrong one, because a confident wrong name is worse than an address.
+// Every step is unverified memory, so each is guarded and validated against the structures' own
+// invariants: two constant markers, a reference count, and a back-pointer from the module entry
+// to the parent. A failed check yields no name rather than a wrong one.
 //
-// OFF THE HOT PATH: resolved once per procedure, when its trailer is first
-// seen, and cached against that trailer.
+// Resolved once per procedure, when its trailer is first seen, and cached.
 #pragma once
 #include <cstdint>
 
 namespace vba
 {
-    // SIZED TO WHAT VBA ITSELF ALLOWS, not to what looked generous: VBA permits
-    // a 255-character identifier, and a truncated name is one a user cannot
-    // search their own code for.
-    //
-    // A TEMPORARY, filled by Resolve and copied into the procedure table, so
-    // enlarging it costs stack rather than a table entry. The table's own
-    // buffers are in vbatrace.cpp and are sized to match.
+    // Sized to VBA's own 255-character identifier limit: a truncated name is one a user cannot
+    // search for. A temporary, filled by Resolve and copied into the procedure table.
     struct Identity
     {
         bool ok = false;

@@ -31,13 +31,8 @@ namespace csv
         const char* kind     = "";      // entry | exit | depth-capped
         const char* source   = "";      // XLL | VBA
         const char* span     = "";
-        // WHERE THIS ACTIVATION SAT IN THE CALL CHAIN -- on every row, never empty, each
-        // source counting its own frames per thread. Beside `span` because `parent` IS a
-        // span: the three call-tree fields read together.
-        //
-        // They were `depth=` and `parent=` inside `note`. Neither qualifies the
-        // `ticks` next to it the way `closed=` does -- they are independent
-        // facts about the frame, so they are columns.
+        // Where this activation sat in the call chain: on every row, never empty, each source
+        // counting its own frames per thread.
         const char* parent   = "";      // the span that called this one, 0 at the top
         const char* depth    = "";      // 1 when no other frame of the same source was open
         const char* thread   = "";
@@ -46,12 +41,8 @@ namespace csv
         const char* function = "";
         const char* proc     = "";
         const char* typetext = "";
-        // WHO CALLED IT, AS TWO COLUMNS: the KIND, and the description whose
-        // meaning that kind decides. `cell` and `sheet` were two columns that
-        // had to agree with each other AND with a third; one description
-        // carrying "[Book1]Sheet1!B2:D4" says more (a CSE array formula's whole
-        // range does not fit in a cell column) in one field that cannot
-        // disagree with itself.
+        // Who called it, as two columns: the kind, and the description whose meaning that kind
+        // decides. One description holds a whole range such as "[Book1]Sheet1!B2:D4".
         const char* caller    = "";     // cell | name | toolbar | menu | registerid
                                         // | none | unavailable | not-asked | array | unknown
         const char* callerref = "";     // empty when the kind has no description
@@ -61,17 +52,9 @@ namespace csv
         const char* rettype  = "";
         // How the activation ended: on every exit row, never empty. XLL exits are always `returned`.
         const char* outcome  = "";      // returned | threw | unwound | handled | abandoned | unhandled
-        // THE DURATION, AND WHETHER IT CAN BE BELIEVED. Exit rows only.
-        //
-        // One number, spelled the same by both sources -- the free-text `note`
-        // these replaced had VBA writing `ticks=4541` and the XLL side a bare
-        // `604` for the same fact, which only stayed invisible while they were
-        // buried in a bag of fields.
-        //
-        // `trust` names WHAT ENDED THE MEASUREMENT, not a verdict on it, so
-        // nothing is thrown away: `exit` and `end` are readings, `backstop` and
-        // `flush` are upper bounds, and the mapping is in docs/TraceRowModel.md.
-        // `exit` means the same thing on both sides -- the return path fired.
+        // The duration, on exit rows only, spelled the same by both sources. `trust` names what
+        // ended the measurement, not a verdict on it: `exit` and `end` are readings, `backstop`
+        // and `flush` are upper bounds (docs/TraceRowModel.md).
         const char* ticks    = "";      // QPC ticks; empty when none exists
         const char* trust    = "";      // exit | end | backstop | flush | async
     };

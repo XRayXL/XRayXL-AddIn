@@ -119,9 +119,8 @@ End Sub
         # An array in suffix form is still an array: ByRef, self-validating.
         if ($e['T_SfxArr'].args -notmatch '^a1:Ref&=Double\[1\.\.3\]') {
             return "T_SfxArr args were [$($e['T_SfxArr'].args)]" }
-        # A ParamArray PRECEDED by a positional parameter: the arrangement
-        # where argument indexing can slip, because the ParamArray no longer
-        # starts at slot 1. The Long must stay first and keep its value.
+        # A ParamArray preceded by a positional parameter: the ParamArray does not start at slot
+        # 1, so argument indexing can slip. The Long must stay first and keep its value.
         if ($e['T_PaAfter'].args -notmatch '^a1:Long=1432778632') {
             return "T_PaAfter first arg was [$($e['T_PaAfter'].args)], expected a1:Long=1432778632 leading" }
         if ([int]$e['T_PaAfter'].argcount -ne 2) {

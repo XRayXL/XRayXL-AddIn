@@ -1,9 +1,7 @@
 # The arm/disarm hammer -- an instrument, not a test.
 #
-# It hunts an access violation seen once in a long soak: execution transferred
-# to an address in no mapped module, about 15ms after arming, on the first
-# armed calculation. The crash needed a combination, so every part of it is
-# reproduced here:
+# It hunts an access violation in which execution transfers to an address in no mapped module,
+# just after arming, on the first armed calculation. The combination it reproduces:
 #
 #   * VBA DEPTH=ALL -- the full patch set, every dispatch slot.
 #   * Rapid arm/disarm cycles in a reused process.

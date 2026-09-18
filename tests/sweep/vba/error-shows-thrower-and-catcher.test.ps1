@@ -1,26 +1,14 @@
-# WHERE WAS IT THROWN, AND WHO CAUGHT IT.
+# Where was it thrown, and who caught it.
 #
-# Without an outcome, an error unwind and a clean return give identical exit
-# rows, and a fully unhandled unwind (no exit opcodes) reads as a slow,
-# successful call.
+# Without an outcome, an error unwind and a clean return give identical exit rows. A chain reads
+# outwards from the throwing frame:
 #
-# The exit row carries its own `outcome` column, and a chain reads outwards from
-# the throwing frame:
+#      Thrower   outcome threw       the raise happened here
+#      Middle    outcome unwound     it ran nothing after the raise
+#      Outer     outcome handled     it ran again, so it caught it
 #
-#     Thrower   outcome threw       the raise happened HERE
-#     Middle    outcome unwound     it ran nothing after the raise -- passed through
-#     Outer     outcome handled     it ran again, so it caught it
-#
-# HOW THE RULE WORKS, and why it is not the obvious one. Slot 497 is the raise
-# opcode. It fires FOUR TIMES per Err.Raise, so the recorder dedupes. The error clears on the SECOND statement to reach a frame,
-# never the first: both a handler and an unwind run a statement in the raising
-# frame immediately after the raise, through literally the same opcode, so
-# clearing on the first reported the thrower as `returned` and the frame the
-# error merely passed through as errored -- exactly backwards.
-#
-# ORDER MATTERS IN THE ASSERTIONS. `unwound` is the one that cannot be faked by
-# a coincidence: it means a frame closed while an error was in flight AND had
-# run nothing since, which no clean return can produce.
+# `unwound` is asserted first because no coincidence can fake it: a frame closed while an error
+# was in flight and had run nothing since.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

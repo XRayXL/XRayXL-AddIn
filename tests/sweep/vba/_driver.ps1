@@ -1,33 +1,19 @@
-# The VBA regression driver: identity, the shadow stack, nesting and
-# recursion. Each .test.ps1 is SELF-CONTAINED:
-# it carries its own case data and hands it here, so the file is the whole
-# test and there is nothing to regenerate. Each case gets its own Excel from
-# StretchXL (or shares one under -SessionMode Reuse), its own workbook built
-# from its own Setup, its own arm/disarm -- totals attributable to it alone.
+# The VBA regression driver: identity, the shadow stack, nesting and recursion. Each .test.ps1
+# is self-contained: it carries its own case data and hands it here. Each case gets its own
+# workbook built from its own Setup and its own arm/disarm, so the totals are attributable to it
+# alone.
 #
-# A case is a VBA workload plus what the tracer must report about it:
+#    Setup    VBA appended to the standard module (may define several procs)
+#    Invoke   what the harness runs, as an Application.Run name + args
+#    Then     an optional second call in the same arming session; its target must be
+#             defined by this case's own Setup, and a failure to run it fails the test
+#    Expect   a scriptblock given the parsed totals; returns $null or a reason
+#    Why      what the case is really testing, for the failure message
 #
-#   Setup    VBA appended to the standard module (may define several procs)
-#   Invoke   what the harness runs, as an Application.Run name + args
-#   Then     an OPTIONAL second call in the same arming session; its target
-#            must be defined by this case's own Setup, and a failure to run it
-#            fails the test
-#   Expect   a scriptblock given the parsed totals; returns $null or a reason
-#   Why      what the case is really testing, for the failure message
-#
-# EXPECTATIONS ARE ARITHMETIC, NOT "LOOKS ABOUT RIGHT", because VBA's own
-# semantics give the answer in advance: a loop of N iterations over a body of
-# K statements executes N*K beginning-of-statement opcodes, and a call tree of
-# known shape has a known depth. If the tracer says something else, one of the
-# two is wrong and we want to know which.
-#
-# COUNTING RULE used throughout: a `For i = 1 To n ... Next i` body of K
-# statements costs K+1 BoS per iteration (the body plus the `Next`), plus one
-# for the `For` itself and one for `End Sub`. Cases assert RANGES where the
-# exact constant is not the point, and exact equality where it is.
-#
-# Expectations are stated as arithmetic against VBA's own semantics; see
-# the header of this file for why.
+# Expectations are arithmetic, because VBA's own semantics give the answer in advance. A `For i
+# = 1 To n ... Next i` body of K statements costs K+1 beginning-of-statement opcodes per
+# iteration, plus one for the `For` and one for `End Sub`. Cases assert ranges where the exact
+# constant is not the point, and exact equality where it is.
 
 function Invoke-VbaCase($Case) {
     . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
@@ -121,10 +107,8 @@ function Invoke-VbaCase($Case) {
         $t | Add-Member -NotePropertyName names -NotePropertyValue $names -Force
         $t | Add-Member -NotePropertyName rows -NotePropertyValue $rows -Force
 
-        # WHO CALLED THE FIRST FRAME. The driver knows how it invoked the
-        # case: a Formula case is called by its cell, an Application.Run
-        # case by nothing on a sheet -- kind 'none'. Measured across
-        # the suite: these are the only two values these triggers produce.
+        # Who called the first frame. The driver knows how it invoked the case: a Formula case
+        # is called by its cell, an Application.Run case by nothing on a sheet (kind 'none').
         $callerProbs = @(Test-RowInvariants $rows)
         $firstEntry = @($rows | Where-Object { ($_.kind -eq 'entry' -and $_.source -eq 'VBA') } | Select-Object -First 1)
         # Every case runs a procedure, so a trace with no VBA entry lost it, however the totals read.

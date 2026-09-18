@@ -1,25 +1,8 @@
-# RETURN VALUES OUT OF A CLASS MODULE, ONE PER TYPE.
+# Return values out of a class module, one per type.
 #
-# Class and form procedures leave through exit opcodes the return-value work
-# never mapped, so every one of them silently reported no result -- a
-# Property Get and a class Function both read ret=''. The tracer now COUNTS that
-# case (`returnsUnmapped`) and names the opcodes, which is how it was found:
-# opcode 504 four times and 1664 three times, against five Subs and three
-# Functions.
-#
-# WHICH IS NOT ENOUGH TO MAP THEM. All three Functions in that run returned
-# Long, so the evidence cannot distinguish "1664 means Long" from "1664 is the
-# generic class-Function exit and the type is somewhere else". Mapping it to
-# Long on that basis would decode a String as an integer and print a confident
-# wrong value -- the failure this project ranks worst, and the exact trap slot
-# 634 already documents (it serves both LongLong and every typed array, and only
-# the STORE opcode separates them).
-#
-# So this exercises one Function per type and reports the opcode each uses. If
-# they differ, the opcodes are type-specific and can be mapped directly. If they
-# are all the same, the type must come from somewhere else and the mapping is a
-# different piece of work -- which is a result either way, and the point of
-# running it before writing the table.
+# Class and form Functions all leave through exit opcode 1664 whatever they return, and a class
+# Sub through 504, so the exit cannot name the type and the store opcode does. One Function per
+# type is exercised, and the opcode each uses is reported.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -190,26 +173,15 @@ try {
     $distinct = @($unmapped | ForEach-Object { $_.Groups[1].Value })
     Write-Output ("=> {0} distinct unmapped opcode(s) across {1} declared types" -f $distinct.Count, $want.Count)
 
-    # ---- THE ASSERTION: a value is decoded, or the gap is NAMED ----------
-    # Not "every type decodes" -- that is the goal, and asserting it before the
-    # mapping exists would just be a red. What must hold NOW is that a return
-    # the tracer cannot decode is COUNTED with its opcode, so the gap can be
-    # closed rather than merely noticed.
-    # ---- A SUB HAS NO RESULT, AND MUST NOT BE GIVEN ONE ------------------
+    # A value is decoded, or the gap is named: a return the tracer cannot decode must be counted
+    # with its opcode.
     #
-    # The negative control, and it caught a real bug on its first run. The
-    # type now comes from the instruction that STORED to [R14-8] -- but in a
-    # Sub that slot is a LOCAL, not a return. RSub's body is `Dim z As Long:
-    # z = 1`, and it was reported as ret='1' rettype='Long': a value that does
-    # not exist, printed with a type. Exit opcode 504 is the class Sub exit and
-    # now maps to None, so the store is never consulted for one.
-    # ---- DOES VBA REALLY CALL IT TWICE, OR DO WE OPEN TWO FRAMES? --------
+    # A Sub has no result and must not be given one. In a Sub the slot at [R14-8] is a local:
+    # RSub's body is `Dim z As Long: z = 1`, which must not read as ret='1'. Exit opcode 504
+    # maps to None, so the store is never consulted.
     #
-    # RString, RVariant and RObject each produced TWO entry/exit pairs with
-    # distinct spans, the first carrying an empty result. Properly paired, so
-    # not a double-close -- but two frames for ONE activation would be a frame
-    # -accounting bug, while two real calls would be VBA's own behaviour. Only
-    # VBA can settle which, so it counts its own.
+    # RString, RVariant and RObject each produce two entry/exit pairs with distinct spans. VBA
+    # counts its own calls, to tell two real calls from two frames for one activation.
     $vbaCalls = [int]($app.Run($leaf + '!XRGetStringCalls'))
     $strEntries = @($rows | Where-Object { ($_.kind -eq 'entry' -and $_.source -eq 'VBA') -and $_.function -eq 'RString' }).Count
     Check 'activation-count-matches-vba' ($strEntries -eq $vbaCalls) `
@@ -221,19 +193,17 @@ try {
           (($subRows.Count -ge 1) -and ($subWithRet.Count -eq 0)) `
           ("RSub rows: " + (@($subRows | ForEach-Object { "ret='$($_.ret)' type='$($_.rettype)'" }) -join ' | '))
 
-    # ---- THE TYPES THAT ARE MEASURED MUST DECODE, AND CORRECTLY ----------
-    # The store/load pairs are measured in vbapcode_tables.h; Boolean reads as Integer
-    # (-1/0) by the row model. Values as well as types, because a decoder that
-    # reads the right slot with the wrong width still produces a number.
+    # The typed returns must decode, and correctly. Boolean reads as Integer (-1/0) by the row
+    # model. Values as well as types, because a decoder that reads the right slot with the wrong
+    # width still produces a number.
     $expect = @{
         RByte     = @('7',      'Byte')
         RInteger  = @('1234',   'Integer')
         RLong     = @('123456', 'Long')
         RSingle   = @('1.5',    'Single')
         RDouble   = @('2748.5', 'Double')
-        # EXACT, four decimals: Currency is an integer scaled by 10,000 and is
-        # now rendered in integer arithmetic by both columns. The old
-        # `%.10g` could not hold its 19 significant digits.
+        # Exact, four decimals: Currency is an integer scaled by 10,000, rendered in integer
+        # arithmetic because `%.10g` cannot hold its 19 significant digits.
         RCurrency = @('9.9900', 'Currency')
         RBoolean  = @('-1',     'Integer')
         PGet      = @('99',     'Long')

@@ -1,13 +1,8 @@
-// The process log -- %TEMP%\XRayXL\Logs\XRayXL_<pid>.log, one file per process,
-// written in order so it reads as a timeline rather than a dump. Levelled, in
-// Log4Net line format:
-//   2026-09-07 10:53:07,123 [ 4812] INFO    - armed 6 of 6 registered
+// The process log, %TEMP%\XRayXL\Logs\XRayXL_<pid>.log, in Log4Net line format:
+//    2026-09-07 10:53:07,123 [ 4812] INFO    - armed 6 of 6 registered
 //
-// The namespace is capitalised because a lowercase `log` collides with ::log,
-// which <cmath> puts in the global namespace (MSVC C2757).
-//
-// Off the hot path: control threads only, under a mutex. Fault forensics is
-// crashlog's job and obeys different rules (docs/Implementation.md).
+// The namespace is capitalised because a lowercase `log` collides with ::log from <cmath> (MSVC
+// C2757). Control threads only, under a mutex.
 #pragma once
 #include <string>
 
@@ -22,6 +17,7 @@ namespace Log
     // ONCE, here, so start-up can be followed at DEBUG before any SetLevel call
     // has had the chance to run.
     void Open(const std::wstring& path);
+    std::wstring Path();                               // empty until Open
 
     // Settable at any time, including while armed: it controls the LOG, not the
     // trace (the LOGLEVEL trace parameter).

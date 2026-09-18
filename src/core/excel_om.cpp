@@ -1,10 +1,5 @@
-// Excel's object model, reached as a COM CLIENT -- arming enumerates Excel's
-// registered functions, which means talking to Application.
-//
-// Client, never server, and the two are not the same risk: a server hands COM a
-// pointer into this module and so gives it a second lifetime owner that unloads
-// at CoUninitialize whatever DllCanUnloadNow says. A client calls somebody
-// else's object and releases it.
+// Excel's object model, reached as a COM client: arming enumerates Excel's registered functions
+// through Application.
 #include "excel_om.h"
 #include "excel_api.h"
 #include "xlcall.h"
@@ -61,10 +56,8 @@ namespace excelom
             return nullptr;
         }
 
-        // xlGetHwnd returns an int -- on x64 the low half of a real HWND, so
-        // it is recovered by matching. FindWindowExW enumerates the whole
-        // desktop and a working machine often runs several Excels, so the
-        // process filter is what stops us binding to somebody else's instance.
+        // xlGetHwnd returns only the low half of the HWND on x64, so it is matched against the
+        // windows of our own process; a machine often runs several Excels.
         HWND top = nullptr;
         {
             int wanted = hres.val.w;
@@ -101,5 +94,31 @@ namespace excelom
         if (app == nullptr) log << "  could not reach Application" << std::endl;
         return app;
     }
+    // Reading ActiveWorkbook.VBProject makes Excel load and initialise VBA itself. Not
+    // Application.VBE, which is refused before anything loads when project trust is off.
+    bool EnsureVbaLoaded(std::ostringstream& log)
+    {
+        if (GetModuleHandleW(L"VBE7.DLL") != nullptr) return true;   // Excel already did
+
+        IDispatch* app = AcquireApplication(log);
+        if (!app) { log << "  VBA is not loaded and the object model is not reachable to ask" << std::endl; return false; }
+
+        IDispatch* wb = GetDispProp(app, L"ActiveWorkbook");
+        if (wb)
+        {
+            // The value is discarded and a refusal is fine: asking is what loads it.
+            IDispatch* prj = GetDispProp(wb, L"VBProject");
+            if (prj) prj->Release();
+            wb->Release();
+        }
+        else log << "  no ActiveWorkbook to ask for a VBProject" << std::endl;
+        app->Release();
+
+        const bool loaded = GetModuleHandleW(L"VBE7.DLL") != nullptr;
+        log << "  VBA was not loaded; asked Excel for it -> "
+            << (loaded ? "loaded" : "still absent") << std::endl;
+        return loaded;
+    }
+
 }
 }   // namespace core

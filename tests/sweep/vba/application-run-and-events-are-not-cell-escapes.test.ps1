@@ -1,6 +1,6 @@
 # APPLICATION.RUN AND SHEET EVENTS ARE NOT WORKSHEET-FUNCTION ENTRIES.
 #
-# The escape boundary (D92) is "Excel started this frame to compute a cell", found
+# The escape boundary is "Excel started this frame to compute a cell", found
 # by xlfCaller naming a calling cell that differs from the frame beneath. Two kinds
 # of entry are NOT cells, and so must NOT read `unhandled`:
 #

@@ -26,14 +26,9 @@ namespace vba
         volatile LONG publishing;
     };
 
-    // THE PROCEDURE TABLE -- a fixed, open-addressed map from p-code
-    // trailer to Proc, kept apart from the hot-path hooks so hash/probe/insert
-    // can be unit-tested for dedup, collision and full. The caller increments
-    // the per-Proc counters through the returned Proc*; name RESOLUTION and the
-    // end-of-session REPORT stay in vbatrace.
-    //
-    // Committed up front and paged in as procedures are seen. Lock-free: a losing
-    // racer on an empty-slot claim just probes on.
+    // A fixed, open-addressed map from p-code trailer to Proc, kept apart from the hot-path
+    // hooks so it can be unit-tested. Committed up front and paged in as procedures are seen.
+    // Lock-free: a losing racer on an empty-slot claim just probes on.
     class ProcTable
     {
     public:
@@ -55,23 +50,10 @@ namespace vba
         void  Reset();
 
     private:
-        // 16384, NOT 2048. A real VBA project outgrows 2,048 distinct
-        // procedures in one arming session, and the failure was silent in the
-        // way that matters: rows kept coming, with no module and no function
-        // name, while `named`/`unnamed` -- which count TABLE SLOTS -- both
-        // looked healthy. Measured on a 6,723-procedure project built from
-        // real-world signatures, where one arm reported `tableFull=14208` and
-        // 4,725 procedures that no row ever named.
-        //
-        // SIZED FOR THE LOAD FACTOR, NOT THE COUNT. This is open addressing
-        // with a 64-probe ceiling, so it starts refusing inserts well before it
-        // is full: at 8192 the same 6,723 procedures still lost 54 frame
-        // pushes, an 82% load. 16384 puts that project at 41%, and the run
-        // measures 0. A table sized to just fit is a table that drops.
-        //
-        // Pages come in as procedures are recorded, and Reset hands them back
-        // rather than writing zeros over all of them, so a session tracing 500
-        // procedures pays for 500, not for the headroom.
+        // Sized for the load factor, not the count: open addressing with a 64-probe ceiling
+        // refuses inserts well before it is full, and a real project can hold several thousand
+        // procedures. Pages come in as procedures are recorded and Reset hands them back, so a
+        // small session pays only for what it uses.
         static constexpr int kSize = 16384;   // power of two, open addressed
         static std::uint64_t Hash(std::uint64_t k);
 

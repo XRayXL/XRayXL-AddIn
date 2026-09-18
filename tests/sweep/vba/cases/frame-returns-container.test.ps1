@@ -1,25 +1,12 @@
-# THE SAME PARAMETER LIST IN A CLASS AND A FORM.
+# The same parameter list in a class and a form.
 #
-# `frame-returns` proved the declared return type is invisible from the argument
-# side. This proves the CONTAINER is too, and it is a separate claim: a class or
-# form procedure is a COM method, so a Function returns its value through a
-# TRAILING `[out, retval]` argument slot while the call itself returns an
-# HRESULT. The walker counted that slot as a parameter, so every class and form
-# Function reported `argcount` one too high and a spurious raw qword after the
-# real arguments -- for EVERY return type, which is what separates it from the
-# standard-module defect, where the extra slot is the FIRST and only `Variant`
-# has one.
+# A class or form procedure is a COM method, so a Function returns its value through a trailing
+# `[out, retval]` argument slot while the call itself returns an HRESULT. That slot is not a
+# parameter: `argcount` must not include it, for any return type.
 #
-# Riding on the same blind spot: `ZeroRetVal` is in the exit-opcode family but
-# does not end a procedure -- it zeroes the result at ENTRY, and the compiler
-# emits it only for a return type that needs it (String, Variant, Object). The
-# type walk stopped on it before reaching the first parameter load, so those
-# three came back `(?,?,?)` with values rendered as raw qwords, while the same
-# signature returning Long or Double decoded correctly.
-#
-# Neither was visible to 35,213 real-world signatures, because every one of them
-# was emitted into a STANDARD module. 70% of the source they were mined from is
-# class and form code.
+# `ZeroRetVal` is in the exit-opcode family but does not end a procedure: it zeroes the result
+# at entry, and is emitted only for a return type that needs it (String, Variant, Object). The
+# type walk must not stop on it.
 $case = @{ Name='frame-returns-container'
      ClassSetup=@'
 Public Function K_Var(ByVal a As Long, Optional b As Variant) As Variant

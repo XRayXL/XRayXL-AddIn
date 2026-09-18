@@ -31,13 +31,10 @@ namespace xll
     };
     ResolveCost TakeResolveCost();   // reads and resets
 
-    // The export name is not the name a user knows: pxProcedure is the export,
-    // pxFunctionText is what goes in a cell, and any add-in that generates its
-    // exports makes the two different strings. Entirely inside the C API --
-    // xlfRegisterId for the registration id, xlfGetDef back to the display name,
-    // with document_text MISSING and pxTypeNum 1 or 3, never 2. Empty if the
-    // chain does not resolve, and the caller then falls back to the export name
-    // and counts it.
+    // pxProcedure is the export and pxFunctionText is what goes in a cell; an add-in that
+    // generates its exports makes them differ. Resolved inside the C API: xlfRegisterId, then
+    // xlfGetDef. Empty if the chain does not resolve, and the caller falls back to the export
+    // name.
     std::wstring ResolveFunctionText(const std::wstring& module,
                                      const std::wstring& procedure,
                                      const std::wstring& typeText);

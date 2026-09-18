@@ -32,8 +32,8 @@ namespace vba
     namespace
     {
         // ---------------------------------------------------------------
-        // The per-slot stub. Emitted at runtime because each slot needs its
-        // own original handler address, and now its own thunk pointer.
+        // The per-slot stub, emitted at runtime because each slot needs its own original
+        // handler address and thunk pointer.
         //
         //   +00  FF 15 <rip32>     call  qword ptr [rip+thunk]
         //   +06  FF 25 <rip32>     jmp   qword ptr [rip+original]
@@ -41,18 +41,9 @@ namespace vba
         //   +10  <u64 original>
         //   +18  <u64 shared thunk>
         //
-        // THE CALL IS THE POINT. Pushing the original and `ret`-ing to it is a
-        // forged return address, which is exactly what CET shadow stacks fault
-        // on -- and a shadow-stack violation is a fast-fail SEH cannot catch.
-        // Here the call is matched by the thunk's own `ret`, and the tail `jmp`
-        // leaves rsp exactly as the interpreter had it.
-        //
-        // INDIRECT through an embedded absolute pointer (FF 15), as the tail jmp
-        // already reaches the original, NOT a 5-byte `call rel32`: rel32
-        // forced the stub within +-2 GB of the thunk, so arming REFUSED when
-        // address space near the XLL was congested. An indirect call has no
-        // distance limit, clobbers no register, and is still a real CALL, so CET
-        // is satisfied.
+        // A real call, matched by the thunk's own `ret`: pushing the original and `ret`-ing to
+        // it would forge a return address, which CET shadow stacks fast-fail on. Indirect
+        // through an embedded pointer, so the stub need not sit within 2 GB of the thunk.
         // ---------------------------------------------------------------
         constexpr std::size_t kStubSize = 0x20;
         constexpr std::size_t kOffOrig  = 0x10;
@@ -145,7 +136,7 @@ namespace vba
         if (!s.found || !s.verified)
             return "VBA tracing: REFUSED to patch -- " + Describe(s);
 
-        // Recorded, not pinned: VBE7 is not ours to hold (D90).
+        // Recorded, not pinned: VBE7 is not ours to hold.
         if (!core::ModuleAt(reinterpret_cast<const void*>(img.Base()), g_vbe7))
             return "VBA tracing: REFUSED -- could not identify VBE7 in memory";
 
@@ -268,16 +259,10 @@ namespace vba
         // reported rather than silently skipped.
         {
             PcodeLengths pl;
-            // THE LENGTHS BELONG TO AN OPCODE SET, NOT TO A TABLE ADDRESS. The
-            // structural checks prove we found the dispatch table; the partition
-            // fingerprint proves it is the SAME opcode set kSigLength was
-            // measured against. Without that, every length is keyed by a slot
-            // index that may mean something else, and the walk would decode
-            // fiction confidently -- the one failure mode nothing downstream can
-            // detect. It DEGRADES rather than refusing the arm, on the same
-            // trade as the raise slot: values and call timing are still true
-            // without the p-code, and losing every VBA row because an opcode
-            // moved would be the wrong answer.
+            // The lengths belong to an opcode set, not a table address, and the partition
+            // fingerprint says whether this is the set kSigLength describes. Without it the
+            // p-code walk is dropped rather than the arm refused: values and call timing are
+            // still true.
             if (!s.partitionOk)
             {
                 ClearArmedLengths();
@@ -410,13 +395,9 @@ namespace vba
         // assertable state.
         for (const std::string& w : UnknownOpcodeWarnings()) core::Log::Warning(w);
 
-        // THE TABLE'S HEALTH, PROMOTED WHEN IT SLIPS. A correct table walks
-        // EVERY procedure cleanly -- 2,949 corpus procedures, every fuzz seed
-        // and the family probe all sit at 100% -- so a shortfall is a defect.
-        // THE THRESHOLD IS MEASURED: one wrong length in one common opcode
-        // (671, 6 -> 4) drops the rate to 68% and blames NOTHING, because
-        // every break follows a resync; only this fraction moves.
-        // [measured: planted-answer run, family probe, 66 of 97]
+        // The table's health. A correct table walks every procedure cleanly, so a shortfall is
+        // a defect. One wrong length in a common opcode drops the clean rate sharply while
+        // blaming nothing, because every break follows a resync.
         long long walks = 0, clean = 0;
         PcodeHealth(walks, clean);
         if (walks >= 20 && clean * 10 < walks * 9)

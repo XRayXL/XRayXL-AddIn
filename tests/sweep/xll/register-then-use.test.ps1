@@ -1,18 +1,12 @@
-# REGISTER AN XLL, THEN USE IT IMMEDIATELY -- the call must be traced.
+# Register an XLL, then use it immediately: the call must be traced.
 #
-# The realistic shape of this is a macro or an add-in loader that calls
-# Application.RegisterXLL and, the moment it returns, Application.Run on one of
-# the functions that XLL just registered. There is no pause, and no calculation
-# in between.
+# The realistic shape is a macro or loader that calls Application.RegisterXLL and at once runs
+# one of the functions it registered.
 #
-# WHAT THIS DOES AND DOES NOT PROVE.
-#
-# It proves the scenario works: register an XLL, use it at once, get trace rows.
-# It does NOT prove there is no race. Registrations are hooked by a worker
-# thread a moment later, and a CalculateFull straight after RegisterXLL can land
-# in that window (measured 2026-09-15: 32 ms, the recalc untraced). The window is
-# ACCEPTED (D49) because the log reports it, so an untraced use passes only when
-# the log's applied batch came after the use began.
+# It does not prove there is no race. Registrations are hooked by a worker thread a moment
+# later, and a CalculateFull straight after RegisterXLL can land in that window. The window is
+# accepted because the log reports it, so an untraced use passes only when the log's applied
+# batch came after the use began.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -29,17 +23,12 @@ try {
     $armLine = Wait-LogLine $paths.Log 'armed \d+ of|nothing armed|could not' $mark
     if ($armLine -notmatch 'armed \d+ of') { Complete-Test -Fail -Detail "arm: $armLine" }
 
-    # The freeze method decides whether patching a registration is affordable at
-    # all: the system-wide thread snapshot costs ~60ms per patch, the
-    # process-scoped one ~2.4ms. Asserted here because this test's whole subject
-    # is how quickly a registration can be hooked.
+    # The freeze method decides whether patching a registration is affordable: the system-wide
+    # thread snapshot is far slower per patch than the process-scoped one.
     #
-    # SEARCHED FROM THE TOP OF THE LOG, NOT FROM THIS TEST'S MARK. MinHook is
-    # initialised ONCE per PROCESS -- g_minhookReady in src/xll/xllhook.cpp -- so
-    # the line is written by whichever arm came first, which under -SessionMode
-    # Reuse is an earlier test's. Reading after the mark made a correctly armed
-    # session report the slow freeze, and the claim being made here is about
-    # the process, not about this arm.
+    # Searched from the top of the log, not from this test's mark: MinHook is initialised once
+    # per process (g_minhookReady in src/xll/xllhook.cpp), so under -SessionMode Reuse the line
+    # was written by an earlier test's arm.
     $freezeLine = Wait-LogLine $paths.Log 'minhook: ' 0 15
     $fastOk = [bool]($freezeLine -match 'process-scoped')
     Write-TestCase -Name 'minhook-process-scoped-freeze' -Pass:$fastOk -Fail:(-not $fastOk) -Detail "$freezeLine"
@@ -52,16 +41,11 @@ try {
     Copy-Item $source $second -Force
     $leaf = Split-Path $second -Leaf
 
-    # ---- THE POINT OF THE TEST: no pause between registering and using ----
-    #
-    # TWO PATHS, because they race differently. Application.Run carries enough
-    # COM overhead that a worker polling every 25ms usually wins. A cell formula
-    # plus CalculateFull is far quicker off the mark and is the one that loses.
-    # ORDER MATTERS. The recalc goes FIRST: an Application.Run before it would
-    # hand the worker a COM round-trip of head start, and the formula would then
-    # be traced for the wrong reason. That mistake was made once here already --
-    # the test passed while the race was still open.
-    # Different arguments before the load, so its rows cannot be counted as the use after it.
+    # No pause between registering and using. Two paths, because they race differently:
+    # Application.Run carries enough COM overhead that the worker usually wins, while a cell
+    # formula plus CalculateFull is far quicker off the mark. The recalc goes first, so the Run
+    # does not hand the worker a head start. Different arguments before the load, so its rows
+    # cannot be counted as the use after it.
     $ws = $app.ActiveSheet
     $ws.Range('A1').Formula = '=TxB(1,1)'      # set BEFORE the XLL loads, so the
     $app.CalculateFull()                       # recalc below is the first thing
@@ -86,16 +70,16 @@ try {
     $lossy = Stop-XRayTrace $sx
     if ($lossy) { Complete-Test -Fail -Detail $lossy }
 
-    # Excel binds the name to the NEWEST registration, so this call goes to the
-    # copy. Rows naming the original are counted too, so a failure says which of
-    # the two things went wrong: untraced, or traced against the old module.
-    # Each use is found by its own arguments: other TxB rows in the trace say nothing about it.
+    # Excel binds the name to the newest registration, so this call goes to the copy. Rows
+    # naming the original are counted too, so a failure says which went wrong: untraced, or
+    # traced against the original module. Each use is found by its own arguments: other TxB rows
+    # in the trace say nothing about it.
     $rows = @(Read-TraceFile (Get-XRayTraceCsv $sx.ProcId))
     $runEntries = @($rows | Where-Object { $_.kind -eq 'entry' -and $_.proc -ieq 'TxB' -and $_.args -ceq 'a1:B=2 a2:B=3' })
     $fromNew = @($runEntries | Where-Object { $_.module -ieq $leaf }).Count
     $fromOld = @($runEntries | Where-Object { $_.module -ieq 'TracedAddin64.xll' }).Count
 
-    # THE REPORTED WINDOW IS ACCEPTED (D49). Registrations are patched as one batch
+    # THE REPORTED WINDOW IS ACCEPTED. Registrations are patched as one batch
     # a moment later, and the log says calls in between were not traced. A use with
     # no rows at all passes only if that batch was applied AFTER the use began; a
     # missing row with no window, or after it closed, is still a failure.
@@ -109,25 +93,13 @@ try {
     $cellInWindow = ($null -ne $appliedAt) -and ($appliedAt -gt $cellAt)
     $appliedText  = if ($appliedAt) { $appliedAt.ToString('HH:mm:ss.fff') } else { 'no applied line' }
 
-    # THREE OUTCOMES, AND ONLY ONE OF THEM IS THIS TEST FAILING.
+    # Three outcomes, and only one of them is a failure.
     #
-    #   new > 0              the just-registered copy was called AND traced.
-    #                        The intended path, and a pass.
-    #   new = 0, old > 0     the call went to the ORIGINAL registration. Excel
-    #                        had not re-bound the name yet -- both XLLs export
-    #                        `TxB`, and which one a call reaches is Excel's
-    #                        binding, not our tracing. Four rows came back, so
-    #                        nothing was missed; the test simply never got to
-    #                        observe its subject. INCONCLUSIVE, not a failure.
-    #   new = 0, old = 0     the call was NOT TRACED AT ALL. This is the race
-    #                        the file exists for -- the 4ms-after-RegisterXLL
-    #                        window that once missed every call, 6 times of 6 --
-    #                        and it is a failure.
-    #
-    # Measured 1 run in 18 landing in the middle case. Failing on it was the
-    # test reporting Excel's name binding as a tracer defect, which is the
-    # confusion this suite is built to avoid: "we looked and saw nothing" and
-    # "there was nothing of ours to see" are different facts.
+    #    new > 0              the just-registered copy was called and traced: a pass.
+    #    new = 0, old > 0     the call went to the original registration, because Excel had
+    #                         not re-bound the name yet. Inconclusive, not a failure.
+    #    new = 0, old = 0     the call was not traced at all: the race this file exists
+    #                         for, and a failure.
     $tracedOk    = ($fromNew -gt 0)
     $wentToOld   = (($fromNew -eq 0) -and ($fromOld -gt 0))
     $tracedAtAll = (($fromNew + $fromOld) -gt 0)

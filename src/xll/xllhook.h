@@ -4,23 +4,16 @@
 #include <windows.h>
 #include <string>
 
-// Installing the trace on a registered XLL function.
-//
-// ONE MECHANISM, FOR EVERY XLL: Excel resolves an export and calls the address,
-// and cannot tell what shape the code there is. Neither do we -- an inline
-// detour on that address, and MinHook deals with whatever instructions it finds.
-// Nothing here knows about any add-in framework.
+// Installs the trace on a registered XLL function: an inline detour on the address Excel calls,
+// whatever code is there. Nothing here knows about any add-in framework.
 
 namespace xll
 {
     struct Target
     {
-        // ---- SHARED WITH xllthunk.asm. THESE TWO MUST STAY FIRST, IN ORDER ----
-        //
-        // The thunk reads [rbx+0] for the function to call and [rbx+8] for how
-        // many stack arguments to copy. Anything placed before them is what the
-        // thunk calls instead -- with a char array first, it calls the name
-        // string. The static_asserts below keep that honest.
+        // Shared with xllthunk.asm, and these two must stay first, in order: the thunk reads
+        // [rbx+0] for the function to call and [rbx+8] for the stack-argument count. The
+        // static_asserts below pin it.
         void*    original = nullptr;     // +0x00 slot's old value, or MinHook trampoline
         INT32    argCount = 0;           // +0x08 ABI argument slots (= plan.slotCount)
         INT32    reserved = 0;           // +0x0C

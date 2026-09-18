@@ -19,18 +19,11 @@ End Function
      Cells=@{ 'A1'='=Kick()' }
      Trigger=@{ Kind='Calc' }
      Expect={ param($t)
-        # `End` tears the VBA session down and fires NO exit opcode, so the
-        # frames it abandons cannot close themselves. Leaving them to the
-        # stack-pointer backstop does not work: it needs a later statement at a
-        # HIGHER rsp, and a full rebuild evaluates this sheet TWICE with the
-        # second pass starting DEEPER, so the new activations nest underneath
-        # the dead ones. Measured that way: depth 8 where 4 is right, frames
-        # 8/8.
-        #
-        # The End opcode itself (slot 619) is now hooked and closes the chain it
-        # kills, so 4 is asserted rather than tolerated. THE OLD NUMBER IS THE
-        # REGRESSION SIGNAL: 8 means the End hook stopped firing and the
-        # backstop is carrying it again.
+        # `End` tears the VBA session down and fires no exit opcode, so the frames it abandons
+        # cannot close themselves, and the stack-pointer backstop cannot do it either: a full
+        # rebuild evaluates this sheet twice with the second pass starting deeper, so the new
+        # activations would nest underneath the dead ones. The End opcode (slot 619) is hooked
+        # and closes the chain it kills. A depth of 8 here means that hook stopped firing.
         if ($t.maxDepth -ne 4) {
             return "depth $($t.maxDepth), expected 4" +
                    $(if ($t.maxDepth -eq 8) { ' -- 8 is the pre-fix value: the End hook is not firing' }) }

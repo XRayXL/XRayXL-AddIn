@@ -1,22 +1,14 @@
-// Patching the p-code dispatch table: statement, exit, raise and End slots swapped
-// for thunks that count and jump straight on to the original handler.
+// Patches the p-code dispatch table: statement, exit, raise and End slots swapped for thunks
+// that count and jump on to the original handler.
 //
-// A TABLE PATCH IS SAFER THAN A CODE PATCH. Nothing in the instruction stream is
-// rewritten, so Control Flow Guard, CET shadow stacks and unwind metadata are
-// untouched, and disarming is a pointer write back rather than a byte restore.
-// An 8-byte aligned pointer store is atomic on x64, so a thread dispatching
-// concurrently sees either the old handler or the new one, and both work.
+// Nothing in the instruction stream is rewritten, so CFG, CET and unwind metadata are
+// untouched, and disarming is a pointer write back. An aligned 8-byte pointer store is atomic
+// on x64, so a concurrent dispatch sees either handler.
 //
-// THE ONE THING TO UNDERSTAND ABOUT THE THUNK: a handler is entered by
-// `jmp qword ptr [rbx+rax*8]`, NOT by a call. There is no return address on the
-// stack and the handler owns the interpreter's live registers, so the thunk must
-// leave the stack byte-identical, preserve every register and flag, and
-// tail-jump. It touches nothing but its own page.
+// A handler is entered by `jmp qword ptr [rbx+rax*8]`, not a call, so the thunk must leave the
+// stack byte-identical, preserve every register and flag, and tail-jump.
 //
-// OFF BY DEFAULT: VBE7 is patched only when the VBA source is set to DEPTH=TOP
-// or DEPTH=ALL, so installing the add-in patches nothing unless the
-// user asks -- and the baseline half of a cost measurement is an Arm with the
-// mode OFF.
+// VBE7 is patched only when the VBA source is DEPTH=TOP or DEPTH=ALL.
 #pragma once
 #include <cstdint>
 #include <string>
@@ -36,12 +28,9 @@ namespace vba
     // intentionally NOT freed -- see the .cpp.
     std::string DisarmCounting();
 
-    // WHAT THE TRACER DID NOT UNDERSTAND THIS SESSION, at WARNING level: an
-    // opcode with no known LENGTH (the walk skipped a statement), one reaching a
-    // parameter slot with no TYPE (`?opNNN`), and an exit opcode with no RETURN
-    // mapping (an empty `ret`). Each is a hole a reader would otherwise mistake
-    // for an absence of evidence -- "the body never uses this parameter", "this
-    // Sub has no result". Empty is the state a fuzz run asserts.
+    // What the tracer did not understand this session, at WARNING level: an opcode with no
+    // known length, one reaching a parameter slot with no type (`?opNNN`), and an exit opcode
+    // with no return mapping. Empty is the state a fuzz run asserts.
     std::vector<std::string> UnknownOpcodeWarnings();
 
     // The p-code diagnostics for the disarm report, at their proper log

@@ -1,29 +1,15 @@
 #pragma once
 #include <cstdint>
 
-// THE PINNED TABLES OF THE P-CODE WALK -- data, no code. The typed load
-// opcodes, the instruction lengths, the variable-length forms and the
-// corpus-walked bitmap: every entry measured, each with its provenance
-// beside it. Included by vbapcode.cpp alone; the offline tools read the
-// tables from this file by name.
+// The pinned tables of the p-code walk: data, no code. Included by vbapcode.cpp alone; the
+// offline tools read the tables from this file by name.
 namespace vba
 {
     namespace
     {
-        // THE TYPED ARGUMENT-LOAD OPCODES, each measured by declaring one
-        // parameter of that VBA type and reading the opcode the body emits.
-        // [measured: frame-types]
-        //
-        // These are SLOT INDICES, not addresses, and slot indices are portable
-        // -- the same property the BoS and exit slots rely on, across 41 builds.
-        //
-        // 656..669 is one contiguous per-type block; the ByRef loads at 736..751
-        // are a second block that reproduces it offset for offset. Each entry was
-        // still MEASURED rather than predicted from the mirror.
-        //
-        // THIS TABLE WAS ONCE EXTENDED ONLY WHEN SOMEBODY HAPPENED TO WRITE the
-        // procedure that used a missing opcode. It is now filled from the mined
-        // corpus, which reaches shapes nobody would think to write.
+        // The typed argument-load opcodes. Slot indices, not addresses, so portable across
+        // builds. 656..669 is one contiguous per-type block; the ByRef loads at 736..751
+        // reproduce it offset for offset.
         struct TypeOp { std::uint32_t op; const char* name; };
         constexpr TypeOp kTypeOps[] = {
             { 656,  "Byte"     }, { 657,  "Integer"  },   // Integer AND Boolean
@@ -64,52 +50,34 @@ namespace vba
             // through a UDT reference, so the PARAMETER is a `Udt&`. 751 looks
             // like it belongs here and does not -- see PcodeCarriesNoType.
             { 1063, "Udt&" },
-            // THE UDT-MEMBER FAMILY IS TYPED BY THE MEMBER, and a `Type`
-            // carrying one member of every type reaches all of it:
+            // The UDT-member family is typed by the member:
             //
-            //   1056 Byte   1057 Integer/Boolean   1058 Long      1061 Currency
-            //   1062 Variant  1063 String   1064 Object   1067 LongLong
-            //   1068 Single   1069/1071 (already named)
+            //    1056 Byte   1057 Integer/Boolean   1058 Long      1061 Currency
+            //    1062 Variant  1063 String   1064 Object   1067 LongLong
+            //    1068 Single   1069/1071 (already named)
             //
-            // -- offsets from 1056 reproducing the ByVal family's.
-            //
-            // ALL OF THEM NAME THE PARAMETER `Udt&`, NOT the member: the slot
-            // holds a reference to the record, and which member the instruction
-            // reads is incidental to the PARAMETER's declared type. Naming them
-            // by member would put `(Byte)` on a `ByRef p As TBig`.
-            //
-            // The matching stores are each exactly load+32, so
-            // `PcodeStoreTypeName` resolves them through these rows -- which is
-            // the point of the store relation, and a check on it.
+            // All of them name the parameter `Udt&`, not the member: the slot holds a reference
+            // to the record. The matching stores are each load+32, so PcodeStoreTypeName
+            // resolves them through these rows.
             { 1056, "Udt&"     }, { 1057, "Udt&"     }, { 1061, "Udt&" },
             { 1062, "Udt&"     }, { 1064, "Udt&"     }, { 1067, "Udt&" },
             { 1068, "Udt&"     },
-            // 1059/1060 are this family's COERCING Single and Double, at the
-            // same +3/+4 offsets the ByVal family puts 659/660 at, and reached
-            // the same way -- across a Variant-ish boundary. A plain read of the
-            // same members emits 1068/1069.
+            // 1059/1060 are this family's coercing Single and Double, at the same +3/+4 offsets
+            // as 659/660; a plain read of the same members emits 1068/1069.
             //
-            // 1108 IS THE STRING-MEMBER STORE and an outlier by the rule the
-            // ByVal side already records: a String store never sits at load+32,
-            // so the store relation cannot reach it and it is listed.
-            // [measured: 534 cells]
+            // 1108 is the String-member store. A String store never sits at load+32, so it is
+            // listed.
             { 1059, "Udt&"     }, { 1060, "Udt&"     }, { 1108, "Udt&" },
             // 786 IS THE ByRef CLASS STORE (`Set p = Nothing` on a
             // `ByRef p As CThing`) and cannot come from the store relation:
             // 786-32 = 754, which is unimplemented. Same outlier shape as 788.
             { 786,  "Object&"  },
-            // 660/740 ARE DOUBLE at offset 4 of their families -- the coercing
-            // pair, appearing ONLY when the value crosses an object member
-            // (`c.V = p`, `c.M(p)`); a plain read of the same parameter emits
-            // 669/749. What is measured is the TYPE the slot carries, which is
-            // what it has to name.
-            // [measured: objprop and objmethod]
+            // 660/740 are Double at offset 4 of their families: the coercing pair, appearing
+            // only when the value crosses an object member (`c.V = p`, `c.M(p)`). A plain read
+            // emits 669/749.
             { 660,  "Double"   }, { 740,  "Double&"  },
-            // 659/739 are the same coercing pair one offset below, appearing
-            // only through `Debug.Print p`. A Single is four
-            // bytes, and `mov eax,[rax]` is exactly how a float's bit pattern
-            // moves -- zero-extending, since sign-extending a float is
-            // meaningless. [measured: debugprint]
+            // 659/739 are the same coercing pair one offset below, appearing only through
+            // `Debug.Print p`.
             { 659,  "Single"   }, { 739,  "Single&"  },
             // AN 8-BYTE BY-REFERENCE LOAD THAT DOES NOT DETERMINE THE TYPE: 747
             // fires for `ByRef v As LongLong`, `As LongPtr` AND `ByRef a() As
@@ -119,38 +87,21 @@ namespace vba
             { 747,  "Ref&" },
         };
 
-        // THE VERIFIED LENGTHS OF THE OPCODES A SIGNATURE DEPENDS ON.
+        // The instruction lengths a signature depends on. A length is a property of the opcode
+        // set, not of the build, so it is a constant for the same reason the slot indices in
+        // vbaderive.h are.
         //
-        // An instruction's length is a property of the OPCODE SET, not of the
-        // build -- 42 VBE7 builds, 2012 to 2026, zero conflicts
-        // -- so it is a constant for the same reason the slot indices in
-        // vbaderive.h are: a dispatch table is an interface. The per-slot build
-        // counts are regenerated offline from the binaries.
+        // What gets an entry:
         //
-        // FOUR RULES DECIDE WHAT GETS AN ENTRY.
-        //
-        //   1. Unanimous in `candidate_consensus` across the corpus -- NEVER
-        //      `shipped_consensus`, which is wrong for 788, 750 and 775.
-        //   2. NOT a desync artefact. An opcode that stopped many walks but
-        //      derives on NO build (op8, 710, and the 0/1/2/4/16/56 run) is
-        //      operand bytes read as an opcode after the walk lost alignment.
-        //      Pinning one would let a misaligned walk carry on instead of
-        //      resynchronising -- the one failure the resync exists to prevent.
-        //   3. UNANIMOUS IS NOT PROOF. A length can be unanimously derived and
-        //      unanimously WRONG: for a CALL, the `movzx rax, word [rsi]` the
-        //      handler reaches is the CALLEE'S first opcode, so a walker
-        //      measuring "how far had rsi moved before the next fetch" measures
-        //      the wrong thing. 1309, 500, 498 and 1311 all derive as 2 and are
-        //      6; only the emitted p-code says so.
-        //   4. Exit opcodes are absent: the walk steps over one by the offset the
-        //      statement declares, so their length is never used.
-        //
-        // WHERE THE ENTRIES CAME FROM, weakest evidence last: traced procedures;
-        // the shape fuzzer, whose oracle is "did the tracer understand every
-        // opcode it met", so it needs no known answer; the handlers themselves, on 2
-        // builds rather than 42, so those rows are marked weaker; and statement
-        // segment arithmetic -- a statement opcode's operand is the offset of the
-        // next statement, so a segment's last unpinned length falls out by subtraction.
+        //    1. Unanimous across builds in the offline derivation's `candidate_consensus`.
+        //    2. Not a desync artefact: an opcode that stops walks but derives on no build is
+        //       operand bytes read as an opcode, and pinning it would let a misaligned walk
+        //       carry on.
+        //    3. Unanimous is not proof. For a call, the fetch the handler reaches is the callee's
+        //       first opcode, so 1309, 500, 498 and 1311 derive as 2 and are 6; only the emitted
+        //       p-code says so.
+        //    4. Exit opcodes are absent: the walk steps over one by the offset its statement
+        //       declares.
         struct SigLength { std::uint16_t slot; std::uint8_t len; };
         constexpr SigLength kSigLength[] = {
             { 615, 6 }, { 1645, 6 },                    // beginning-of-statement
@@ -190,18 +141,12 @@ namespace vba
             { 497,  6 }, { 718,  6 }, { 1534, 8 },
             { 63,   2 }, { 246,  2 }, { 991, 4 }, 
 
-            // 1090 IS THE MODULE-LEVEL STORE (`gSink = 1` where gSink is a
-            // module variable), among the most ordinary statements in VBA: it
-            // alone stopped 15 of 16 walks, resynchronising the walk out of
-            // nearly every real procedure it met.
-            // [measured]
+            // 1090 is the module-level store (`gSink = 1`), among the most ordinary statements
+            // in VBA.
             { 1090, 10 }, { 660, 6 },
 
-            // FROM THE SHAPE FUZZER: opcodes that stopped at least two walks in a
-            // run and are unanimous across all 42 builds. Those whose length derives
-            // on only some builds are left unpinned: that is the cross-version
-            // fragility this project avoids.
-            // [measured: seeds 3000-3009]
+            // From the shape fuzzer: unanimous across all builds. Opcodes whose length derives
+            // on only some builds are left unpinned.
             { 36, 2 }, { 39, 2 }, { 49, 2 }, { 50, 2 }, { 197, 2 },
             { 198, 2 }, { 267, 2 }, { 281, 2 }, { 282, 2 }, { 283, 2 },
             { 294, 2 }, { 332, 2 }, { 356, 2 }, { 357, 2 }, { 388, 2 },
@@ -224,41 +169,23 @@ namespace vba
             { 621, 2 }, { 622, 2 }, { 878, 6 }, { 909, 6 },
             { 1609, 6 }, { 1630, 6 }, { 1651, 2 }, { 1687, 2 },
 
-            // FROM THE HANDLERS THEMSELVES, not the corpus CSV. These
-            // read `derivedOn=0/42` in the corpus CSV, which looked like "VBE7
-            // does not say". It said: the offline analysis reads
-            // the handler under two extra rules --
+            // From the handlers themselves, under two rules:
             //
-            //   R1  an explicit `add rsi,N` SURVIVES losing the thread. 696 and
-            //       1441 state their length outright and then jump into a shared
-            //       tail or make a call; a walk insisting on reaching a
-            //       `movzx rax, word [rsi]` fetch throws that answer away.
-            //   R2  a load INTO rsi FROM [rsi+k] is a BRANCH, not an advance.
-            //       710 is `mov esi,[rsi]` + `add rsi,base`, which REPLACES the
-            //       p-code pointer -- but it still occupies the 4 bytes of target
-            //       it read, which is what a LINEAR walk needs.
+            //    R1  an explicit `add rsi,N` survives losing the thread. 696 and 1441 state their
+            //        length outright and then jump into a shared tail or make a call.
+            //    R2  a load into rsi from [rsi+k] is a branch, not an advance. 710 is `mov esi,[rsi]`
+            //        + `add rsi,base`, which replaces the p-code pointer, but it still occupies the
+            //        4 bytes of target it read.
             //
-            // A REJECTED RULE, RECORDED: "treat `call` as a stop" sounds safer,
-            // but measured it answers 90 new slots and LOSES 184, because the
-            // idiom is `call helper; ...; movzx rax,[rsi]` -- the fetch is after
-            // the call, not inside it. Recorded so it is not
-            // tried again.
-            //
-            // WEAKER EVIDENCE THAN THE ROWS ABOVE, AND SAID SO. Those are 42/42
-            // from the corpus CSV. These are 2/2: measured on the two
-            // builds at hand, not across the corpus.
-            // What IS 42-build-grade is the pair of rules, which contradict none
-            // of the ~800 lengths the walk derives on either build.
-            // [measured: on 7.1.10.33 and 7.1.11.58; every one met repeatedly by the shape fuzzer]
+            // Treating `call` as a stop is not a rule: the idiom is `call helper; ...; movzx
+            // rax,[rsi]`, with the fetch after the call. These rows were read on two builds,
+            // not across the corpus.
             { 696,  6 },  { 707,  6 },  { 710,  6 },  { 959,  6 },
             { 1468, 10 },  { 1471, 10 },
             { 1441, 12 },  { 1442, 12 },
             { 1096, 10 }, { 1107, 10 }, { 1445, 10 },
 
-            // 1309 IS THE PROCEDURE CALL AND IT IS 6, not the 2 that both
-            // handler walkers derive unanimously (cand=2, shipped=2,
-            // derivedOn=42/42, and the offline length derivation agrees on both
-            // builds). The bytes settle it --
+            // 1309 is the procedure call and it is 6, not the 2 its handler derives.
             // `RiskWeighted = exposure * WeightFor(rating)` compiles to:
             //
             //   6702 0600 0000   615@6     beginning of statement
@@ -272,25 +199,11 @@ namespace vba
             //   6702 0000 0000   615@0
             //   7302             627       exit, Double
             //
-            // At length 6 every following opcode decodes as that statement; at 2
-            // the walk lands on `0200` mid-operand, reports a phantom "opcode 2",
-            // resynchronises past the rest of the statement and loses the load of
-            // `exposure`. [measured: XRAYXL_DIAG dump, RiskWeighted;
-            //  defect: call-length-derived-from-the-callee]
+            // At 2 the walk lands on `0200` mid-operand and loses the load of `exposure`. 500,
+            // 498 and 1311 are the same at the member dispatch.
             //
-            // op500 and op498 are the same defect at the member dispatch, and
-            // op1311 the third instance: each pinned 2, each really 6, each
-            // found from the compiler's OUTPUT rather than the handler. 1311
-            // alone takes the corpus from 443 to 527 procedures parsed (70% ->
-            // 83%), breaking none.
-            // [measured: the ClassParam dump]
-            //
-            // op406 = 2, and op1497 stays 10. The corpus ranks {1497=10,406=2}
-            // and {1497=10,406=8} EQUAL, so it cannot choose; the procedure
-            // decides. `Sub P(ByVal r As Range) / Dim z As Long / z = r.Row` must
-            // STORE a Long into z, and only 406=2 leaves op690 (the Long store)
-            // in the stream -- with 8 the assignment has no store at all, which
-            // no compiler emits.
+            // 406 is 2 and 1497 stays 10: in `z = r.Row` only 406=2 leaves the Long store (690)
+            // in the stream.
             { 498, 6 },
             { 406, 2 },
             // op600 and op619 by SEGMENT ARITHMETIC (13 and 3 independent
@@ -301,49 +214,21 @@ namespace vba
             // op620 (GoSub Return) = 2: no operand, per the dispatch tail. The handler reloads
             // RSI before fetching, so reading the handler alone cannot show this.
             { 620, 2 },
-            // THE CALL FAMILIES AT 6, FROM THE HANDLERS THEMSELVES. At dispatch RSI
-            // points at the operand, and a call handler reads its operand words,
-            // `add rsi,4`, SAVES rsi to a frame slot, calls, restores it, and only
-            // then fetches the next opcode -- so the length is 2 + the advance made
-            // before the save, and a walker that stops at the first [rsi] read
-            // answers 2 for an instruction that is 6. Read from the handler bytes
-            // on 7.1.11.58, validated on the nine calls the corpus had already
-            // proved (all read 6), and on the corpus itself: with 1279 at 6 the
-            // thirty-four parses that broke immediately after it all close, and
-            // ImpAdCall and ThisVCall hold on the unseen half. The other VCall
-            // slots never occur in any traced code; they share the handler shape
-            // and the name family of the two (498, 500) the corpus proved, and 2
-            // is known wrong for that family, so 6 is the lower-risk value -- held
-            // at lower confidence until code that emits them is traced.
-            // The through-call rule is NOT trusted outside the call families: on AddVar and
-            // Ary1LdRfVarg it contradicts corpus-validated pins and applying it
-            // there breaks 56 procedures. [measured: hold-out check]
+            // The call families are 6. A call handler reads its operand words, `add rsi,4`,
+            // saves rsi to a frame slot, calls, restores it and only then fetches the next
+            // opcode, so a walker that stops at the first [rsi] read answers 2. The VCall slots
+            // no traced code reaches share the handler shape of 498 and 500. The through-call
+            // rule is not applied outside the call families: on AddVar and Ary1LdRfVarg it
+            // contradicts corpus-validated lengths.
             { 500, 6 },
             { 1309, 6 },
 
-            // 1606 IS 4, not the 2 the corpus derives. The clean-walk counter
-            // flagged it as a length the walk USED and could not continue past;
-            // of 2/4/6/8 only 4 improved anything, so the answer is unique rather
-            // than a tie.
-            //
-            // Four other suspects from the same ranking were tried and LEFT
-            // ALONE, which is the discipline this loop enforces: op283 and
-            // op1271 changed nothing, op1111 RAISED desyncs, and op1266's
-            // candidates tie exactly -- unpinned beats wrongly pinned.
-            // [measured: seed 3000]
+            // 1606 is 4, not the 2 its handler derives: of 2/4/6/8 only 4 lets the walk
+            // continue.
             { 1606, 4 },
 
-            // EVERY LENGTH THE HANDLER WALK DERIVES, not only the ones the fuzzer had
-            // happened to meet -- which left 725 cross-build-consistent slots
-            // unpinned on the (true, but only about COST) principle that an
-            // opcode never met costs nothing unlengthed.
-            //
-            // Clean walks 19 -> 23 of 53, resyncs 89 -> 80, `)~` signatures
-            // 34 -> 30, and DESYNCS UNCHANGED AT 1 -- the check that matters,
-            // because a wrong length shows up as a desync before anywhere else.
-            // Identical on both locally available builds, and contradicting no
-            // pinned length except 1309 and 1606, corrected above from the
-            // p-code. [measured: the shape fuzzer]
+            // Every length the handler walk derives consistently across builds, whether or not
+            // any traced code has met the opcode.
             { 2, 2 }, { 3, 2 }, { 12, 2 }, { 13, 2 }, { 14, 2 }, { 15, 2 },
             { 24, 2 }, { 25, 2 }, { 26, 2 }, { 48, 2 }, { 60, 2 }, { 61, 2 },
             { 62, 2 }, { 64, 2 }, { 65, 2 }, { 66, 2 }, { 68, 2 }, { 72, 2 },
@@ -479,35 +364,21 @@ namespace vba
             { 1673, 10 }, { 1681, 8 }, { 1682, 10 }, { 1683, 4 }, { 1684, 6 },
             { 1685, 6 }, { 1686, 2 }, { 1688, 2 }, { 1689, 2 }, { 1690, 2 },
             { 1691, 2 }, { 1693, 2 }, { 1698, 10 },
-            // `CopyBytes`/`CopyBytesZero` (1037/1672, pinned above) repurpose RSI as the memcpy
-            // pointer and restore it afterwards, so a handler walker reads nothing
-            // and the corpus has never reached them. Their 2-byte count operand
-            // comes from the published VB6 table, matched by symbol name and
-            // confirmed in the handler: it restores rsi, fetches the next opcode
-            // at +2 and advances 4.
-            // The rows below were settled by operand structure in the runtime corpus.
+            // `CopyBytes`/`CopyBytesZero` (1037/1672, above) repurpose RSI as the memcpy
+            // pointer and restore it, so a handler walker reads nothing. Their 2-byte count
+            // operand is from the published VB6 table, confirmed in the handler. The rows below
+            // come from operand structure in the runtime corpus.
             { 1113, 4 }, { 335, 6 }, { 582, 2 }, { 430, 2 }, { 1120, 2 }, { 1121, 6 }, { 596, 2 }, { 258, 2 },
             { 595, 2 }, { 67, 6 }, { 1431, 10 }, { 459, 2 }, { 606, 2 }, { 458, 2 }, { 358, 2 }, { 608, 2 }, { 1643, 3 }, { 257, 2 }, { 1439, 10 }, { 341, 2 }, { 1440, 10 }, { 472, 2 }, { 342, 2 }, { 473, 2 }, { 1469, 10 }, { 584, 2 },
-            // 517/519 are DEAD, not unmeasured: the dispatcher enters every handler
-            // with rax = the opcode index, the `3` twins overwrite it with a fetched
-            // count before `add rsi, rax`, and the `4` twins do not -- they would add
-            // 517 or 519 to the instruction pointer. The three bytes between are a
-            // NOP. Nothing this compiler emits can be one of them.
-            // 342/473 share a handler byte-for-byte with 341/472 (same RVA), so
-            // their length follows by IDENTITY, not inference; 1469 jumps into the
-            // same body as 1468, which the corpus confirmed at 10. 517/519
-            // (GetRecOwner4/PutRecOwner4) stay EMPTY: their shared body adds a
-            // register to RSI that nothing on the path loaded, and no record shape
-            // tried -- fixed or dynamic strings, Variants, objects, Binary and
-            // Random -- makes the compiler emit them. Empty rather than wrong.
-            // The VCallBasic value forms (1232-1247) and VCallBasicCbFrame (1248) were
-            // at 2, the fetch value. They are a CALL family, and their template is
-            // exact: ThisVCallBasic (1168-1183) is entirely 6 with its CbFrame at 4,
-            // and the Hresult members of both (498/499) are corpus-confirmed 6. Each
-            // VCallBasic handler reads [rsi] and saves rsi identically to 498. So the
-            // value forms are 6 and the CbFrame 4, mirroring the This-family. Corpus
-            // has never reached them, so this is family+identity evidence, not a walk.
-            // Through-call handlers the corpus has not reached: through-call rule, family-consistent.
+            // 517/519 (GetRecOwner4/PutRecOwner4) stay empty: their shared body adds a register
+            // to RSI that nothing on the path loaded, and nothing makes the compiler emit them.
+            //
+            // 342/473 share a handler with 341/472, so their length follows by identity; 1469
+            // jumps into the same body as 1468.
+            //
+            // The VCallBasic value forms (1232-1247) are 6 and VCallBasicCbFrame (1248) is 4,
+            // mirroring ThisVCallBasic (1168-1183): each handler reads [rsi] and saves rsi as
+            // 498 does. Family evidence; no traced code reaches them.
             { 854, 6 }, { 867, 6 }, { 1112, 4 }, { 1419, 10 },
             // Adopted from the through-call rule and since WALKED PAST CLEANLY at an aligned boundary in
             // the runtime corpus -- the walk continued from the length to a real slot.
@@ -534,28 +405,18 @@ namespace vba
             { 1542, 2 }, { 1608, 6 }, { 1674, 6 },
         };
 
-        // LENGTHS THAT DEPEND ON THE OPERAND. `FFreeVar`/`FFreeStr`/`FFreeAd`
-        // (1514-1516) release the Variant, String and object locals on exit:
-        // opcode, a count word, then count/2 four-byte frame offsets -- 4 +
-        // 2*count, in 87 of 87 corpus occurrences of `FFreeVar`. No
-        // fixed pin could close a segment through it, which from outside looks
-        // exactly like a fixed pin that never fits the hold-out.
+        // Lengths that depend on the operand. `FFreeVar`/`FFreeStr`/`FFreeAd` (1514-1516)
+        // release the Variant, String and object locals on exit: opcode, a count word, then
+        // count/2 four-byte frame offsets, so 4 + 2*count.
         //
-        // The named late calls (1502-1509) carry a list of argument-name ids and
-        // the word at +2 is the byte count of what follows it: 4 + count, or
-        // 6 + count for the two `LdVar` forms, whose 4-byte result slot the
-        // count does not cover. `OnGoto`/`OnGosub` (1480/1481) skip a list of
-        // four-byte branch targets the same way, and `GetRecOwner3`/`PutRecOwner3`
-        // (516/518) a record payload -- all four were pinned at 2, which steps
-        // into the middle of the list.
+        // The named late calls (1502-1509) carry a list of argument-name ids, and the word at
+        // +2 is the byte count of what follows: 4 + count, or 6 + count for the two `LdVar`
+        // forms. `OnGoto`/`OnGosub` (1480/1481) skip a list of four-byte branch targets the
+        // same way, and `GetRecOwner3`/`PutRecOwner3` (516/518) a record payload.
         //
-        // FOUND BY A HANDLER SWEEP, not by the corpus: not one of those four
-        // occurs in 3,004 traced procedures, so every instrument we own called
-        // the table healthy. The signature is `add rsi, <register>` where the
-        // register was fetched from `[rsi]`. `For`/`Next`/`Gosub`/`OnGoto` all
-        // add a register to RSI too, but take it from elsewhere, because there it
-        // is a BRANCH -- and `Resume` passes the naive test while REPLACING rsi
-        // with a stored offset, so the fetch is what separates them.
+        // The handler signature is `add rsi, <register>` where the register was fetched from
+        // `[rsi]`. `For`/`Next`/`Gosub` take the register from elsewhere, because there it is a
+        // branch.
         struct VarLength { std::uint16_t slot; std::uint8_t base; std::uint8_t unit; };
         constexpr VarLength kVarLength[] = {
             { 1514, 4, 2 }, { 1515, 4, 2 }, { 1516, 4, 2 },
@@ -566,14 +427,11 @@ namespace vba
             { 516,  4, 1 }, { 518,  4, 1 },
         };
 
-        // WHICH SLOTS THE RUNTIME CORPUS HAS WALKED PAST, one bit per slot.
-        // Generated offline: a set bit is a slot seen at an aligned boundary in a
-        // procedure that parsed on to its exit, so its length has been exercised by
-        // real compiler output. Everything pinned and NOT here rests on the handler
-        // alone, so the walk counts a step through one and says so at disarm.
-        // WALKED IS NOT CONFIRMED: a slot the corpus stepped over can still be
-        // pinned wrong -- the walk only proves the procedures containing it
-        // happened to close.
+        // Which slots the runtime corpus has walked past, one bit per slot; generated offline.
+        // A set bit is a slot seen at an aligned boundary in a procedure that parsed on to its
+        // exit. Everything pinned and not here rests on the handler alone, so the walk counts a
+        // step through one. Walked is not confirmed: it proves only that the procedures
+        // containing it closed.
         constexpr std::uint8_t kCorpusWalked[] = {
             0x84, 0x00, 0x08, 0x8C, 0xC0, 0x08, 0x8C, 0x80, 0x18, 0x1A, 0x12, 0x34,
             0x28, 0x68, 0x44, 0xD0, 0x80, 0xA0, 0x79, 0x61, 0x07, 0x86, 0x00, 0x04,

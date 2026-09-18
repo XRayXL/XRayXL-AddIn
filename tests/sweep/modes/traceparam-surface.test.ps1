@@ -18,13 +18,8 @@ try {
     Set-XRaySessionDefaults $sx
     $paths = Get-XRayPaths $sx.ProcId
 
-    # ---- 1. SET ONE THING, READ IT BACK -----------------------------------
-    # READ THE OTHER SOURCE FIRST. What this case asserts is INDEPENDENCE --
-    # that changing XLL leaves VBA alone -- and that is a property of the two
-    # sources, not of whatever either happens to default to. Asserting a
-    # literal here made it a test of the default instead: it read 'expected
-    # OFF' and failed the day VBA started defaulting to ALL, on a change that
-    # left the independence it exists to defend completely intact.
+    # 1. Set one thing, read it back. The other source is read first: what is asserted is
+    # independence, that changing XLL leaves VBA alone, not what either defaults to.
     $vbaBefore = [string](Get-XRayTraceParam $sx 'VBA' 'DEPTH')
 
     $echo = Set-XRayTraceParam $sx 'XLL' 'DEPTH' 'TOP'
@@ -44,23 +39,18 @@ try {
     Check 'omitted-source-set-both' (($x -eq 'FALSE') -and ($b -eq 'FALSE')) "XLL=$x VBA=$b"
     [void](Set-XRayTraceParam $sx $null 'ARGS' $true)
 
-    # ---- 3. THE FOUR GET SHAPES, AS A SHEET SEES THEM ----------------------
-    # Application.Run flattens an XLL array to a 1-D object[] (measured:
-    # rank=1, bounds 0..7 for a 4x2) -- the cells survive in row-major order
-    # but the shape does not. A spilled formula is where the shape is real,
-    # and it is the way a user asks, so that is where it is asserted.
+    # 3. The four Get shapes, as a sheet sees them. Application.Run flattens an XLL array to a
+    # 1-D object[], so the shape is asserted through a formula, which is also how a user asks.
     $shapeBook = Join-Path $sx.WorkDir ("ParamShape_{0}.xlsx" -f $sx.ProcId)
     Close-OwnLeftover $app (Split-Path $shapeBook -Leaf)
     Remove-Item $shapeBook -ErrorAction SilentlyContinue
     $booksRef = $app.Workbooks
     $swb = $booksRef.Add(); try { $swb.EnableAutoRecover = $false } catch {}
     $sws = $swb.Worksheets.Item(1)
-    # ENTERED AS AN ARRAY FORMULA OVER AN OVERSIZED RANGE, which is what
-    # makes this a real shape assertion: Excel fills the array it was given
-    # and pads the rest with #N/A. So the populated corner proves the width
-    # and height, and the #N/A cells prove it is not LARGER. A plain
-    # dynamic-array spill was tried first and showed only the top-left cell
-    # from a COM-set formula, which proves nothing about the shape.
+    # Entered as an array formula over an oversized range: Excel fills the array it was given
+    # and pads the rest with #N/A, so the populated corner proves the width and height and the
+    # #N/A cells prove it is not larger. A COM-set dynamic-array spill shows only its top-left
+    # cell, which proves nothing about the shape.
     $sws.Range('A1:C6').FormulaArray = '=XRayXL_GetTraceParam("XLL")'
     $sws.Range('E1:G3').FormulaArray = '=XRayXL_GetTraceParam(,"DEPTH")'
     $sws.Range('J1:M11').FormulaArray = '=XRayXL_GetTraceParam()'
@@ -98,29 +88,29 @@ try {
     $before = [string](Get-XRayTraceParam $sx 'XLL' 'DEPTH')
 
     $e = Set-XRayTraceParam $sx 'NOPE' 'DEPTH' 'ALL'
-    Check 'bad-source-refused' ($e -match 'refused') $e
+    Check 'bad-source-refused' ($e -match '#Err') $e
     $e = Set-XRayTraceParam $sx 'XLL' 'NOSUCH' 'ALL'
-    Check 'bad-name-refused' ($e -match 'refused') $e
+    Check 'bad-name-refused' ($e -match '#Err') $e
     $e = Set-XRayTraceParam $sx 'XLL' 'DEPTH' 'SIDEWAYS'
-    Check 'bad-depth-refused' ($e -match 'refused') $e
+    Check 'bad-depth-refused' ($e -match '#Err') $e
     $e = Set-XRayTraceParam $sx 'XLL' 'ARGS' 'PERHAPS'
-    Check 'bad-bool-refused' ($e -match 'refused') $e
+    Check 'bad-bool-refused' ($e -match '#Err') $e
 
     $after = [string](Get-XRayTraceParam $sx 'XLL' 'DEPTH')
     Check 'refusals-changed-nothing' ($after -eq $before) "was '$before', now '$after'"
 
-    # CALLER is no longer a setting: the calling cell is always resolved (the VBA
-    # tracer needs it to place an error that escapes into a cell, D92), so the name
-    # is refused like any other unknown one.
+    # CALLER is not a setting: the calling cell is always resolved, since the VBA tracer needs
+    # it to place an error that escapes into a cell. The name is refused like any other unknown
+    # one.
     $e = Set-XRayTraceParam $sx 'XLL' 'CALLER' $false
-    Check 'caller-is-not-a-setting' ($e -match 'refused') $e
+    Check 'caller-is-not-a-setting' ($e -match '#Err') $e
 
     # ---- 5. REFUSES WHILE ARMED -------------------------------------------
     $mark = Get-LogLength $paths.Log
     [void](Invoke-XRayCommand $sx 'XRayXL_Arm')
     if (Wait-LogLine $paths.Log 'armed \d+ of|nothing armed|could not' $mark) {
         $e = Set-XRayTraceParam $sx 'XLL' 'DEPTH' 'OFF'
-        Check 'refused-while-armed' ($e -match 'refused while armed') $e
+        Check 'refused-while-armed' ($e -match '#Err - cannot change settings while armed') $e
         # The QUERY is not a change and must still answer.
         $v = [string](Get-XRayTraceParam $sx 'XLL' 'DEPTH')
         Check 'get-answers-while-armed' ($v -eq $before) "got '$v'"
@@ -140,7 +130,7 @@ try {
     $ws.Range('A1').Formula = '=XRayXL_SetTraceParam("XLL","DEPTH","OFF")'
     Invoke-XRayRecalc $app
     $cell = Get-XRayCellText $ws.Range('A1')
-    Check 'refused-from-a-cell' ($cell -match 'refused') "cell says '$cell'"
+    Check 'refused-from-a-cell' ($cell -match '#Err') "cell says '$cell'"
     $v = [string](Get-XRayTraceParam $sx 'XLL' 'DEPTH')
     Check 'cell-call-changed-nothing' ($v -eq $before) "DEPTH is '$v', expected '$before'"
 

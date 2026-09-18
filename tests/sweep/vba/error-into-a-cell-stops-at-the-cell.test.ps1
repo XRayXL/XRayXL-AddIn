@@ -1,16 +1,12 @@
-# AN ERROR THAT EXCEL TURNS INTO #VALUE! DOES NOT REACH THE MACRO THAT RECALCULATED.
+# An error that Excel turns into #VALUE! does not reach the macro that recalculated.
 #
-# A macro calls Application.CalculateFull, and a cell's VBA function raises an error
-# it does not handle. Excel puts #VALUE! in the cell, and the function reads
-# unhandled; the macro carries on. The shadow stack still
-# holds the macro beneath the function, so without a boundary the macro read
-# `handled` for an error it never saw.
+# A macro calls Application.CalculateFull, and a cell's VBA function raises an error it does not
+# handle. Excel puts #VALUE! in the cell and the function reads `unhandled`; the macro carries
+# on and must not read `handled`, though the shadow stack holds it beneath the function.
 #
-# A function that RETURNS an error value is different: it returned, and the value it
-# returned is what the cell shows.
-#
-# A macro still running when disarm closes it has not thrown just because the raise
-# opcode fired in it: object-model calls such as Application.Run fire it with no error.
+# A function that returns an error value returned. A macro still running when disarm closes it
+# has not thrown just because the raise opcode fired in it: object-model calls such as
+# Application.Run fire it with no error.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

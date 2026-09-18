@@ -24,15 +24,13 @@ namespace xll
         int      g_count = 0;
         Declines g_declines;
 
-        // Each hooked function needs its OWN entry point, because that is the
-        // only thing telling the shared thunk which function it stands in.
+        // Each hooked function has its own entry stub, which is what tells the shared thunk
+        // which function it stands in. An absolute jump, so there is no rel32 range to worry
+        // about:
         //
-        //   49 BA <imm64>            mov r10, Target*
-        //   FF 25 00 00 00 00        jmp qword ptr [rip+0]
-        //   <imm64>                  XRayXllThunk
-        //
-        // 24 bytes, and an absolute jump, so there is no rel32 range to worry
-        // about wherever Windows puts the page.
+        //    49 BA <imm64>            mov r10, Target*
+        //    FF 25 00 00 00 00        jmp qword ptr [rip+0]
+        //    <imm64>                  XRayXllThunk
         const int kStubSize = 24;
         // As many as fit in one 4 KB page.
         const int kStubsPerPage = 170;
@@ -155,11 +153,9 @@ namespace xll
             return false;
         }
 
-        // A PROLOGUE detour on the address Excel calls, never a patched call
-        // site: EXCEL.EXE runs Control Flow Guard over 58,474 registered
-        // targets, and a patched call site would be rejected and the process
-        // terminated. CFG never sees a prologue detour, because the indirect
-        // call still targets the original registered address.
+        // A prologue detour on the address Excel calls, never a patched call site: EXCEL.EXE
+        // runs Control Flow Guard, which would reject a patched call site and terminate the
+        // process. The indirect call still targets the registered address.
         if (!g_minhookReady)
         {
             // The register watch may have initialised MinHook already.
@@ -173,13 +169,10 @@ namespace xll
                 return false;
             }
 
-            // ASK FOR THE FAST FREEZE, AND SAY WHICH ONE WE GOT. MinHook
-            // suspends every thread before patching and by default finds them
-            // with a snapshot of EVERY THREAD ON THE MACHINE -- 60ms to walk
-            // 6,564 to reach our 81, the entire cost of a batch patch. The
-            // process-scoped enumeration is a local change to the vendored copy
-            // (third_party/minhook/FORK.md); without it the slow method stays in
-            // force, correctly, and the log says so.
+            // MinHook suspends every thread before patching, and by default finds them with a
+            // snapshot of every thread on the machine. The process-scoped enumeration is a
+            // local change to the vendored copy (third_party/minhook/FORK.md); the log says
+            // which one is in force.
             const MH_STATUS fm = MH_SetThreadFreezeMethod(MH_FREEZE_METHOD_FAST_UNDOCUMENTED);
             core::Log::Note(fm == MH_OK
                 ? "minhook: process-scoped thread freeze (NtGetNextThread)"
@@ -259,9 +252,9 @@ namespace xll
             queued++;
         }
 
-        // DISABLED, NEVER REMOVED. MH_RemoveHook frees the trampoline a thread still
-        // inside the detour is about to call (D37's open item). The slot, its stub and
-        // its trampoline are kept, and arming the export again reuses them.
+        // Disabled, never removed: MH_RemoveHook frees the trampoline a thread still inside the
+        // detour is about to call. The slot, its stub and its trampoline are kept, and arming
+        // the export again reuses them.
         const bool applied = (queued == 0) || (MH_ApplyQueued() == MH_OK);
         if (untouched > 0)
         {
@@ -302,11 +295,9 @@ namespace xll
         return stuck;
     }
 
-    // A fixed array, so the thunk's Target* can never dangle mid-call.
-    //
-    // A slot never handed out before. Slots are not recycled, because a disabled
-    // detour's stub still names its slot; an export hooked again gets its own slot
-    // back through FindRetired instead.
+    // A fixed array, so the thunk's Target* can never dangle mid-call. Slots are not recycled,
+    // because a disabled detour's stub still names its slot; FindRetired gives an export its
+    // own slot back.
     Target* Allocate()
     {
         if (g_count >= kMaxTargets) return nullptr;

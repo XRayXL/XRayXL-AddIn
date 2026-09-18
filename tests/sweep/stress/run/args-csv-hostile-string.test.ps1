@@ -18,19 +18,12 @@ End Sub
         if (-not $e.proc) { return "proc column lost -- escaping broke the row" }
         if (-not $e.args) { return "args column lost -- the slot was not even captured" }
 
-        # A broken escape fails in Read-TraceFile, which checks every line's field
-        # count against the header, before Expect is reached.
+        # A broken escape fails in Read-TraceFile, which checks every line's field count against
+        # the header, before Expect is reached.
         #
-        # AND THE VALUE ITSELF, which is what this test is named for. It did not
-        # hold until the BSTR reader stopped refusing a string on its CONTENT:
-        # the vbCrLf made every character check below 32 fail, so a legitimate
-        # value decoded to the raw qword and the hostile characters never
-        # reached the CSV at all. The test could not see that, because it was
-        # watching a different column.
-        #
-        # Control characters are RENDERED, not passed through -- the CSV writer
-        # would turn a raw CR or LF into a space, which would say the string
-        # held a space where it held a line break.
+        # The value itself is asserted too: a declared String holding vbCrLf must decode as
+        # text, not fall back to the raw qword. Control characters are rendered, not passed
+        # through: the CSV writer would turn a raw CR or LF into a space.
         $want = 'a1:String="a,b\"quoted\",c\r\nsecond,line\t\x01C:\\temp\u00E9\u20AC"'
         if ($e.args -ne $want) {
             return "args decoded as '$($e.args)', expected '$want'" }

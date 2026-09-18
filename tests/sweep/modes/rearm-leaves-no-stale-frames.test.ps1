@@ -1,32 +1,14 @@
-# ARMING AGAIN IN THE SAME PROCESS MUST START FROM A CLEAN SLATE.
+# Arming again in the same process must start from a clean slate. A user arms, looks, disarms,
+# changes a setting and arms again, for the life of one Excel, and the per-thread shadow stack
+# in src/xll/xlltrace.cpp (`depth`, `frames[].recorded`) survives between those sessions unless
+# arming resets it.
 #
-# Every other test in this suite arms once, or twice. A user does not: they
-# arm, look, disarm, change a setting, arm again -- for the life of one Excel.
-# Nothing in the XLL resets per-thread state between those sessions, and the
-# state that survives is the shadow stack the entry/exit pairing depends on:
-# `depth` and `frames[].recorded` in src/xll/xlltrace.cpp are __declspec(thread)
-# and are written at arm by nobody.
+# Under DEPTH=TOP an inner call's exit writes only when `f.recorded` says its entry did. A frame
+# left `recorded = true` by an earlier session would give this session an exit with no entry: a
+# row asserting a call that never happened, with every field well-formed.
 #
-# WHAT THAT COSTS, MEASURED. Under DEPTH=TOP an inner call is counted and its
-# entry suppressed, and its exit must be suppressed with it -- the exit writes
-# only when `f.recorded` says its entry did. A frame left `recorded = true` by
-# an EARLIER arming session makes that check answer yes for a frame this
-# session never opened, and the trace gains an exit with no entry.
-#
-# AN EXIT WITH NO ENTRY IS THE ROW SHAPE THIS TOOL MUST NEVER INVENT. An entry
-# with no exit reads as a call that hung -- the thing the trace exists to
-# report truthfully -- and an exit with no entry asserts a call that never
-# happened. Both are silent: every field is well-formed, so nothing but the
-# pairing can catch them.
-#
-# WHY THIS TEST EXISTS RATHER THAN A HARNESS MODE. The defect was first seen
-# under -SessionMode ReuseClean, where consecutive tests share one Excel and
-# the arm count builds up -- ninth test in its session, reproducible at
-# -Parallel 1, invisible at -Parallel 8 and structurally impossible under
-# Fresh. Relying on that to catch it again would mean gating on a slow mode
-# and hoping the ordering lands. The subject is not session reuse; it is
-# re-arming, and a test can do that itself. So this one does, in ONE Excel, in
-# the ordinary Fresh gate, deterministically.
+# Done in one Excel under the ordinary Fresh gate, so it does not depend on a session-reuse mode
+# and test ordering.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -47,11 +29,8 @@ try {
     New-XRayMacroBook $sx 'XllRearm' -Cells @{ 'A1' = '=TxCallsBack2(5)' } -Format xlsx
     $leaf = (Get-XRayMacroBook).Leaf
 
-    # A SECOND BOOK, LEFT OPEN, calling a traced function of its own. This is
-    # not decoration: under -SessionMode Reuse a book left behind by an earlier
-    # test stays open, and an armed CalculateFullRebuild recalculates it too.
-    # Its rows are real and correct; they simply belong to somebody else, and a
-    # test that reads them as its own reports the tracer broken when it is not.
+    # A second book, left open, calling a traced function of its own: an armed
+    # CalculateFullRebuild recalculates it too. Its rows are real and belong to somebody else.
     New-XRayMacroBook $sx 'XllRearmOther' -Cells @{ 'A1' = '=TxB(2,3)' } -Format xlsx
 
     # Rebuild, not Calculate: a non-volatile UDF served from its last

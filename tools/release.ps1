@@ -1,22 +1,16 @@
-# Assemble dist\ -- the committed, downloadable build -- and optionally publish it.
+# Assemble dist\, the committed, downloadable build, and optionally publish it.
 #
-# WHY THE BINARIES ARE COMMITTED. dist\ is what someone gets by cloning, or by
-# taking GitHub's automatic "Source code" archive from a tag: a working tool and
-# a runnable demo, with no compiler. That is the whole point of it, and it is
-# why the release needs no uploaded assets.
+# dist\ is what someone gets by cloning or from GitHub's "Source code" archive of a tag: a
+# working tool and a runnable demo with no compiler, so the release needs no uploaded assets.
+# Only this script writes dist\; the suites load from build\addin\ and build\x64\Release\.
+# MANIFEST.txt says how far dist\ lags the working tree.
 #
-# THE RULE THAT KEEPS IT HONEST: only this script writes dist\. A normal build
-# never does, and neither does the test process -- the suites load from
-# build\addin\ and build\x64\Release\, never from here. So dist\ does not drift with
-# the working tree: it lags it, and MANIFEST.txt says by exactly how much.
+#      .\tools\release.ps1                          build, sweep, assemble dist\  (stops there)
+#      .\tools\release.ps1 -Publish -Remote <name>  ...then commit, tag, push to <name>, release there
+#      ... -SymbolArchive <dir>                     ...and first keep the PDBs under <dir>\<tag>\
 #
-#     .\tools\release.ps1                          build, sweep, assemble dist\  (stops there)
-#     .\tools\release.ps1 -Publish -Remote <name>  ...then commit, tag, push to <name>, release there
-#     ... -SymbolArchive <dir>                     ...and first keep the PDBs under <dir>\<tag>\
-#
-# The sweep is the gate, and it runs HERE rather than in CI because GitHub's
-# runners have MSBuild but no Excel: a CI-built release would be an untested
-# binary, which is the one thing this project will not ship.
+# The sweep is the gate, and it runs here rather than in CI because GitHub's runners have no
+# Excel.
 param(
     [switch]$Publish,
     # The git remote a publish pushes and releases to. Required with -Publish; no default.
@@ -139,15 +133,9 @@ if ($sweepExit -ne 0) {
 }
 Write-Host "  sweep green -> $sweepOut"
 
-# ---------------------------------------------------------------------------
-# 4b. PROVE THE SWEEP TESTED WHAT WE ARE ABOUT TO SHIP.
-#
-# "The sweep exited 0" and "this file is good" are different claims, and only
-# this script's ordering connects them. That is not evidence: a rebuild, a
-# stray deploy or a second shell between the two steps breaks the link
-# silently, and the manifest would still say PASS. So read the identity the
-# sweep recorded and compare hashes.
-# ---------------------------------------------------------------------------
+# 4b. Prove the sweep tested what we are about to ship. Only this script's ordering connects
+# "the sweep exited 0" to "this file is good", and a rebuild or a stray deploy between the two
+# breaks that silently. So read the identity the sweep recorded and compare hashes.
 $resultsFile = Get-ChildItem (Join-Path $sweepOut 'results-*.jsonl') |
                Sort-Object LastWriteTime | Select-Object -Last 1
 if (-not $resultsFile) { throw "sweep produced no results file in $sweepOut" }

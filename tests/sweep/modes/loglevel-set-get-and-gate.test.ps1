@@ -27,7 +27,7 @@ try {
 
     # ---- an unknown level is refused, and changes nothing ----------------
     $bad = [string]$app.Run('XRayXL_SetTraceParam', 'LOGLEVEL', 'LOUD')
-    Check 'invalid-level-refused' ($bad -match 'refused') $bad
+    Check 'invalid-level-refused' ($bad -match '#Err') $bad
     $g2 = [string]$app.Run('XRayXL_GetTraceParam', 'LOGLEVEL')
     Check 'refusal-changed-nothing' ($g2 -eq 'DEBUG') "still '$g2' after a refused set"
 
@@ -36,7 +36,7 @@ try {
     [void](Invoke-XRayCommand $sx 'XRayXL_Arm')
     [void](Wait-LogLine $paths.Log 'armed \d+ of|nothing armed|could not' $mark)
     $ea = [string]$app.Run('XRayXL_SetTraceParam', 'LOGLEVEL', 'WARNING')
-    Check 'settable-while-armed' (($ea -match 'LOGLEVEL=WARNING') -and ($ea -notmatch 'refused while armed')) $ea
+    Check 'settable-while-armed' (($ea -match 'LOGLEVEL=WARNING') -and ($ea -notmatch '#Err')) $ea
     $ga = [string]$app.Run('XRayXL_GetTraceParam', 'LOGLEVEL')
     Check 'reads-while-armed' ($ga -eq 'WARNING') "while armed='$ga'"
     [void](Invoke-XRayDisarm $sx)

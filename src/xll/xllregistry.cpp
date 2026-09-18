@@ -28,13 +28,8 @@ namespace xll
             return L"";
         }
 
-        // ---- the two COM lifetimes this file holds ----------------------
-        //
-        // Enumerate has five exits after taking an Application and a result
-        // VARIANT, and a release obligation re-earned at every branch is the
-        // shape of bug that survives review -- so the compiler holds it. Local
-        // and the smallest thing that works: no ATL, no _com_ptr_t. Moves to
-        // core/ if a second multi-exit caller appears.
+        // The two COM lifetimes this file holds. Enumerate has five exits after taking an
+        // Application and a result VARIANT, so the compiler holds the releases.
         template <class T>
         class ComPtr
         {
@@ -171,11 +166,9 @@ namespace xll
 
 
 
-        //     xlfGetDef(<register id>, <MISSING>, 3)  ->  the display name
-        //
-        // document_text must be genuinely MISSING (an empty string fails) and
-        // pxTypeNum is 1 or 3, never 2. It resolves names for OTHER add-ins, not
-        // only our own -- the Excel-DNA case, which is the whole naming problem.
+        // xlfGetDef(<register id>, <MISSING>, 3) gives the display name. document_text must be
+        // genuinely missing (an empty string fails) and pxTypeNum is 1 or 3, never 2. It
+        // resolves names for other add-ins too.
         XLOPER12 idOper{};
         idOper.xltype = xltypeNum;
         idOper.val.num = idNum;

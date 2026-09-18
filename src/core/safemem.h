@@ -1,14 +1,9 @@
-// The guarded readers. Every byte this project reads out of Excel or VBE7
-// belongs to somebody else, and a fault on a traced thread is a crash in a
-// somebody's Excel -- so a stale pointer must cost the READ and nothing more.
+// The guarded readers. Every byte read out of Excel or VBE7 is somebody else's, so a stale pointer
+// must cost the read and nothing more.
 //
-// Header-inline leaf functions, because SEH may not share a frame with anything
-// needing C++ unwinding: a __try beside a std::string will not compile, and a
-// __try calling something that constructs one is a trap that does.
-//
-// THE PREDICATES STATE FACTS, NOT BELIEFS -- an address range and an alignment,
-// neither of them evidence of what lives there. Preconditions for a READ, never
-// for a TYPE; no decode decision may rest on one alone.
+// Header-inline leaf functions, because a __try cannot share a frame with C++ unwinding. The
+// predicates check an address range and an alignment: they permit a read and say nothing about the
+// type there.
 #pragma once
 #include <windows.h>
 #include <cstdint>
@@ -23,7 +18,7 @@ namespace core
         return p >= 0x10000ull && p < 0x00007FFFFFFFFFFFull;
     }
 
-    // 8 for a structure, 4 for a p-code trailer [measured: vbaidentity.cpp],
+    // 8 for a structure, 4 for a p-code trailer,
     // 2 for a BSTR -- it points four bytes past its length prefix. Unaligned is
     // a reason to REFUSE the read, not a reason to believe anything about what
     // is there.

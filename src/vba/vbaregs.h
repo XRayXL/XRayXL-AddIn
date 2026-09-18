@@ -1,13 +1,9 @@
-// THE THUNK'S SAVED-REGISTER BLOCK -- an ABI between hand-written assembly and
-// C++, held together by nothing but agreement. vbathunk.asm saves the
-// interpreter's registers on entry and hands the top of the block to the hook as
-// `savedRegs`; the interpreter's state lies at fixed negative offsets from it.
+// The thunk's saved-register block, shared between vbathunk.asm and C++. The thunk saves the
+// interpreter's registers and hands the top of the block to the hook as `savedRegs`.
 //
-// IT HAS BEEN WRONG BEFORE, AND SILENTLY: one omitted push shifts every offset
-// below it by a register, and the guarded read still SUCCEEDS -- the memory is
-// readable, it simply holds the wrong register. So there is exactly one copy of
-// these offsets, here. If the pushes in vbathunk.asm change, change them here
-// and nowhere else -- and count them.
+// The only copy of these offsets. One omitted push shifts every offset below it, and the
+// guarded read still succeeds on the wrong register, so if the pushes change, change them here
+// and count them.
 //
 //   push order (after the push that establishes rbx), fifteen of them:
 //     rax rcx rdx r8 r9 r10 r11 rbp rsi rdi r12 r13 r14 r15 flags

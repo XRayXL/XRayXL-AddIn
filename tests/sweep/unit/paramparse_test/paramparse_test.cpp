@@ -1,10 +1,6 @@
-// UNIT TEST for the trace-param parsers (app/paramparse.cpp), off Excel.
-//
-// The parsers turn XLOPER12 arguments into core::modes:: values; they make no Excel
-// call, so a test can build XLOPER12s by hand and assert the grammar -- what is
-// accepted, what is refused, and the BUFFERSIZE units -- which was only exercised
-// through Excel by the traceparam-surface suite. paramparse.cpp has no cross-TU
-// deps (core::modes:: is enums only), so it links straight in.
+// Unit test for the trace-param parsers (app/paramparse.cpp), off Excel. The parsers make no
+// Excel call, so the test builds XLOPER12s by hand and asserts the grammar: what is accepted,
+// what is refused, and the BUFFERSIZE units.
 //
 // Built by XRayXL.sln into build\x64\Release\unit\.
 
@@ -95,7 +91,9 @@ int main()
         auto bj   = Str(s0, L"junk");   Check(ParseBuf(bj)   == ~0ull,    "BUFFERSIZE junk refused");
         auto bdot = Str(s0, L".");      Check(ParseBuf(bdot) == ~0ull,    "BUFFERSIZE '.' refused: a dot is not a number");
         auto bdk  = Str(s0, L".KB");    Check(ParseBuf(bdk)  == ~0ull,    "BUFFERSIZE '.KB' refused");
-        auto bbig = Str(s0, L"9999MB"); Check(ParseBuf(bbig) == ~0ull,    "BUFFERSIZE >4 GB refused");
+        auto bmax = Str(s0, L"240MB");  Check(ParseBuf(bmax) == 240 * MB, "BUFFERSIZE 240MB is the most accepted");
+        auto bover = Str(s0, L"241MB"); Check(ParseBuf(bover) == ~0ull,   "BUFFERSIZE over 240 MB refused");
+        auto bbig = Str(s0, L"9999MB"); Check(ParseBuf(bbig) == ~0ull,    "BUFFERSIZE far over the cap refused");
     }
 
     // ---- FormatBufferW round-trips through ParseBufferBytes ------------------

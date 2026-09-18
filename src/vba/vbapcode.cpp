@@ -39,22 +39,14 @@ namespace vba
         // nothing cares about slots that never occur -- but "which opcodes cost
         // us a signature, and how often". That distribution is head-heavy.
         volatile LONG g_stopOp[PcodeLengths::kMax] = {};
-        // THE OPCODE WHOSE LENGTH WE JUST USED, when the walk then broke. Where
-        // `g_stopOp` names an opcode with NO length, this names one whose length
-        // is probably WRONG -- the worse defect, because a missing length
-        // resynchronises safely (and is marked `~`) while a wrong one steps into
-        // the middle of an operand and reads what is there as an instruction.
-        //
-        // The rule: if stepping by `len[prev]` lands somewhere the walk cannot
-        // continue, the suspect is `prev`, not where we landed. It is the only
-        // in-process signal separating the two, and it names the opcode a bisect
-        // should try.
+        // The opcode whose length was just used when the walk then broke. `g_stopOp` names an
+        // opcode with no length; this names one whose length is probably wrong, which is worse:
+        // a missing length resynchronises safely, a wrong one steps into the middle of an
+        // operand.
         volatile LONG g_suspectOp[PcodeLengths::kMax] = {};
 
-        // THE SAME BLAME, BUT CERTAIN: the walk landed on a slot that is NOT AN
-        // INSTRUCTION (677 of the 1700 share the invalid handler), so the step
-        // that brought it there was wrong. `g_suspectOp` is only a heuristic, so
-        // the two are ranked apart and a bisect starts here.
+        // The same blame, but certain: the walk landed on a slot that is not an instruction, so
+        // the step that brought it there was wrong. A bisect starts here.
         volatile LONG g_definiteOp[PcodeLengths::kMax] = {};
 
         // REFUSED BY THE FRAME GATE: an argument-shaped operand on an opcode
@@ -98,22 +90,12 @@ namespace vba
         int           g_rawN = 0;
         std::uint8_t  g_raw[kRawMax] = {};
 
-        // ---- THE CORPUS. Every DISTINCT procedure this session walked. ----
+        // The corpus: every distinct procedure this session walked. A length table is correct
+        // exactly when every procedure parses from offset 0 to its exit consuming exactly
+        // ProcSize, so the bytes are kept and solved offline.
         //
-        // The single dump above answers "show me one procedure that went
-        // wrong"; it cannot be pointed at a real workbook and asked WHICH
-        // lengths are wrong.
-        //
-        // A LENGTH TABLE IS CORRECT EXACTLY WHEN EVERY PROCEDURE PARSES FROM
-        // OFFSET 0 TO ITS EXIT, CONSUMING EXACTLY ProcSize -- checkable against
-        // any VBA that exists, needing no external truth, and not depending on a
-        // generator happening to emit the right construct (which the shape fuzzer
-        // demonstrably does not: seed 4242 was byte-identical either side of a
-        // real fix). So keep the BYTES of everything walked and solve offline.
-        //
-        // DIAG only, bounded, deduplicated by trailer -- a procedure called in a
-        // loop is one observation, not a thousand. Claimed lock-free on the hot
-        // path and WRITTEN AT DISARM, never from a traced thread.
+        // DIAG only, bounded, deduplicated by trailer. Claimed lock-free on the hot path and
+        // written at disarm, never from a traced thread.
         constexpr int kCorpusProcs = 512;
         // 2048, not 256: a procedure over the cap is DROPPED, not truncated, and
         // at 256 that dropped five of six drivers written to emit the VCall and
@@ -176,44 +158,22 @@ namespace vba
         using core::RdU16;
         using core::RdI32;
 
-        // NO LENGTH DERIVATION HERE: the lengths are the measured constant in
-        // kSigLength above; deriving them is offline work, which is where a question
-        // about a NEW VBE7 build belongs. An unknown opcode is flagged by number
-        // at the point it stops a walk.
+        // No length derivation here: the lengths are the constant kSigLength, and deriving them
+        // is offline work. An unknown opcode is flagged by number where it stops a walk.
     }
 
-    // OPCODES THAT TOUCH A PARAMETER SLOT AND CARRY NO TYPE -- known, not
-    // missing. A `?opNNN` tells a reader "add a row to kTypeOps"; for these that
-    // advice is wrong, so the honest rendering is a bare `?`.
+    // Opcodes that touch a parameter slot and carry no type. `?opNNN` would wrongly say "add a
+    // row to kTypeOps" for these, so they render a bare `?`.
     //
-    //   671  `movsxd rax,[rsi]; add rax,r14; push rax` computes the ADDRESS of
-    //        the frame slot and pushes it WITHOUT dereferencing -- an address-of,
-    //        how an array assignment names its destination. That a slot's address
-    //        was taken says nothing about what the slot holds.
+    //    671  `movsxd rax,[rsi]; add rax,r14; push rax` pushes the ADDRESS of the frame slot
+    //         without dereferencing it, which says nothing about what the slot holds.
     //
-    // Deliberately NOT here: 739, which DOES load a value. It carries a type; it
-    // simply matches no VBA declared scalar, so if it ever appears `?op739` is
-    // the right thing to say. [measured: the handlers for 671, 739, 747]
+    // Not here: 739, which does load a value, so `?op739` is the right thing to say.
     bool PcodeCarriesNoType(std::uint32_t op)
     {
-        // 662 SHARES 671'S HANDLER EXACTLY. Naming a TYPE from a shared handler
-        // is forbidden, but this is not a type claim -- it is the
-        // observation that the operation conveys NO type, which the shared
-        // handler proves for both slots at once.
-        //
-        // 1122, 1467 and 1470 are the same idiom without the push: compute
-        // `r14 + operand` and fetch the next opcode, leaving the address for the
-        // instruction that follows.
-        //
-        // All four render a bare `?` rather than `?opNNN` -- "there is no type"
-        // rather than "a table entry is missing", which is the difference between
-        // a fact and a wrong instruction to the reader.
-        // [measured: the handlers for 662, 671, 1122, 1467, 1470]
-        //
-        // 751 is the same idiom for a by-reference parameter: it forwards the
-        // slot's address, and is emitted alike for a `ByRef Long` and a
-        // `ByRef Double()`, so it names no type.
-        // [measured: vba/cases/params-only-passed-on]
+        // 662 shares 671's handler. 1122, 1467 and 1470 are the same idiom without the push.
+        // 751 forwards a by-reference slot's address, alike for a `ByRef Long` and a `ByRef
+        // Double()`.
         return op == 671 || op == 662 || op == 751 ||
                op == 1122 || op == 1467 || op == 1470;
     }
@@ -224,45 +184,27 @@ namespace vba
         return nullptr;
     }
 
-    // A STORE NAMES ITS TYPE THROUGH THE LOAD IT MIRRORS: store = load + 32.
-    // Measured on seven ByVal types and five ByRef positions, and it
-    // also explains 770, the ByRef Long store.
-    //
-    // A RELATION RATHER THAN MORE ROWS, because each row would otherwise be found
-    // only when somebody happened to write a procedure that used it.
-    //
-    // KNOWN EXCEPTIONS, ByVal side only: the String store is 708 (not 663+32) and
-    // the Variant store is 694 (not 1477+32). nullptr for those rather than a
-    // wrong name; callers keep explicit entries.
+    // A store names its type through the load it mirrors: store = load + 32. Exceptions, ByVal
+    // side only: the String store is 708 (not 663+32) and the Variant store is 694 (not
+    // 1477+32). nullptr for those; callers keep explicit entries.
     const char* PcodeStoreTypeName(std::uint32_t storeOp)
     {
         if (storeOp < 32) return nullptr;
-        // THE RELATION RUNS BOTH WAYS AND ONLY ONE DIRECTION IS TRUE. The
-        // exceptions above say the ByVal Variant store is 694, not 1477+32 --
-        // so the SUBTRACTION must exclude them too, or 1509 answers "Variant"
-        // through 1477. op1509's handler touches R14 on neither measured build,
-        // so it cannot store to a frame slot at all: that answer was a confident
-        // wrong type on a parameter, not a diagnostic. 663+32 = 695 is the same
-        // case, harmless today only because 663 is absent from the load table.
+        // The subtraction must exclude the exceptions too, or 1509 answers "Variant" through
+        // 1477 and 695 "String" through 663.
         if (storeOp == 1477 + 32 || storeOp == 663 + 32) return nullptr;
         // The ByRef Variant store has three forms, picked by the right-hand side:
         // a number 774, `Set` 783, a full copy 787. Only 774 mirrors a load
         // (742); 783 and 787 sit over 751 and 755, which name no type.
-        // [measured: nothing but a ByRef Variant emits either --
-        //  vba/cases/byref-variant-stores]
+        //
         if (storeOp == 783 || storeOp == 787) return "Variant&";
         return PcodeTypeName(storeOp - 32);
     }
 
-    // TWO KINDS OF STOP, AND ONLY ONE IS ACTIONABLE. An opcode that stopped
-    // SEVERAL walks is being met repeatedly at real instruction boundaries, so
-    // it is an instruction and its absence from kSigLength is a gap worth
-    // closing. A scatter of DISTINCT opcodes each stopping ONCE is the opposite:
-    // operand bytes read as opcodes after the walk lost alignment.
-    //
-    // Both are reported and only the first is called actionable. A fuzz run
-    // asserts the REPEAT group is empty; asserting on the singletons would make
-    // the oracle cry wolf.
+    // Two kinds of stop. An opcode that stopped several walks is a real instruction missing
+    // from kSigLength, and is actionable. Distinct opcodes each stopping once are operand bytes
+    // read as opcodes after the walk lost alignment. A fuzz run asserts only that the repeat
+    // group is empty.
     const char* PcodeStopWarning()
     {
         static char b[2048];
@@ -295,15 +237,9 @@ namespace vba
         return b;
     }
 
-    // WHAT THE FRAME GATE REFUSED: opcodes met with an argument-shaped operand
-    // -- positive, a multiple of eight, inside the frame's argument count --
-    // whose handler never computes an address from R14.
-    //
-    // Two readings, opposite in meaning:
-    //   a NAMED load opcode here  -> the frame scan is wrong and is suppressing
-    //                                real parameter types. A defect, and loud.
-    //   an unnamed opcode here    -> the gate caught what it exists to catch.
-    // At DEBUG, because on a healthy build it is noise about noise.
+    // What the frame gate refused: opcodes with an argument-shaped operand whose handler never
+    // computes an address from R14. A named load opcode here means the frame scan is wrong and
+    // is suppressing real parameter types; an unnamed one is the gate working. At DEBUG.
     const char* PcodeNotFramedWarning()
     {
         static char b[512];
@@ -328,11 +264,9 @@ namespace vba
         return b;
     }
 
-    // WHICH LENGTHS ARE PROBABLY WRONG, and how healthy the table is. Separate
-    // from PcodeStopWarning, which names opcodes with NO length: this names ones
-    // whose length was USED and after which the walk could not continue. Repeat
-    // offenders only, because a single break after an unrelated desync blames
-    // whatever opcode happened to precede it.
+    // Which lengths are probably wrong: opcodes whose length was used and after which the walk
+    // could not continue. Repeat offenders only, because a single break after an unrelated
+    // desync blames whatever opcode preceded it.
     const char* PcodeSuspectWarning()
     {
         static char b[1400];
@@ -344,12 +278,9 @@ namespace vba
         int j = _snprintf_s(b, _TRUNCATE,
                     "VBA p-code: %lld of %lld procedure(s) walked cleanly (offset 0 to a "
                     "clean end, no resynchronisation)", cleanN, walks);
-        // Definite first: a landing on the invalid-opcode handler PROVES the
-        // previous length wrong where a mere stop only suggests it, and ranking
-        // them together buries the certain evidence under the guesses. Suspects
-        // are repeat offenders only, because a single break after an unrelated
-        // desync blames whatever opcode happened to precede it. Both rankings
-        // are consumed here, so they are reported once per arm.
+        // Definite first: a landing on the invalid-opcode handler proves the previous length
+        // wrong, where a stop only suggests it. Both rankings are consumed here, so they are
+        // reported once per arm.
         int slot[8]; long val[8];
         const int nd = TopSlots(g_definiteOp, 0, 6, true, slot, val);
         if (nd)
@@ -439,21 +370,15 @@ namespace vba
         for (int i = 0; i < kCorpusProcs; ++i) g_corpus[i].trailer = 0;
     }
 
-    // DOES THIS HANDLER EVER COMPUTE AN ADDRESS FROM R14? R14 is the VBA frame
-    // base and argument n is at `[R14 + 8n]`, so a handler that never names it
-    // cannot touch a parameter whatever its operand looks like. Checked against
-    // a known answer from the handlers: all 42 named load opcodes in
-    // kTypeOps come out framed, 42/42, on both measured builds.
+    // Does this handler ever compute an address from R14? R14 is the VBA frame base and
+    // argument n is at `[R14 + 8n]`, so a handler that never names it cannot touch a parameter.
     //
-    // R14 is encoding 6 with the matching REX bit and can arrive FOUR ways -- as
-    // modrm.reg with REX.R, as modrm.rm with REX.B, or inside a SIB as index with
-    // REX.X or base with REX.B. Missing any one clears a handler that does use
-    // the frame, and this predicate SUPPRESSES attribution, so a false negative
-    // silently loses a parameter type.
+    // R14 is encoding 6 with the matching REX bit and can arrive four ways: as modrm.reg with
+    // REX.R, as modrm.rm with REX.B, or inside a SIB as index with REX.X or base with REX.B. A
+    // false negative silently loses a parameter type.
     //
-    // Unconditional jumps are followed, because a handler's frame access is often
-    // in the shared tail it jumps to. The next-opcode fetch ends the
-    // instruction's own work; a return or indirect jump ends the handler.
+    // Unconditional jumps are followed, because the frame access is often in a shared tail. The
+    // next-opcode fetch, a return or an indirect jump ends the scan.
     bool HandlerTouchesR14(const Image& img, std::uint32_t rva)
     {
         for (int step = 0; step < 400; ++step)
@@ -517,14 +442,9 @@ namespace vba
         // reported.
         for (std::uint32_t i = 0; i < out.slots && i < PcodeLengths::kMax; ++i)
             if (out.len[i] && !CorpusWalked(i)) { out.unverified[i] = true; ++out.unverifiedCount; }
-        // WHICH SLOTS ARE NOT INSTRUCTIONS: 677 of the 1700 point at one shared
-        // invalid-opcode handler, and a walk that LANDS on one is already lost
-        // rather than meeting an instruction it does not know. Read once at arm
-        // into a bitmap -- class T, so the hot path costs an index.
-        //
-        // The same pass answers which slots can name a parameter (framesR14), so
-        // one read serves both and the invalid handler is skipped rather than
-        // decoded once per slot that uses it.
+        // Which slots are not instructions: those pointing at the shared invalid-opcode
+        // handler. Read once at arm into a bitmap, so the hot path costs an index. The same
+        // pass answers which slots can name a parameter (framesR14).
         {
             // Timed because arming cost matters and this pass decodes every handler.
             const long long t0 = core::QpcMicros();
@@ -541,13 +461,10 @@ namespace vba
             }
             out.scanMicros = static_cast<std::uint32_t>(core::QpcMicros() - t0);
         }
-        // FAIL OPEN IF THE SCAN FOUND NOTHING, FAIL CLOSED PER SLOT OTHERWISE.
-        // A build whose handlers this decoder cannot follow leaves `framedCount`
-        // zero, and the walk must go on attributing or every parameter
-        // type in the session disappears at once. A LOW but non-zero count is the
-        // dangerous middle -- it suppresses most attribution while looking like
-        // it worked -- and a count near the named load family's size has not
-        // understood this build.
+        // Fail open if the scan found nothing, fail closed per slot otherwise. A build whose
+        // handlers this decoder cannot follow leaves framedCount zero, and the walk must go on
+        // attributing or every parameter type disappears. A low non-zero count is the dangerous
+        // middle: it suppresses most attribution while looking like it worked.
         if (out.framedCount && out.framedCount < 64)
         {
             char w[192];
@@ -570,17 +487,10 @@ namespace vba
 
     namespace
     {
-        // The next instruction boundary after losing alignment. Every VBA
-        // statement starts with a beginning-of-statement opcode, so the next one
-        // is a known-good boundary -- and whatever threw us sits INSIDE a
-        // statement, not across one. A candidate is accepted only if the
-        // instruction after it also decodes, which is what stops a BoS-shaped
-        // pair of bytes inside an operand being mistaken for a real one.
-        //
-        // Returns the new offset, or -1 if nothing recognisable remains.
-        // One parity of the byte stream. Two-byte steps, because instructions
-        // are two-byte aligned RELATIVE TO EACH OTHER for all but one opcode --
-        // see the caller for the one.
+        // The next instruction boundary after losing alignment. Every statement starts with a
+        // beginning-of-statement opcode, so the next one is a known-good boundary. A candidate
+        // is accepted only if the instruction after it also decodes. Scans one parity of the
+        // byte stream in two-byte steps. Returns the new offset, or -1.
         int ResyncScan(std::uint64_t code, std::uint32_t procSize,
                        std::uint32_t from, const PcodeLengths* L)
         {
@@ -593,11 +503,9 @@ namespace vba
                 std::uint16_t next = 0;
                 if (!RdU16(code + j + 6, next)) return -1;   // BoS is 6 bytes
 
-                // The next word must be a PLAUSIBLE OPCODE -- inside the
-                // dispatch table, and not a second beginning-of-statement, which
-                // no real statement starts with. Requiring a known LENGTH
-                // instead rejects genuine boundaries; the walk's argument-index
-                // bound is what rejects a bad landing.
+                // The next word must be a plausible opcode: inside the dispatch table, and not
+                // a second beginning-of-statement. Requiring a known length instead would
+                // reject genuine boundaries.
                 if (next >= L->slots) continue;
                 if (IsBosSlot(next))  continue;
                 return static_cast<int>(j);
@@ -605,32 +513,10 @@ namespace vba
             return -1;
         }
 
-        // NOT EVERY INSTRUCTION IS AN EVEN NUMBER OF BYTES. `LitI2_Byte` (1643)
-        // carries a single signed byte, so it is THREE bytes and everything
-        // after it in that procedure sits at an odd offset. Scanning in
-        // two-byte steps from where the walk got lost therefore searches the
-        // parity the walk HAD, which is the right one only while the walk was
-        // synchronised -- and resynchronising is what we do when it was not.
-        // With the wrong parity every real boundary is invisible, the scan
-        // returns -1, and the whole procedure is abandoned instead of partly
-        // recovered.
-        //
-        // So: the walk's own parity first, because it is right whenever the
-        // step that got here was, and it costs a session nothing to prefer it;
-        // then the other. A scan that finds nothing is the only case that pays
-        // for the second pass. [measured: handler 1643 advances RSI by 3]
-        //
-        // WHAT THE SECOND PASS IS WORTH, measured by planting an odd length
-        // (`LitI2` 4 -> 5) on an opcode this compiler does emit, so the walk
-        // is driven onto odd offsets. Same workbook, same plant: with one
-        // parity the walk desynced ONCE and stopped dead -- 0 resyncs -- while
-        // with both it resynchronised 15 times and kept recovering. The types
-        // recovered were the same 3 incomplete signatures either way, so this
-        // buys continuation, not (on that sample) extra answers.
-        // [measured: family probe, builds A/B]
-        // THE SECOND SCAN IS THE ODD PARITY. Stepping two bytes searches the
-        // parity the walk HAD, which is the right one only while the walk is
-        // synchronised -- and resynchronising is what happens when it is not.
+        // Not every instruction is an even number of bytes: `LitI2_Byte` (1643) is three, so
+        // everything after it in that procedure sits at an odd offset. The walk's own parity is
+        // scanned first, because it is right whenever the step that got here was; then the
+        // other.
         int ResyncAtStatement(std::uint64_t code, std::uint32_t procSize,
                               std::uint32_t from, const PcodeLengths* L)
         {
@@ -641,14 +527,8 @@ namespace vba
         }
     }
 
-    // EVERY candidate store near the result, named or not, for MEASUREMENT: the
-    // seven load/store pairs cover the numeric types, and String, Variant and
-    // Object returns store through opcodes the pairing was never measured on. Which
-    // opcodes they DO use is a question about the bytecode, and this asks it.
-    //
-    // BOTH OFFSETS, because a Variant result lives at [R14-0x18] rather than
-    // [R14-8]: a scan looking only for -8 would report "no store" for a procedure
-    // that has one, making "absent" and "not looked for" the same answer again.
+    // Every candidate store near the result, named or not. Both offsets, because a Variant
+    // result lives at [R14-0x18] rather than [R14-8].
     int ReturnStoreCandidates(std::uint64_t trailer, std::uint16_t* ops,
                               std::int32_t* offs, int max)
     {
@@ -720,22 +600,17 @@ namespace vba
             c.trailer  = trailer;
         }
 
-        // What one instruction says about a parameter slot. [R14 + 8n] is
-        // argument n, and every typed load has a 4-byte operand at +2.
+        // What one instruction says about a parameter slot. [R14 + 8n] is argument n, and every
+        // typed load has a 4-byte operand at +2.
         //
-        // Gated on the frame set, not on the operand's shape: a two-byte opcode
-        // has no operand, so the four bytes at +2 belong to the NEXT
-        // instruction, and "positive, a multiple of eight" proves nothing.
-        // Refusals are counted. The gate fails open when the arm-time scan
-        // answered for nobody, or a build the scan cannot follow would lose
-        // every type at once.
+        // Gated on the frame set, not the operand's shape: a two-byte opcode has no operand, so
+        // the bytes at +2 belong to the next instruction. The gate fails open when the arm-time
+        // scan found nothing.
         //
-        // First evidence wins. A load names the type directly; a write-only
-        // parameter emits no load but a typed store, and store = load + 32
-        // (the relation the return decoder uses), which is how `p = 9.75`
-        // recovers `Double`. With neither, the opcode is kept as a diagnostic
-        // so a table gap names itself. Control-flow opcodes are excluded: a
-        // statement marker's offset can look exactly like a frame offset.
+        // First evidence wins. A load names the type directly; a write-only parameter emits a
+        // typed store, and store = load + 32. With neither, the opcode is kept as a diagnostic.
+        // Control-flow opcodes are excluded: a statement marker's offset can look like a frame
+        // offset.
         void Attribute(ArgTypes& out, const PcodeLengths* L, std::uint16_t op,
                        std::int32_t operand, bool haveOperand, int maxArg)
         {
@@ -767,13 +642,10 @@ namespace vba
             { if (n < kDumpMax) { op[n] = o; operand[n] = opd; ++n; } }
         };
 
-        // Developer evidence after a walk. The corpus takes every procedure:
-        // failures prove a defect, successes constrain the candidate lengths.
-        // The one-procedure dump takes the first walk with an unnamed argument
-        // slot; under XRAYXL_DIAG a walk that resynchronised takes it instead
-        // (last wins), since a resync is the earlier symptom and a driver that
-        // resyncs on entry must not hide the procedure under investigation.
-        // A procedure with no argument slots never qualifies.
+        // Developer evidence after a walk. The corpus takes every procedure. The one-procedure
+        // dump takes the first walk with an unnamed argument slot; under XRAYXL_DIAG a walk
+        // that resynchronised takes it instead, last wins. A procedure with no argument slots
+        // never qualifies.
         void OfferEvidence(std::uint64_t trailer, std::uint64_t code, std::uint32_t procSize,
                            const ArgTypes& out, int maxArg, int resyncs, const Seen& seen)
         {
@@ -834,17 +706,13 @@ namespace vba
         std::uint16_t prevOp = 0;
         Seen seen{};
 
-        // Alignment is lost -- an opcode outside the table, a landing on the
-        // invalid handler, or an opcode with no pinned length -- and the
-        // recovery is the same: keep what was recovered (it was synchronised)
-        // and resynchronise on the next statement marker. No guessed step is
-        // ever taken over an unsized opcode; a wrong step attributes types to
-        // the wrong parameters. The stated cost: a write-only String assigned
-        // a literal loses its type (slot 11 has no length on any of 42 builds).
+        // Alignment is lost: an opcode outside the table, a landing on the invalid handler, or
+        // an opcode with no pinned length. Keep what was recovered and resynchronise on the
+        // next statement marker. No guessed step is taken over an unsized opcode, since a wrong
+        // step attributes types to the wrong parameters.
         //
-        // `blame` records prevOp -- its length made the step that got here --
-        // only from an unresynchronised run; after a resync the fault may be
-        // several steps back. Returns false when nothing recognisable remains.
+        // `blame` records prevOp only from an unresynchronised run; after a resync the fault
+        // may be several steps back. Returns false when nothing recognisable remains.
         auto lose = [&](PcDecline why, volatile LONG* blame) -> bool
         {
             NoteDecline(why);
@@ -882,7 +750,7 @@ namespace vba
             // from the statement carrying it: a statement's operand is the next
             // statement's offset, and is ZERO on the last one. So an exit needs no
             // length -- and there are ten of them, one per return type.
-            // [measured: vba/cases/early-exit-types]
+            //
             if (IsProcTerminatorSlot(op))
             {
                 clean = true;
@@ -996,16 +864,10 @@ namespace vba
         return line;
     }
 
-    // WRITE THE CORPUS. At DISARM, never from a hook: this opens a file.
-    //
-    // One line per procedure -- trailer, ProcSize, bytes. Everything the offline
-    // solver needs and nothing it has to trust: no decoded opcodes, no lengths,
-    // no interpretation, because the point is to CHECK the lengths and a file
-    // that had applied them would be circular.
-    //
-    // The summary includes what was DROPPED: a corpus silently omitting every
-    // large procedure would make the table look better than it is, and large
-    // procedures are where a wrong length has most room to go unnoticed.
+    // Writes the corpus, at disarm and never from a hook. One line per procedure: trailer,
+    // ProcSize, bytes. No decoded opcodes or lengths, because the file exists to check the
+    // lengths. The summary includes what was dropped, so a corpus missing every large procedure
+    // does not flatter the table.
     std::string WritePcodeCorpus(const std::wstring& path)
     {
         char msg[256];

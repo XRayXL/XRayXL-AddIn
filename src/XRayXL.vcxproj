@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|x64">
@@ -18,16 +18,9 @@
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
-  <!-- THE PRODUCT VERSION AND BUILD CONFIGURATION, from the repo's single
-       source. They feed the VERSIONINFO resource (XRayXL.rc) and compiler
-       defines so the running add-in can log what it is, and nothing else. The
-       FILENAME deliberately carries neither; version.props explains why.
-
-       Imported AFTER Microsoft.Cpp.Default.props, which is what establishes
-       $(Configuration) when this project is built on its own rather than
-       through the solution. Imported before it, a bare
-       "msbuild src\XRayXL.vcxproj" would read an empty configuration and stamp
-       the binary UNKNOWN while actually building Debug. -->
+  <!-- The product version and build configuration, for the VERSIONINFO resource and the log.
+       Imported after Microsoft.Cpp.Default.props, which establishes $(Configuration) when this
+       project is built on its own. -->
   <Import Project="$(MSBuildProjectDirectory)\..\version.props" />
   <PropertyGroup Condition="'$(Configuration)'=='Debug'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
@@ -47,12 +40,8 @@
     <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.props" />
   </ImportGroup>
   <PropertyGroup>
-    <!-- Build output always goes to the REPO's build folder, however this
-         project is built. Deliberately NOT $(SolutionDir): building the
-         .vcxproj on its own defines that as the PROJECT directory rather than
-         the solution's, which quietly scattered the XLL into the project's own
-         build folder, where tools\deploy.ps1 does not look. The project sits
-         one level below the repo root by construction. -->
+    <!-- Build output goes to the repo's build folder. Not $(SolutionDir), which is the project
+         directory when the .vcxproj is built on its own, where tools\deploy.ps1 does not look. -->
     <XRayRoot>$(MSBuildProjectDirectory)\..\</XRayRoot>
     <OutDir>$(XRayRoot)build\$(Platform)\$(Configuration)\XRayXL\</OutDir>
     <IntDir>$(XRayRoot)build\obj\$(Platform)\$(Configuration)\XRayXL\</IntDir>
@@ -121,6 +110,15 @@
     <ClCompile Include="core\crashlog.cpp" />
     <ClCompile Include="core\log.cpp" />
     <ClCompile Include="core\tracemodes.cpp" />
+    <ClCompile Include="core\notify.cpp" />
+    <ClCompile Include="ui\ribbon.cpp" />
+    <ClCompile Include="ui\ribbonmodel.cpp" />
+    <ClCompile Include="ui\ribbonart.cpp" />
+    <ClCompile Include="ui\glyphs.cpp" />
+    <ClCompile Include="ui\traceactions.cpp" />
+    <ClCompile Include="ui\optionsdlg.cpp" />
+    <ClCompile Include="ui\softdraw.cpp" />
+    <ClCompile Include="ui\softtext.cpp" />
     <ClCompile Include="xll\xlltypeplan.cpp" />
     <ClCompile Include="xll\xlldecode.cpp" />
     <ClCompile Include="xll\xllregistry.cpp" />
@@ -177,6 +175,11 @@
     <ClInclude Include="third_party\xlcall.h" />
     <ClInclude Include="core\excel_api.h" />
     <ClInclude Include="core\clock.h" />
+    <ClInclude Include="core\notify.h" />
+    <ClInclude Include="ui\ribbon.h" />
+    <ClInclude Include="ui\ribbonmodel.h" />
+    <ClInclude Include="ui\ribbonart.h" />
+    <ClInclude Include="ui\glyphs.h" />
     <ClInclude Include="core\caller.h" />
     <ClInclude Include="core\render.h" />
     <ClInclude Include="core\text.h" />

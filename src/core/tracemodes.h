@@ -10,23 +10,12 @@
 //                             its class, and for a Range, Worksheet or
 //                             Workbook the detail that identifies it
 //
-// OBJECTS IS THE ONE SETTING THAT MAKES THE TRACER TALK TO EXCEL. Everything
-// else here only reads memory or asks the flat C API, which is passive; this
-// one calls the object model, on the calculating thread, at a statement
-// boundary. It is on because an object argument is otherwise just an address
-// and `=MyUdf(A1)` is the commonest thing there is -- but it is a setting, and
-// OFF returns the tracer to pure observation, which is what someone debugging a
-// fragile workbook or a re-entrancy problem needs to be able to say.
+// OBJECTS is the one setting that calls the object model, on the calculating thread; OFF returns
+// the tracer to pure observation.
 //
-// THE RULE THAT MAKES FILTERING SAFE: a setting changes what is EMITTED, never
-// what is COUNTED. A frame the depth filter drops is still counted, and a
-// disabled decode is still counted as declined -- otherwise "we did not look"
-// and "we looked and found nothing" become the same empty cell.
-//
-// Set and read through XRayXL_SetTraceParam / GetTraceParam
-// (src/app/traceparam.cpp); the setters refuse while armed and refuse a cell
-// caller. The arm paths read these ONCE and latch them, so the hot path never
-// sees a value change under it.
+// A setting changes what is emitted, never what is counted, so "did not look" and "found nothing"
+// stay distinct. The arm paths read these once and latch them, so the hot path never sees a value
+// change.
 #pragma once
 #include <cstddef>
 
@@ -40,7 +29,7 @@ namespace modes
 
     // Named Param, not Setting, so it reads as the function that sets it does.
     // The calling cell (xlfCaller) is always resolved: the VBA tracer needs it to
-    // tell an error that escapes into a cell from one that propagates (D92), so it is
+    // tell an error that escapes into a cell from one that propagates, so it is
     // not a setting.
     enum class Param { Depth = 0, Args = 1, RetVal = 2, Objects = 3 };
 

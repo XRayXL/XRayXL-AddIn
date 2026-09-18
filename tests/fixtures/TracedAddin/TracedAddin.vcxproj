@@ -1,28 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <!-- RELEASE ONLY, AND DELIBERATELY SO. Do not "fix" this by adding a Debug
-       configuration without reading the LinkIncremental note below.
-
-       Two reasons. The add-in exists to look like the third-party XLLs a user
-       actually has, and those ship Release; a Debug subject is a rarer
-       population. More importantly, Debug DEFAULTS LinkIncremental to true,
-       and incremental linking routes every export through an E9 thunk - so a
-       Debug configuration added the obvious way would silently erase the
-       direct-prologue case from the suite, and every test would still pass.
-       Any Debug configuration added here must set LinkIncremental false too.
-
-       XRayXL.sln maps this project's Debug slot onto Release, so building the
-       solution as Debug still produces a Release subject (into
-       build\x64\Release\TracedAddin\, which is where the suites look for it).
-
-       AND NO VERSION RESOURCE, for the same kind of reason. Nothing reads one:
-       the tracer's only version-resource read is LoadedVbe7, hardcoded to
-       VBE7.DLL, and a trace row carries a module's NAME, never its version.
-       What would be left is an invented version number in a field readers
-       trust, which is the confident wrong answer this project keeps refusing.
-       The two things a resource could say are already settled elsewhere:
-       WHICH FILE is settled by the SHA256 the test manager records for every
-       registered add-in, and WHICH CONFIGURATION by there being only one. -->
+  <!-- Release only. The add-in stands in for third-party XLLs, which ship Release, and Debug
+       defaults LinkIncremental to true, which routes every export through an E9 thunk and
+       removes the direct-prologue case from the suite. XRayXL.sln maps this project's Debug
+       slot onto Release. No version resource: nothing reads one. -->
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Release|x64">
       <Configuration>Release</Configuration>
@@ -58,14 +39,9 @@
     <AddinBits Condition="'$(Platform)'!='Win32'">64</AddinBits>
     <TargetName>TracedAddin$(AddinBits)</TargetName>
     <TargetExt>.xll</TargetExt>
-    <!-- Incremental linking routes EVERY export through an E9 rel32 thunk, so
-         with it on, every function presents the tracer with the same shape and
-         the direct prologue case is never tested at all. A normally built
-         release XLL has it off and its exports point straight at code, which is
-         the commoner shape in the wild. Off here so the suite covers that;
-         jumptable.asm still supplies genuinely indirect exports, so both
-         shapes are exercised.
-         (LinkIncremental is a PROPERTY, not Link metadata.) -->
+    <!-- Incremental linking routes every export through an E9 rel32 thunk. Off, so exports point
+         straight at code, as in a normally built release XLL; jumptable.asm supplies the
+         indirect shape. (LinkIncremental is a property, not Link metadata.) -->
     <LinkIncremental>false</LinkIncremental>
   </PropertyGroup>
   <ItemDefinitionGroup>
