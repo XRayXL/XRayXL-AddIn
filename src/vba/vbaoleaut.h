@@ -77,22 +77,6 @@ namespace vba
         }
     }
 
-    // Does naming the held type add anything? A Variant's rendered value already shows its type
-    // for some kinds (a quoted string, `Error(0x...)`, `Nothing`, an array's element name), and
-    // `Empty`/`Null` have no value to qualify.
-    inline bool VtNameWorthSaying(std::uint16_t base)
-    {
-        switch (base)
-        {
-        case 2: case 3: case 4: case 5: case 6: case 7: case 11:
-        case 14: case 16: case 17: case 18: case 19: case 20:
-        case 21: case 22: case 23:
-            return true;
-        default:
-            return false;   // Empty, Null, BSTR, Error, object, record, unknown
-        }
-    }
-
     // ---- SAFEARRAY ----------------------------------------------------------
 
     // Every documented FADF_ bit. Anything else set is not a SAFEARRAY, and
@@ -118,6 +102,9 @@ namespace vba
     inline std::uint16_t EffectiveElemVt(const SaInfo& s)
     {
         std::uint16_t vt = s.vt & kVT_TYPEMASK;
+        // An Enum array says VT_USERDEFINED and stores Longs; VBA's own TypeName
+        // says Long() too. The declared Enum name is not in the descriptor.
+        if (vt == 29 && s.cbElem == 4) vt = 3;
         if (s.fFeat & kFadf_Unknown)  vt = 13;   // IUnknown*
         if (s.fFeat & kFadf_Dispatch) vt = 9;    // IDispatch*
         if (s.fFeat & kFadf_BSTR)     vt = 8;

@@ -83,9 +83,6 @@ try {
     [void](Invoke-XRayCommand $sx 'XRayXL_Arm')
     $armLine = Wait-LogLine $paths.Log 'VBA tracing: ' $mark
     if ($armLine -notmatch 'ARMED') { Complete-Test -Fail -Detail "did not arm: $armLine" }
-    if ($armLine -match 'NO ERROR ATTRIBUTION') {
-        Complete-Test -Fail -Detail "the raise slot did not verify on this VBE7: $armLine"
-    }
 
     $app.CalculateFull()
 

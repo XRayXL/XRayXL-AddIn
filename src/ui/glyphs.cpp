@@ -62,6 +62,13 @@ void Draw(HDC dc, const RECT& box, Kind kind, int line, COLORREF ink, COLORREF p
         soft::RoundRect(dc, stem, soft::Box{ ink, ink, 0, 1, true });
         break;
     }
+    case Kind::Notices:                     // a page of text
+        ring(4, 1, 24, 27, 2);
+        stroke(8, 7, 20, 7, line);
+        stroke(8, 11, 20, 11, line);
+        stroke(8, 15, 20, 15, line);
+        stroke(8, 19, 16, 19, line);
+        break;
     }
 }
 }

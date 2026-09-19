@@ -138,6 +138,13 @@ namespace params
         return ParseWord(v, k, pause);
     }
 
+    bool ParseFormat(LPXLOPER12 v, core::modes::Format& f)
+    {
+        static const Word<core::modes::Format> k[] = { { L"CSV",   core::modes::Format::Csv   },
+                                                       { L"JSONL", core::modes::Format::Jsonl } };
+        return ParseWord(v, k, f);
+    }
+
     bool ParseSource(LPXLOPER12 v, bool& both, core::modes::Source& s)
     {
         if (IsMissing(v)) { both = true; return true; }

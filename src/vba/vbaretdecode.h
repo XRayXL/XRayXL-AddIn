@@ -19,17 +19,15 @@
 //    4. An array of Variants is VT_ARRAY|VT_VARIANT with 24-byte elements, so the decoder
 //       recurses to a bounded depth. An object renders as in the argument column.
 //
-// Nothing here guesses; what fails validation is empty.
+// Nothing here guesses; what fails validation writes nothing and returns false. Values go to a
+// core::ValueWriter, which owns the spelling.
 #pragma once
 #include "vbaoleaut.h"
 #include <cstdint>
-#include "core/render.h"
+#include "core/valuewriter.h"
 
 namespace vba
 {
-    // The element cap is core/render.h's, shared with the XLL column.
-    using core::kMaxRenderedElems;
-
     enum class RetKind
     {
         Unknown,      // an exit slot this table does not know: decline
@@ -49,32 +47,24 @@ namespace vba
     RetKind StoreReturnKind(std::uint16_t storeOp);
     const char* RetKindName(RetKind k);
 
-    // One trace cell for the result of the activation whose frame base is
-    // `r14`, with the kind supplied by the caller. `storeOp` is the opcode that
-    // wrote [R14-8] when known, needed only to split slot 634. False, with `out`
-    // empty, when nothing can be said truthfully; `typeOut` receives the name to
-    // publish in `rettype`.
+    // The result of the activation whose frame base is `r14`, with the kind supplied by the
+    // caller. `storeOp` is the opcode that wrote [R14-8] when known, needed only to split slot
+    // 634. False, having written nothing, when nothing can be said truthfully; `typeOut`
+    // receives the name to publish in `rettype`.
     bool DescribeReturnKind(std::uint64_t r14, RetKind k, std::uint16_t storeOp,
-                            char* out, int cap, const char** typeOut);
+                            core::ValueWriter& w, const char** typeOut);
 
     // One decoder for both columns: a ByVal Variant parameter's first two frame slots are, byte
-    // for byte, a VARIANT. `heldType` is what the columns need differently: `ret` has a
-    // `rettype` column and renders bare (`42`), `args` names the held type inline
-    // (`Integer(42)`). `maxElems` is the caller's.
-    bool DescribeVariantValue(std::uint64_t at, char* out, int cap,
-                              const char** heldType, int maxElems = kMaxRenderedElems);
+    // for byte, a VARIANT. The held value is written inside BeginVariant/EndVariant, so a
+    // number other than Double is named wherever the Variant lands.
+    bool DescribeVariantValue(std::uint64_t at, core::ValueWriter& w);
 
-    // THE ONE ARRAY RENDERER: "<Elem>[lo..hi,...]{e1,e2,...}" for a SAFEARRAY
-    // whose header has already been validated by ReadSafeArrayHeader. Both
-    // columns render through this, so an array reads the same wherever it lands.
-    bool RenderSafeArrayValue(const SaInfo& sa, char* out, int cap, int maxElems);
+    // The one array renderer, for a SAFEARRAY whose header ReadSafeArrayHeader has already
+    // validated. Both columns render through this, so an array reads the same wherever it lands.
+    bool RenderSafeArrayValue(const SaInfo& sa, core::ValueWriter& w);
 
-    // ONE ELEMENT of a SAFEARRAY the CALLER has already walked and validated.
-    // The two columns walk the descriptor separately -- an argument reaches an
-    // array through a POINTER TO A POINTER -- but turning an element's BYTES
-    // into text is shared.
-    bool DescribeArrayElement(std::uint16_t vt, std::uint64_t at, char* out, int cap,
-                              int maxElems = kMaxRenderedElems);
+    // One value of VARTYPE `vt` at `at`: an array element, or a declared scalar argument.
+    bool DescribeArrayElement(std::uint16_t vt, std::uint64_t at, core::ValueWriter& w);
 
     // Latched at arm from the OBJECTS setting. Off, an object renders as its
     // address, exactly as it did before the setting existed.
@@ -83,7 +73,7 @@ namespace vba
     // A BSTR AT `p`, OR NOTHING -- the ONE reader, shared by both columns.
     // `told`: something else already says this is a string (a VARIANT tag, an
     // exit opcode). Only then is a ZERO length a value.
-    bool DescribeBstrValue(std::uint64_t p, char* out, int cap, bool told = false);
+    bool DescribeBstrValue(std::uint64_t p, core::ValueWriter& w, bool told = false);
 
     // `VtName` and the VARIANT tag constants live in vbaoleaut.h, included
     // above: they are facts about the type, not about decoding a return value.

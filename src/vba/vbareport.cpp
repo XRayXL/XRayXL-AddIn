@@ -35,6 +35,7 @@ namespace vba
           << " exitNoMatch=" << t.exitNoMatch
           << " returnsRead=" << t.returnsRead
           << " returnsDeclined=" << t.returnsDeclined
+          << " returnsOff=" << t.returnsOff
           // FOUR NUMBERS, NOT ONE. "nothing changed" and "we never looked" are
           // different facts about the tracer and must not share a cell.
           << " byrefEligible=" << t.byrefEligible
@@ -62,18 +63,13 @@ namespace vba
           << " callerOther=" << t.callerOther
           << " callerUnavailable=" << t.callerUnavailable
           << " callerFaults=" << t.callerFaults
-          // ERRORS. `raises` is post-dedupe (the opcode fires four times per
-          // Err.Raise). threw == handled in a session where every error was
-          // caught; a shortfall is one that reached the top.
-          << " raises=" << t.raises
-          << " raisesDeduped=" << t.raisesDeduped
+          // ERRORS. threw == handled in a session where every error was caught;
+          // a shortfall is one that reached the top.
           << " threw=" << t.threw
           << " unwound=" << t.unwound
           << " handled=" << t.handled
-          << " raisesBenign=" << t.raisesBenign
-          << " errLateOpen=" << t.errLateOpen
-          << " errNoFrame=" << t.errNoFrame
           << " errEscaped=" << t.errEscaped
+          << " doEventsChains=" << t.doEventsChains
           << " returnsUnmapped=" << t.returnsUnmapped
           << " closedByBackstop=" << t.closedByBackstop
           << " closedByFlush=" << t.closedByFlush
@@ -94,10 +90,6 @@ namespace vba
             o << " NOTE: " << (t.closedByBackstop + t.closedByFlush)
               << " exit row(s) carry an UPPER BOUND for ticks, not a measurement"
                  " (closed= says which)";
-        // A raise nobody could attribute is not the same as no raise at all.
-        if (t.errNoFrame)
-            o << " WARNING: " << t.errNoFrame << " raise(s) arrived with no frame"
-                 " open and were held for the next one";
         // Excel declining to answer is not the same as a caller that is not a
         // cell, and neither is the same as the question faulting. Only the last
         // two are wrong.

@@ -12,6 +12,7 @@
 #include "core/text.h"
 
 #include <windows.h>
+#include <algorithm>
 #include <sstream>
 #include <cstdio>
 
@@ -112,6 +113,30 @@ namespace xll
         }
     }
 
+    namespace
+    {
+        // An export RE-REGISTERED WHILE ARMED, under another type text. Excel keeps one
+        // registration, so from here on it calls the function to the new shape while the plan
+        // bound at arm still describes the old one: the thunk would forward the wrong number of
+        // stack arguments and the decoder would read them to the wrong shape. Neither is worth
+        // a row, so the export stops being traced and the log says which one it was.
+        bool SameShape(const Plan& a, const Plan& b)
+        {
+            return b.ok && a.slotCount == b.slotCount && a.async == b.async &&
+                   strcmp(a.signature, b.signature) == 0 && strcmp(a.returnText, b.returnText) == 0;
+        }
+
+        void NoteTypeTextConflict(const Target* t, const std::wstring& typeText)
+        {
+            char narrowType[128];
+            NarrowInto(typeText, narrowType, sizeof(narrowType));
+            core::Log::Note(std::string("arm: ") + t->module + "!" + t->procName +
+                            " was registered again with different type text ('" + t->plan.signature +
+                            "' returning '" + t->plan.returnText + "', and '" + narrowType +
+                            "') -- no longer traced, because the plan bound at arm no longer describes it");
+        }
+    }
+
     // Hooks what registered after arming, on the watch's worker thread.
     // Already-hooked exports are skipped; MinHook would refuse a second detour.
     int ArmLate(const regwatch::Captured* caps, int count)
@@ -120,6 +145,9 @@ namespace xll
 
         // What this batch hooked, so a failed apply can withdraw just that.
         std::vector<Target*> batch;
+        // Already hooked, and now registered to another shape: withdrawn after the apply,
+        // because Withdraw applies what is queued and the batch is not ready before then.
+        std::vector<Target*> conflicted;
 
         int hooked = 0, skipped = 0, declinedByExcel = 0;
         for (int i = 0; i < count; i++)
@@ -137,6 +165,15 @@ namespace xll
             {
                 // Hooked already, unless the add-in was unloaded and loaded again at this address.
                 std::string why;
+                if (live->live && !SameShape(live->plan, Parse(c.typeText)))
+                {
+                    if (std::find(conflicted.begin(), conflicted.end(), live) == conflicted.end())
+                    {
+                        NoteTypeTextConflict(live, c.typeText);
+                        conflicted.push_back(live);
+                    }
+                    continue;
+                }
                 const Reloaded r = RepatchIfReloaded(live, why);
                 if (r == Reloaded::Repatched) { batch.push_back(live); hooked++; }
                 else if (r == Reloaded::Refused) core::Log::Note("late arm: an export was not hooked again -- " + why);
@@ -182,6 +219,12 @@ namespace xll
               << " registration(s) were refused by Excel and correctly not hooked";
             core::Log::Note(m.str());
         }
+        // After the apply, never inside the loop: Withdraw applies what is queued.
+        if (!conflicted.empty())
+            core::Log::Note("late arm: " +
+                            std::to_string(Withdraw(conflicted.data(), static_cast<int>(conflicted.size()))) +
+                            " export(s) no longer traced -- registered again with different type text");
+
         return hooked;
     }
 
@@ -286,7 +329,9 @@ namespace xll
             void* addr = ResolveExport(r.module, r.procedure, &DeclineCounts());
             procUs += QpcMicros() - tProc;
             if (addr == nullptr) { rep.declined++; continue; }
-            // The same export registered again under another name is hooked already.
+            // The same export registered again under another name is hooked already. Excel
+            // keeps ONE registration per export -- a second one under a new type text replaces
+            // the type text, and the row read here carries the current one.
             if (FindTarget(addr) != nullptr) { registeredAgain++; continue; }
 
             std::string why;
@@ -350,7 +395,8 @@ namespace xll
         // Only once something is actually hooked, so an empty file cannot be
         // mistaken for a silent session. Open is idempotent, so a trace the VBA
         // side already opened this arm is kept rather than reopened.
-        if (!emit::csv::Open(core::modes::GetBufferBytes(), core::modes::GetPauseOnFull()))
+        if (!emit::csv::Open(core::modes::GetBufferBytes(), core::modes::GetPauseOnFull(),
+                             core::modes::GetFormat()))
         {
             DisableAll();
             regwatch::Remove();     // as above: nothing is armed, so nothing may stay hooked

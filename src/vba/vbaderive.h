@@ -59,7 +59,7 @@ namespace vba
     {
         std::uint32_t slot = 0;         // index into the dispatch table
         std::uint32_t handlerRva = 0;   // what the slot currently holds
-        const char*   role = "";        // "bos", "exit", "raise" or "end"
+        const char*   role = "";        // "bos", "exit" or "end"
     };
 
     struct SlotSet
@@ -82,14 +82,9 @@ namespace vba
         // it says the table is the opcode set kSigLength describes.
         std::uint64_t partitionHash = 0;
         bool          partitionOk = false;   // ...and it matched the pinned one
-        // THE RAISE SLOT and whether it verified. Error attribution needs it
-        // and ordinary tracing does not, so a failed check DEGRADES that one
-        // feature rather than refusing the whole arm: losing every VBA row
-        // because an error opcode moved would be the wrong trade.
-        bool          raiseOk = false;
-        // The `End` slot, on the same terms as the raise slot. `End` fires no exit opcode, and
-        // this is the only signal that its frames are dead; a failed check costs the depth and
-        // parentage of whatever runs after an `End`.
+        // The `End` slot and whether it verified. `End` fires no exit opcode, and this is the
+        // only signal that its frames are dead; a failed check degrades that one feature, the
+        // depth and parentage of whatever runs after an `End`, rather than refusing the arm.
         bool          endOk = false;
         int           exitGroups = 0;
         std::uint32_t declines[static_cast<int>(Decline::Count_)] = {};

@@ -27,12 +27,6 @@ namespace vba
         // How the exit slots group into runs that must share one handler; only multi-slot groups can fail.
         constexpr int kExitGroup[] = { 1,3,1,1,1,1,5,1,1,1,1,1,1,1,1,1,1,1,1 };
 
-        // The raise opcode, which makes error attribution possible. 497 is the one that raises,
-        // four times per Err.Raise; 718 fires when a handler is set up and 1272 on an Err
-        // object access. Its fingerprint is a handler of its own, where the other two share a
-        // five-slot group.
-        constexpr std::uint32_t kRaiseSlot = 0xF88 / 8;   // 497
-
         // The `End` opcode, which tears the whole VBA session down. Microsoft's PDB names slot
         // 619 `lblEX_End`. It holds a handler of its own, which kPartitionHash already pins;
         // the check below is still made.
@@ -289,8 +283,8 @@ namespace vba
             return ok;
         }
 
-        // 5. A singleton slot. Neither the raise slot nor the End slot is part of `verified`: a
-        // slot that fails costs its one feature, not the arm, and is reported. The check is
+        // 5. A singleton slot. The End slot is not part of `verified`: a slot that fails costs
+        // its one feature, not the arm, and is reported. The check is
         // that the slot holds a handler of its own, and not the BoS handler.
         void VerifySingletonSlot(const Image& img, SlotSet& s, std::uint32_t slot,
                                  const char* role, bool& okOut)
@@ -378,9 +372,8 @@ namespace vba
             if (std::strcmp(site.role, "exit") == 0 && site.handlerRva == s.bosHandlerRva)
             { Note(s, Decline::ExitSharesBosHandler); ok = false; break; }
 
-        // 5. the two singleton slots -- features, not the product, so not in `ok`
-        VerifySingletonSlot(img, s, kRaiseSlot, "raise", s.raiseOk);
-        VerifySingletonSlot(img, s, kEndSlot,   "end",   s.endOk);
+        // 5. the singleton slot -- a feature, not the product, so not in `ok`
+        VerifySingletonSlot(img, s, kEndSlot, "end", s.endOk);
 
         s.verified = ok;
         std::ostringstream o;

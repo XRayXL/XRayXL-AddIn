@@ -23,6 +23,10 @@ namespace app
     // Either source armed -- what the setters test and XRayXL_IsArmed answers.
     bool IsArmed();
 
+    // After a contained fault on this thread, which ran no destructor: the log's and the
+    // file's locks, and the VBA arm/disarm gate, if this thread held them.
+    void ReleaseHeldByThisThread();
+
     // The XRayXL_* commands and functions, registered with Excel at load.
     void RegisterCommands();
 }

@@ -39,6 +39,7 @@ EXPORTS
     TxRowColQ
     TxRefU
     TxRefR
+    TxTwoShapes
 
 ; return shapes
     TxRetB
@@ -67,6 +68,7 @@ EXPORTS
     TxLateNoResult
     TxRegisterNoResult
     TxRegisterLongName
+    TxRegisterReshape
     TxCallsPrefix
     TxPrefix_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx=TxPrefixImpl
     TxPrefix_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxTail=TxLongImpl

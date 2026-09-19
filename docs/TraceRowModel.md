@@ -14,7 +14,7 @@ reader refuses the file — and the fix updates both in the same change.
 
 | Channel | File | Nature |
 |---|---|---|
-| **Trace** | `%TEMP%\XRayXL\TraceFiles\XRayXL_Trace_<id>_<pid>.csv` | The data product: one row per event. `<id>` is a monotonic OS tick (`GetSystemTimePreciseAsFileTime`) that always rises — across arms, processes and reboots — so a re-arm never overwrites; created lazily on the first record, so a session that traced nothing leaves none. Buffered; drops shown by `input`-column holes |
+| **Trace** | `%TEMP%\XRayXL\TraceFiles\XRayXL_Trace_<id>_<pid>.csv`, or `.jsonl` with `FORMAT=JSONL` | The data product: one row per event. `<id>` is a monotonic OS tick (`GetSystemTimePreciseAsFileTime`) that always rises — across arms, processes and reboots — so a re-arm never overwrites; created lazily on the first record, so a session that traced nothing leaves none. Buffered; drops shown by `input`-column holes |
 | **Log** | `%TEMP%\XRayXL\Logs\XRayXL_<pid>.log` | Control: arm outcomes, the derivation line, commands, and the disarm report — the totals line and the per-procedure name table. Appended synchronously, **never dropped**. Levelled (DEBUG/INFO/WARNING/ERROR), default INFO |
 | **Crash log** | alongside the logs | Notes that must survive the process dying; opened `FILE_APPEND_DATA` per note, installed with the top-level exception filter |
 
@@ -50,11 +50,14 @@ Byte-for-byte, the first line is:
 seq,input,kind,source,span,parent,depth,thread,qpc,module,function,proc,typetext,caller,callerref,argcount,args,ret,rettype,outcome,ticks,trust
 ```
 
-Encoding: ANSI bytes, CRLF line endings, minimal RFC 4180 quoting — a field
-is quoted only when it contains a comma, a quote or a newline; embedded
-quotes are doubled; embedded CR/LF become spaces (values come out of an
-add-in's memory and can contain anything). A row is capped at 256 KB and
-truncated *safely* beyond that: fields shorten, the row stays well-formed.
+Encoding: UTF-8, CRLF line endings, minimal RFC 4180 quoting — a field is
+quoted only when it contains a comma, a quote or a newline, and embedded quotes
+are doubled. Module names, workbook names and addresses are written as UTF-8.
+Inside `args` and `ret` every character above 126 is escaped as `\uNNNN` and a
+line break as `\r` or `\n` (see *String escaping*), so a value is always ASCII;
+a CR or LF anywhere else becomes a space. A row is at most 4 × 4 MB + 64 KB, the
+two value columns at their limit; a row larger than that is dropped whole, and
+its `input` value is a hole.
 
 ## Kinds and sources
 
@@ -101,15 +104,15 @@ mode-independent.
 | `depth` | int | **Every row, never empty.** How far down the call chain this activation was, counted per source and per thread; `1` when no other frame of the same source was open |
 | `thread` | uint32 | OS id of the traced thread |
 | `qpc` | int64 | `QueryPerformanceCounter` at the **event** — never wall clock. A row is *stamped* when it happened and *numbered* when written; `seq` and `qpc` order different things |
-| `module` | text | XLL: the add-in file (`PricingLib.xll`). VBA: the qualified module (`[Book.xlsm]Module1`) — or **empty when unresolvable**, never a guess like `VBE7.DLL` |
+| `module` | text | XLL: the add-in file (`PricingLib.xll`). VBA: the qualified module (`[Book.xlsm]Module1`, and `[unsaved:006cd206e1]Module1` for a workbook that was never saved, which has no file name for VBA to report) — or **empty when unresolvable**, never a guess like `VBE7.DLL` |
 | `function` | text | XLL: the registered name. VBA: the resolved procedure name, falling back to the trailer address in hex — an address obviously *looks like* an address |
 | `proc` | text | XLL: the exported procedure name. VBA: **always** the trailer in hex — the identity the tracer actually used, which tells two same-named procedures apart |
 | `typetext` | text | **Entry rows only.** The parameter types, comma-separated, with no brackets: the XLL registration's argument codes (`B,B`, `O%`, `D%,K%,E`) or the VBA declared types (`Long,String`). **Empty** when there are no parameters, where `argcount` reads `0`; and when VBA could not recover the types, where `argcount` holds the slot count or is empty. Empty on exits |
 | `caller` | text | Entry rows only, and **never empty**: what the caller *was*, as a kind from a closed set — `cell`, `name`, `toolbar`, `menu`, `registerid`, `none`, `unavailable`, `array`, `unknown`. Two of those are different "no" answers and are kept apart deliberately: `none` is Excel saying there is no caller on a sheet, `unavailable` is Excel declining to answer. The calling cell is always resolved, so a row is never left unasked. `name` rather than `object` because a graphic object and an `Auto_*` macro both come back as a string and Excel gives no way to tell them apart — the kind says what is certain |
 | `callerref` | text | The description, whose meaning `caller` decides. `cell`: one **external address**, `[Book1]Sheet1!B2` or `'[my book.xlsx]Sheet 1'!B2` when Excel would quote it, or a whole range `…!B2:D4` for a CSE array formula — the same text `Range.Address(,,,True)` returns, so it can be pasted back. `name`: the shape's name, or an `Auto_*` macro's calling sheet. `toolbar`: `5/2`, or `"MyBar"/2` when a custom bar answers with its name. `menu`: four fields, `27/27/14/0`. `registerid`, `unavailable`, `array`, `unknown`: the one value. `none`: which no — the short name of the Excel error it answered with (`ref`, `value`, `name`, …, or `err<N>` for one without a name), `nil`, `emptyref`, `sheetless-B2`, `nametoolong` |
 | `argcount` | int | **Entry rows only.** The number of parameters. XLL: one per type code, so an `O` array counts once though it takes three slots. VBA: the parameter count when the types were recovered, the slot count when only that was, empty when capture did not check out |
-| `args` | text | **Entry rows: the values going IN. Exit rows: the ByRef ones that CHANGED** — a VBA exit row carries `args` only when a re-read at the exit differs from the entry, so a row that has them is saying "these moved"; absent means unchanged, and `byrefEligible`/`byrefChanged`/`byrefSame`/`byrefDeclined` in the disarm line separate that from "never looked". `argcount` and `typetext` stay **entry-only**: they describe the signature, which has not changed, and the entry row this pairs with by `span` already carries them. **ByVal is never reported at an exit** — the callee's copy may differ but the caller never sees it, so an "after" value would assert an effect that does not exist. One field, `a<N>:<type>=<value>` per argument on both sources, joined by single spaces — one column whatever the arity, which keeps the file rectangular. **A VBA `Variant` argument is decoded by the same code as `ret`**, so it reads its held value the same way: `Integer(42)`, `Decimal(12345.678901234567890123456)`, `"text"`, `Double[0..2]{1.5,2.5,3.5}`, `Variant[0..1]{Variant[0..1]{1,2},…}` (32 levels, then `[...]`), an object (see *Objects*), `Nothing`, `Empty`, `Null`, and an Excel error **spelt as Excel spells it** — `#N/A`, `#DIV/0!`, `#VALUE!`, `#REF!`, `#NAME?`, `#NUM!`, `#NULL!`, `#GETTING_DATA` — falling back to `Error(0x…)` for an SCODE outside that set. It names the held type inline — `Integer(42)` where `ret` renders `42` — because `args` has no `rettype` column beside it; the name is omitted where the text already carries the type (an array, `Error(...)`) or where there is nothing to name. An omitted argument reads `Missing` on both sources. A slot that decodes to nothing truthful is the raw qword (`0x…`), never a coerced value. **On VBA rows the type is the declared type where VBA's metadata named one, and a `?` marker where it did not** — see *Declared or inferred* below. On XLL rows it is the registration's code, and a value with nothing to decode reads as a bare word: `Missing`, `Empty` or `AsyncHandle`; a reference argument (`R` or `U`) reads `SRef(R2C2:R3C3)` for one area on the calling sheet and `Ref(R2C2:R3C3,R5C5:R5C5)` otherwise, the sheet not named; anything else `?xltype<N>` |
-| `ret`, `rettype` | text | **Exit** rows only. XLL: the decoded return value, and in `rettype` the registered return code followed by any registration flags — `Q`, `Q$` (thread-safe), `Q!` (volatile), `Q#` (macro-sheet equivalent), `Q&` (cluster-safe). `ret` is empty for a function registered with no return value (`>`, or a modify-in-place digit) and for an async call, whose answer arrives later. VBA: every **Function** exit at any depth, `rettype` naming the kind the exit opcode declared — `Double` (also Date), `Single`, `Byte`, `Integer` (also Boolean, as −1/0), `Long`, `LongLong`, `Currency`, `String` (quoted), `Object`, `Variant`, or `Elem()` for a typed array. An array reads `Elem[lo..hi]{...}` row by row — the last index varies fastest, on both sources — **always stating both bounds** because `Option Base` decides what a bare count would mean — `Dim a(3)` is 0..3 under base 0 and 1..3 under base 1 — and as many elements as fit, ending `,...(k of n shown)` when not all do; the declared size is always the real one; an array of Variants nests (`Variant[0..1]{Variant[0..1]{1234.5,2},3}`) to 32 levels, deeper reading `[...]`; a Variant reads as its held value (`Empty`, `"text"`, `TRUE`, `Double[3]{...}`); an object anywhere reads as it does in `args` (see *Objects*) or `Nothing`, so one object can be followed from argument to result. **Empty** for a Sub (no result exists) and anything whose descriptor fails validation |
+| `args` | text | **Entry rows: the values going IN. Exit rows: the ByRef ones that CHANGED** — a VBA exit row carries `args` only when a re-read at the exit differs from the entry, so a row that has them is saying "these moved"; absent means unchanged, and `byrefEligible`/`byrefChanged`/`byrefSame`/`byrefDeclined` in the disarm line separate that from "never looked". `argcount` and `typetext` stay **entry-only**: they describe the signature, which has not changed, and the entry row this pairs with by `span` already carries them. **ByVal is never reported at an exit** — the callee's copy may differ but the caller never sees it, so an "after" value would assert an effect that does not exist. One field, `a<N>:<type>=<value>` per argument on both sources, joined by single spaces — one column whatever the arity, which keeps the file rectangular. On XLL rows `N` is the argument's position. **On VBA rows `N` is the argument's first frame slot**: a `ByVal Variant` fills three slots, so the argument after one reads `a4`, and `argcount` still counts arguments, not slots. **A VBA `Variant` argument is decoded by the same code as `ret`**, so it reads its held value the same way, by the rules in *Values*: a Double bare (`1.5`), any other number named (`Integer(42)`, `Decimal(12345.678901234567890123456)`), `"text"`, `TRUE`, an array (`Variant[1..2,1..2]{{1,"x"},{2,TRUE}}`), an object (see *Objects*), `Nothing`, `Empty`, `Null`, and an Excel error **spelt as Excel spells it** — `#N/A`, `#DIV/0!`, `#VALUE!`, `#REF!`, `#NAME?`, `#NUM!`, `#NULL!`, `#GETTING_DATA` — falling back to `Error(0x…)` for an SCODE outside that set. An omitted argument reads `Missing` on both sources. A slot that decodes to nothing truthful is the raw qword (`0x…`), never a coerced value. **On VBA rows the type is the declared type where VBA's metadata named one, and a `?` marker where it did not** — see *Declared or inferred* below. On XLL rows it is the registration's code, and a value with nothing to decode reads as a bare word: `Missing`, `Empty` or `AsyncHandle`; a reference argument (`R` or `U`) reads `SRef(R2C2:R3C3)` for one area on the calling sheet and `Ref(R2C2:R3C3,R5C5:R5C5)` otherwise, the sheet not named; anything else `?xltype<N>` |
+| `ret`, `rettype` | text | **Exit** rows only. XLL: the decoded return value, and in `rettype` the registered return code followed by any registration flags — `Q`, `Q$` (thread-safe), `Q!` (volatile), `Q#` (macro-sheet equivalent), `Q&` (cluster-safe). `ret` is empty for a function registered with no return value (`>`, or a modify-in-place digit) and for an async call, whose answer arrives later. VBA: every **Function** exit at any depth, `rettype` naming the kind the exit opcode declared — `Double` (also Date), `Single`, `Byte`, `Integer` (also Boolean, as −1/0), `Long`, `LongLong`, `Currency`, `String` (quoted), `Object`, `Variant`, or `Elem()` for a typed array. An array, a Variant and an object read as they do in `args`, by the rules in *Values* — `Long[1..3]{3,6,9}`, `Double[0..1,0..1]{{1234.5,2},{3,4}}`, `Long(777)` for a Variant holding a Long — so one object can be followed from argument to result. **Empty** for a Sub (no result exists) and anything whose descriptor fails validation |
 | `outcome` | text | **Exit rows only, and never empty on one.** How the activation ended, from a closed set: `returned`, `threw`, `unwound`, `handled`, `abandoned`, `unhandled`. An XLL exit row always reads `returned` — see below. Empty on every other row |
 | `ticks` | uint64 | **Exit rows only.** The duration in QPC ticks, spelled the same by both sources. Empty on the one exit that has no duration — an async XLL call, where the span measured the dispatch and the work has not finished |
 | `trust` | text | **Exit rows only, and never empty on one.** What ended the measurement, and so whether `ticks` is a reading or a ceiling: `exit`, `end`, `backstop`, `flush`, `async`. `exit` means the same thing on both sources — the return path fired. **`async` is NOT SUPPORTED** — see below |
@@ -190,20 +193,70 @@ chain is marked `handled`. And the error's NUMBER and DESCRIPTION are not
 recovered: `outcome` says WHERE an error was thrown and who caught it, never
 WHICH error it was.
 
-**Every slot says where its type came from.** `args` renders
-`a<N>:<type>=<value>`, and the type is either one VBA's own bytecode named or a
-marker saying it named none — and *which* nothing:
+### Declared or inferred: how far to trust a VBA argument
 
-**Two symbols, one meaning each.** `?` always means *this slot's type is
-unknown*, and the word after it says which not-knowing. `~`, closing the
-signature in `typetext`, always means *the walk did not read the whole body*.
+Every VBA argument reads `a<N>:<type>=<value>`, and the `<type>` says how the value was
+found. **A named type means the value is certain. A `?` means the tracer had no type and
+recognised the value from the bytes themselves** — a strict recognition, but a recognition.
+
+```
+a1:Long=42                         declared Long; the slot was read as a Long          certain
+a1:Variant=Long(42)                declared Variant; the Variant's own tag says Long   certain
+a1:Ref&=Long[1..5]{4097,4098,…}    declared only "a reference"; the array recognised   recognised
+a1:?none=Double[0..400]{1,0.99,…}  no type; the bytes proved to be an array of Double  recognised
+a1:?unseen="EUR"                   no type; the bytes proved to be a string            recognised
+a1:?none=Missing                   no type; an omitted Optional, two exact constants   recognised
+a1:?none=0x4004000000000000        no type, and nothing recognised: the raw 8 bytes    raw
+```
+
+**With a type**, the slot is read *as* that type and nothing else. A `Variant` is
+self-describing in a precise sense: VBA stores the held value's type in the Variant
+itself, so once the declaration says the slot is a Variant, its tag says the rest. A
+declared value never falls through to recognition — a `Double` whose bits happen to look
+like a string cannot render as text.
+
+**Without one**, the tracer has eight bytes and no declaration. It tries a few shapes in a
+fixed order, each directly or one pointer away, and accepts one only if **every** check
+passes:
+
+| recognised as | it must |
+|---|---|
+| `Missing` | carry exactly the tag and code VBA uses for an omitted `Optional` — two exact constants |
+| a string | be a length-prefixed string in user memory, 2-aligned, of a plausible length, ending in a terminator exactly where the length says, with no control characters other than tab |
+| an array | be a valid array descriptor: 1 to 8 dimensions, only documented flags, sane sizes and bounds, a data pointer in user memory — **and name its element type**, with the element size matching that type (8 bytes for Double). Something merely *shaped* like an array is refused |
+
+Every array parameter the suites pass — Long, Byte, Integer, Object, Boolean, Single, Double,
+Date, Currency, LongLong, String, Variant — names its element type, so the rule costs no real
+array. An `Enum` array names `VT_USERDEFINED` and reads as `Long`, which is what its elements
+are. The one array that names nothing is an array of a user-defined `Type`: it reads as the
+raw qword, and a `Type`'s fields are never walked. The weakest acceptance is a string: a length prefix, alignment, a bound and a
+terminator in exactly the right place — strong, but metadata rather than a tag. `Ref&` is
+the bytecode saying "eight bytes, by reference" and nothing more, which is why an array
+passed `ByRef` is recognised rather than declared.
+
+If nothing passes, the value is the **raw 8 bytes**, `0x…`, and never an invented number.
+`0x4004000000000000` above is a Double's bits for 2.5; the trace will not say so, because
+nothing told it the slot was a Double.
+
+**How far to trust a recognised value:** almost completely, but it is inference. Eight
+unrelated bytes would have to point at something passing every check above. The `?` is
+there so a reader knows which values are declared and which are recognised — a wrong value
+that still parses satisfies every check, and only the declaration rules that out.
+
+**Why a type is missing.** VBA's bytecode names a parameter's type only at an instruction
+that uses it in a typed way. A parameter the body never reads, or reads only by passing it
+on, never meets one. The type exists in the source — `ByVal n As Long` — but not in the
+instructions the tracer reads. The word after `?` says which case it was:
 
 | `a1:` | meaning |
 |---|---|
 | `String`, `Long`, … | the bytecode named it; the value was read **as** that type |
-| `?opNNN` | an opcode touched the slot and is **not in our type table** — a gap, and `NNN` is the row that would fix it |
-| `?none` | an opcode touched it that provably conveys no type |
-| `?unseen` | **no opcode touched the slot at all** |
+| `?opNNN` | an instruction touched the slot and is **not in our type table** — a gap, and `NNN` is the entry that would fix it |
+| `?none` | an instruction touched it that provably conveys no type |
+| `?unseen` | **no instruction touched the slot at all** |
+
+**Two symbols, one meaning each.** `?` always means *this slot's type is unknown*. `~`,
+closing the signature in `typetext`, always means *the walk did not read the whole body*:
 
 | `typetext` | meaning |
 |---|---|
@@ -212,40 +265,10 @@ signature in `typetext`, always means *the walk did not read the whole body*.
 | `Long,...` | the signature was too long for its buffer and was cut — fewer names than parameters |
 
 The two compose. `Long,?unseen` says that parameter is genuinely never read.
-`Long,?unseen~` says the walk was incomplete, so the same `?unseen` may
-instead be a load the walk **skipped** — and nothing in the trace can tell those
-apart, which is exactly why the `~` is there rather than a quiet guess. A `~`
-weakens every `?` in that row.
-
-**`~` is rare and, so far, unobserved.** Across the last full sweep — 5,266 VBA
-entry rows carrying a signature — not one walk was partial. Treat it as a marker
-the format defines rather than one these suites exercise.
-
-The distinction is load-bearing. Where a type is named, the value is read as
-that type and **never falls through to a structure reader** — a `Double` whose
-bits happen to satisfy a BSTR's invariants cannot render as text. Where none is
-named, the slot is *probed*: the decoder asks whether the bytes say what they
-are, and prints the raw qword when they do not.
-
-**A probe only accepts something that identifies itself.** A `Missing` marker is
-a VARIANT's own sentinel tag. A SAFEARRAY must **name its element kind** — a VT,
-or a feature bit saying BSTR, VARIANT, DISPATCH, UNKNOWN or RECORD — because a
-structure merely *shaped* like an array is a guess, and the one real cross-check
-(element size against element type) cannot run without a type to check against.
-Measured across every array parameter the suites pass — Long, Byte, Integer,
-Object, Boolean, Single, Double, Date, Currency, LongLong, String, Variant — not
-one lacked its element type.
-
-The weakest remaining acceptance is a bare BSTR, which offers only a length
-prefix, alignment, a bound, and a NUL at **exactly** `p + cb`. Strong, but four
-bytes of metadata rather than a tag. **So: a value with a named type is not a
-guess; a value behind a `?` marker may be, and the marker is there to say so.**
-
-**`?unseen` is not a defect in the tracer's table.** Those parameters usually
-*do* have a declared type in the source — `ByVal n As Long` — but VBA's bytecode
-only names a parameter's type at an instruction that **loads** it, and nothing
-loads a parameter the body never reads. The type exists in the project; it is
-simply not in the instruction stream this walk can see.
+`Long,?unseen~` says the walk was incomplete, so the same `?unseen` may instead be a load
+the walk **skipped** — and nothing in the trace can tell those apart, which is exactly why
+the `~` is there rather than a quiet guess. A `~` weakens every `?` in that row. It is rare:
+across a full sweep of 5,266 VBA entry rows carrying a signature, not one walk was partial.
 
 **String escaping, in `args` and `ret`, on XLL and VBA rows alike.** A decoded string is rendered
 between quotes, with everything escaped that would otherwise be ambiguous, so
@@ -263,9 +286,9 @@ The closing quote is therefore the only unescaped `"` in the value. Two of these
 exist because the alternatives were silently lossy: a raw CR or LF would be
 turned into a *space* by the CSV writer, claiming the string held a space where
 it held a line break; and a character outside ASCII used to become `?`, which no
-reader could tell from a question mark the string really contained. The file is
-ANSI bytes, so `\uNNNN` is how such a character survives it at all. A string
-too long for its field ends with `...` after the closing quote.
+reader could tell from a question mark the string really contained. `\uNNNN`
+keeps every value ASCII, so it reads the same in any viewer. A VBA string longer
+than 256 characters is cut there, and ends with `...` after the closing quote.
 
 **`parent` and `depth` — where a call sits in the chain.** Both are columns of
 their own, beside `span`, because `parent` *is* a span: the three call-tree
@@ -281,6 +304,10 @@ fields read together. Both are on every row — entry, exit, and the
 - **`parent`** is the `span` of the activation that called it, `0` at the top.
   Because `span` pairs an entry row with its exit, `parent=2` means *called by
   the activation whose two rows both say `span=2`*.
+- **A macro Excel runs while VBA waits in `DoEvents`** — an `Application.OnTime`
+  macro, an event — starts a chain of its own: `depth=1`, `parent=0`. It runs on
+  top of the frame that called `DoEvents`, but that frame did not call it. The
+  disarm log counts these as `doEventsChains`.
 
 Together they place a row exactly:
 
@@ -375,9 +402,96 @@ closes after it on the same thread, ordered by `seq`. So an add-in that
 re-enters Excel via `xlUDF` reads as nested intervals, at `depth` 2 and 3 with
 each `parent` naming its caller, while cell-level nesting (`=TxB(TxB(1,2),3)`)
 reads as two disjoint calls at `depth` 1, because Excel evaluates the inner call
-and finishes it before the outer begins. `Get-MaxNestDepth` and the fuzz suite's
+and finishes it before the outer begins. The one exception is a macro run inside
+`DoEvents`: its rows fall inside the waiting frame's interval but begin a chain of
+their own. `Get-MaxNestDepth` and the fuzz suite's
 `NestDepth` check the columns against the interleaving -- a flattened tree would
 pass entry/exit pairing, span uniqueness and the caller invariants unchanged.
+
+## Values: arrays, Variants and types
+
+One grammar spells every value in `args` and `ret`, on both sources, and one code path writes
+it (`core::ValueWriter`), so the same value reads the same wherever it lands.
+
+**An array is its element type, both bounds of every dimension, then one brace level per
+dimension**, the first dimension outermost. For a 2-D array that means rows: the whole of row 1,
+then row 2.
+
+```
+Long[0..3]{1,2,3,4}                                   1-D
+Variant[1..2,1..3]{{11,12,13},{21,22,23}}             2-D: a range, rows first
+Variant[1..1,1..3]{{1,2,3}}                           one row of a range is still 2-D
+Long[0..1,0..1,0..2]{{{1,2,3},{4,5,6}},{{7,8,9},{10,11,12}}}   3-D
+Variant[0..-1]{}                                      Array(): bounds 0..-1, no elements
+Long()                                                a dynamic array never allocated: its type, no bounds
+?[0..-1]{}                                            an empty ParamArray: its descriptor names no element type
+```
+
+- **Both bounds, always**, because `Option Base` decides what a bare count would mean:
+  `Dim a(3)` is 0..3 under base 0 and 1..3 under base 1.
+- **A bare brace is always a dimension; a nested array always carries its own header.** So
+  `{{1,2}}` is one row of a 2-D array, and `{Long[0..1]{1,2}}` is a 1-D array holding an array.
+  Nesting goes 32 levels deep, then reads `[...]`.
+- **Every element is written.** Arrays are not truncated. The one limit is 4 MB for a single
+  value: an array past it keeps its header and has no braces — `Double[0..99999999]` — so its
+  shape is known and its contents are not in the file. Never part of the contents. The disarm
+  log counts these (`values: N array(s) over the 4 MB value limit`).
+- **An element that would not decode is `?`**, not a refusal of the array: the shape came from
+  the descriptor and stays true whatever one element holds.
+- **An array with no storage is still a value.** `Dim a() As Long` before `ReDim` reads `Long()`
+  in a Variant, and `?()` as a `Function … As Long()` result, whose element type nothing records.
+  In a `Ref&` argument a zero reads `0x0`: a `ByRef LongLong` holding 0 and an unallocated
+  `ByRef` array are the same eight bytes.
+
+**Inside a Variant, a bare number means Double; every other type is named.** This covers a
+Variant argument, a Variant result, each element of a Variant array, and a Range's contents:
+
+```
+1.5                   Double
+Integer(1)            Integer, and Boolean passed as an Integer
+Long(7)  Single(1.5)  Byte(3)  LongLong(9)  Currency(1.5000)  Decimal(1.5)  Date(46352)
+"x"   TRUE   #N/A   Empty   Null   Nothing                    already say what they are
+Variant[0..3]{1234.5,"two",Long(3),TRUE}
+```
+
+A typed array's elements are bare, because the header already names them — `Long[1..3]{3,6,9}`
+— and so is a declared scalar argument, `a1:Long=5`. `Range.Value2` hands back only Doubles,
+strings, Booleans, errors and Empty, so a range's contents are never tagged.
+
+An object reads `Class@0x…(where)`, and a Range whose contents were read is followed by `=` and
+its value (see *Objects*). A user-defined Type reads `udt@0x…`. An XLL reference reads
+`SRef(R2C2:R3C3)` or `Ref(R2C2:R3C3,R5C5:R5C5)`: its cells are not read, because `xlCoerce` on a
+cell not yet calculated makes Excel abandon the call and run it again later.
+
+## JSON Lines
+
+With `FORMAT=JSONL` the trace file is `XRayXL_Trace_<id>_<pid>.jsonl`: no header, and one JSON
+object a line whose keys are the CSV columns in the same order. `seq`, `span`, `parent`,
+`depth`, `thread`, `qpc`, `argcount` and `ticks` are numbers; the rest are strings; an empty
+field has no key. `args` and `ret` are structured, and **every value names its type**, a
+Double included:
+
+```
+{"seq":12,"input":12,"kind":"exit","source":"VBA",...,"ret":{"t":"Array","elem":"Variant",
+ "bounds":[[0,2]],"v":[{"t":"Long","v":7},{"t":"Double","v":2.5},{"t":"String","v":"x"}]},
+ "rettype":"Variant","outcome":"returned","ticks":604,"trust":"exit"}
+```
+
+| value | JSON |
+|---|---|
+| a number | `{"t":"Double","v":1.5}`, `{"t":"Long","v":7}`. `Currency`, `Decimal`, `LongLong` and `UInt64` carry their exact digits as a string: `{"t":"Currency","v":"1.5000"}`. `NaN` and the infinities are strings too |
+| a string | `{"t":"String","v":"x"}`, with `"cut":true` when the source was longer than was read |
+| Boolean, error | `{"t":"Boolean","v":true}`, `{"t":"Error","v":"#N/A"}` |
+| a word | `{"t":"Empty"}`, and the same for `Null`, `Missing`, `Nothing`, `AsyncHandle` |
+| not known | `{"t":"Unknown","v":"?vt17"}` |
+| an array | `{"t":"Array","elem":"Variant","bounds":[[1,2],[1,3]],"v":[[…],[…]]}`: `v` nests one JSON array per dimension, rows first. In a typed array (`elem` other than `Variant`) the elements are bare JSON values, since `elem` names their type; a cut string there is still an object. Over the value limit, `v` is replaced by `"omitted":"over the value limit"`. An element type the descriptor does not name is `"elem":null`, and an array never allocated has `"bounds":[]` and no `v` |
+| an object | `{"t":"Object","class":"Range","ptr":"0x1E2…","where":"'[Book1]Sheet1'!A1:C2","value":{…}}` |
+| a reference | `{"t":"SRef","areas":[[2,2,3,3]]}` |
+| a UDT | `{"t":"Udt","ptr":"0x…"}` |
+
+`args` is an array with one object per slot — `{"slot":1,"type":"Variant","value":{…}}`, with
+`"unreadable":true` in place of a value that could not be read — and, when the XLL plan
+describes fewer slots than exist, a closing `{"described":2,"slots":5}`.
 
 ## Excel errors
 
@@ -387,7 +501,7 @@ of an array — reads as the text the user sees in the cell:
 ```
 args   a1:Variant=#N/A
 ret    #DIV/0!
-ret    Variant[0..2]{1,#VALUE!,3}
+ret    Variant[0..2]{Integer(1),#VALUE!,Integer(3)}
 ```
 
 `#NULL!`, `#DIV/0!`, `#VALUE!`, `#REF!`, `#NAME?`, `#NUM!`, `#N/A` and
@@ -418,7 +532,7 @@ With `OBJECTS` on — the default — an object argument or return is named, and
 one object can be followed from row to row:
 
 ```
-a1:Variant=Range@0x000001E2…('[Book1]Sheet1'!A1:C2)=Variant[1..2,1..3]{11,21,12,22,13,23}
+a1:Variant=Range@0x000001E2…('[Book1]Sheet1'!A1:C2)=Variant[1..2,1..3]{{11,12,13},{21,22,23}}
 a1:Variant=Range@0x000001E2…('[Book1]Sheet1'!A:A)   -- addressed, deliberately not read
 a1:Variant=Worksheet@0x000001E2…([Book1]Sheet1)
 a1:Variant=Workbook@0x000001E2…([Book1])
@@ -447,14 +561,14 @@ is reported as it comes, underscore and all.
 
 **A range's cell count is checked BEFORE its value is asked for.** `A:A` is over
 a million cells and reading it would materialise a ~25 MB array inside a
-calculation to render the first 64 of them. Over the ceiling — or when the count
+calculation. Over the ceiling of 4,096 cells — or when the count
 could not be had at all — the address is reported and the contents are not, which
 is visible in the row: no `=` follows the address.
 
 **What Excel hands back for `Value2` is measured, not assumed.** A single cell
 gives a **scalar**. Every multi-cell range gives a **2-D** array, including a
-single row — `A1:C1` is `[1..1,1..3]`, *not* a 1-D array of 3. Elements are read
-row by row: `A1:C2` reads `{11,12,13,21,22,23}`, across then down.
+single row — `A1:C1` is `[1..1,1..3]{{1,2,3}}`, *not* a 1-D array of 3. Rows come
+first, one brace level each: `A1:C2` reads `{{11,12,13},{21,22,23}}`.
 
 **Any failure renders the address.** A call that fails, a class with no name, the
 setting off — all produce `object@0x…`, which is what this always said and is
@@ -492,7 +606,8 @@ so splitting on it works whether or not the prefix is quoted.
 
 ## Reading `args`, and what `?` means where
 
-**`args` is a small format inside one CSV field.** Values are
+**In CSV, `args` is a small format inside one field.** (JSON Lines writes it as
+an array of objects instead; see *JSON Lines*.) Values are
 `a<N>:<type>=<value>`, joined by single spaces, where `<N>` is the SLOT and not
 the parameter ordinal — a `ByVal Variant` is a 24-byte VARIANT across three
 slots, so the parameter after one is `a4`.
@@ -514,15 +629,16 @@ always "this is not known", and the position says what *this* is:
 On the **XLL** side a type position is the registration's own code (`Q`, `B`,
 `D%`…), which is authoritative — so a `?` never appears there in a traced row.
 `<N>` counts slots there too: an `O` array takes three, so the argument after one
-is `a4`. An XLL array reads like a VBA one, row by row with both bounds:
-`Double[1..2,1..2]{1,2,3,4}` for an `FP` or `O` argument, `Variant[1..R,1..C]{…}`
+is `a4`. An XLL array reads like a VBA one, rows first with both bounds:
+`Double[1..2,1..2]{{1,2},{3,4}}` for an `FP` or `O` argument, `Variant[1..R,1..C]{{…},…}`
 for an `XLOPER` array.
 
 ## What the trace cannot tell you on its own
 
-**Whether argument capture was OFF, or tried and declined.** Both leave
-`typetext`, `argcount` and `args` empty on every row, and the trace file carries
-no record of the setting. The **log** does — `trace param set: VBA ARGS` at arm,
+**Whether argument capture was OFF, or tried and declined.** On VBA rows both
+leave `typetext`, `argcount` and `args` empty, and the trace file carries no
+record of the setting. XLL rows keep `typetext` and `argcount` with `ARGS` off:
+they come from the registration, not from capture. The **log** does — `trace param set: VBA ARGS` at arm,
 and `VBA args: N captured` with the decline reasons at disarm. If a whole
 session has no arguments anywhere, read the log before concluding anything
 failed.

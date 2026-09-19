@@ -8,10 +8,12 @@
 #include "exports.h"
 #include "paramparse.h"
 #include "core/caller.h"
+#include "core/contained.h"
 #include "core/crashlog.h"
 #include "core/excel_api.h"
 #include "core/log.h"
 #include "ui/optionsdlg.h"
+#include "vba/vbapatch.h"
 #include "emit/csv.h"
 #include "xlcall.h"
 
@@ -46,18 +48,18 @@ namespace
     // A fault in here is a LOGGED bug and Excel survives it. A function
     // pointer needs no unwinding; `onFault` is what the caller gets back for a
     // contained fault.
-    int RunGuarded(int (*body)(), int onFault)
+    int RunGuarded(const char* name, int (*body)(), int onFault)
     {
         __try
         {
             return body();
         }
-        __except (EXCEPTION_EXECUTE_HANDLER)
+        __except (core::contained::Note(GetExceptionInformation(), "XRayXL command", name,
+                                        "contained; Excel survives"))
         {
             // No destructor ran in this unwind, so a lock the body held is still held.
-            core::Log::ReleaseHeldByThisThread();
-            emit::csv::ReleaseHeldByThisThread();
-            core::crashlog::Note("XRayXL command FAULTED -- contained; Excel survives");
+            app::ReleaseHeldByThisThread();
+            core::contained::Report();
             return onFault;
         }
     }
@@ -66,7 +68,7 @@ namespace
 extern "C" int __stdcall XRayXL_Arm(void)
 {
     core::Log::Note("command: XRayXL_Arm");
-    return RunGuarded(ArmNoUnwind, 0);
+    return RunGuarded("XRayXL_Arm", ArmNoUnwind, 0);
 }
 
 // Returns rows DROPPED (0 = none, -1 = a contained fault), so
@@ -75,14 +77,14 @@ extern "C" int __stdcall XRayXL_Arm(void)
 extern "C" int __stdcall XRayXL_Disarm(void)
 {
     core::Log::Note("command: XRayXL_Disarm");
-    return RunGuarded(DisarmReturningDrops, -1);
+    return RunGuarded("XRayXL_Disarm", DisarmReturningDrops, -1);
 }
 
 // ---- XRayXL_Options: the Options dialog as a command, so a macro or a test can open it ----
 extern "C" int __stdcall XRayXL_Options(void)
 {
     core::Log::Note("command: XRayXL_Options");
-    return RunGuarded([] { ui::options::Show(nullptr); return 1; }, 0);
+    return RunGuarded("XRayXL_Options", [] { ui::options::Show(nullptr); return 1; }, 0);
 }
 
 // ---- what the worksheet-callable exports share (exports.h) ----------------
@@ -138,6 +140,7 @@ namespace
             // Fault while holding a lock, so containment can be shown to release it.
             if (!wcscmp(b, L"LOGLOCK")) core::Log::FaultWhileLockedForProbe();
             if (!wcscmp(b, L"CSVLOCK")) emit::csv::FaultWhileLockedForProbe();
+            if (!wcscmp(b, L"ARMGATE")) vba::FaultWhileArmGateHeldForProbe();
             if (!wcscmp(b, L"DUMPEXEC")) core::crashlog::SetDumpEnabled(true);
             if (!wcscmp(b, L"EXEC") || !wcscmp(b, L"DUMPEXEC"))
             {
@@ -178,7 +181,7 @@ namespace
 
 extern "C" LPXLOPER12 __stdcall XRayXL_IsArmed(void)
 {
-    return GuardedOper("XRayXL_IsArmed FAULTED -- contained", IsArmedBody);
+    return GuardedOper("XRayXL_IsArmed", IsArmedBody);
 }
 
 namespace app

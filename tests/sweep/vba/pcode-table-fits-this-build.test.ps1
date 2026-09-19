@@ -155,7 +155,14 @@ End Sub
         Check 'the-vba-was-actually-walked' ($walks -ge 8) "walks=$walks"
         Check 'every-procedure-walked-cleanly' ($clean -eq $walks -and $walks -gt 0) `
               "$clean of $walks walked cleanly (offset 0 to a clean exit, no resynchronisation)"
+        # Good news is INFO. WARNING is the fuzzer's oracle, so a clean walk must not raise one.
+        Check 'a-clean-walk-is-info-not-a-warning' ([string]$walkLine.Line -match ' INFO ') `
+              ([string]$walkLine.Line)
     }
+    $pcodeWarnings = @(Get-Content $paths.Log | Select-Object -Skip $mark2 |
+                       Select-String ' WARNING - VBA p-code:')
+    Check 'no-p-code-warning-after-a-clean-walk' ($pcodeWarnings.Count -eq 0) `
+          (($pcodeWarnings | ForEach-Object { $_.Line }) -join ' | ')
 
     # A length that was USED and then broke the walk is the worse defect, and
     # it names itself. Silence is the assertable state.

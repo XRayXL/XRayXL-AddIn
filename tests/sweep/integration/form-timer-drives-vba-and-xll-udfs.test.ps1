@@ -139,9 +139,8 @@ try {
     Check 'no-vba-procedure-reported-as-an-address' ($unnamed.Count -eq 0) `
           ("unnamed: " + (@($unnamed | ForEach-Object { $_.function }) -join ','))
 
-    # Nothing errored, so nothing may read as though it did. Ordinary object-model VBA (a cell
-    # write, Application.OnTime, .Calculate) reaches the same raise opcode (497) as Err.Raise,
-    # and a raiser that runs its epilogue did not throw.
+    # Nothing errored, so nothing may read as though it did: ordinary object-model VBA (a cell
+    # write, Application.OnTime, .Calculate) runs its epilogue.
     $vExit  = @($rows | Where-Object { ($_.kind -eq 'exit' -and $_.source -eq 'VBA') })
     $notRet = @($vExit | Where-Object { $_.outcome -ne 'returned' })
     Check 'no-benign-object-model-raise-reads-as-an-error' ($notRet.Count -eq 0) `

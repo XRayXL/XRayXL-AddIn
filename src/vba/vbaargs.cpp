@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include "core/safemem.h"
 #include "core/hash.h"
+#include "core/valueformat.h"
 
 namespace vba
 {
@@ -24,16 +25,6 @@ namespace vba
         // Slots, not parameters: a `ByVal Variant` spans three, so VBA's maximum of
         // 60 parameters can need 181. ArgTypes::kMax is indexed by slot and moves with it.
         constexpr int kMaxSlots = 192;
-
-        // Per-thread heap: the hooks run where VBA has the least stack left.
-        constexpr int kSlotRenderMax = 16384;
-        __declspec(thread) char* t_slotText    = nullptr;
-        __declspec(thread) char* t_variantText = nullptr;
-        char* ThreadText(char*& buf)
-        {
-            if (!buf) buf = static_cast<char*>(malloc(kSlotRenderMax));
-            return buf;
-        }
 
         volatile LONG64 g_declines[static_cast<int>(ArgDecline::Count_)] = {};
         volatile LONG64 g_captured = 0;
@@ -64,10 +55,6 @@ namespace vba
         {
             InterlockedIncrement64(&g_declines[static_cast<int>(d)]);
         }
-
-
-        // The element cap is vbaretdecode.h's, shared.
-        using vba::kMaxRenderedElems;
 
         // ONE VARTYPE TABLE, in vbaoleaut.h. It does NOT mask `vt & kVT_TYPEMASK`; every
         // caller here passes a vartype EffectiveElemVt has already resolved.
@@ -104,47 +91,38 @@ namespace vba
         // AN OMITTED Optional, OR NOTHING. The strictest reader here: it
         // demands two EXACT constants -- vt == VT_ERROR and scode ==
         // DISP_E_PARAMNOTFOUND -- and nothing else reads as that pair.
-        bool ReadMissingMarker(std::uint64_t p, char* out, int cap)
+        bool ReadMissingMarker(std::uint64_t p, core::ValueWriter& w)
         {
             if (p < 0x10000 || (p & 7)) return false;
             std::uint16_t vt = 0;
             std::uint32_t scode = 0;
             if (!RdU16(p, vt) || vt != kVT_ERROR) return false;
             if (!RdU32(p + 8, scode) || scode != kParamNotFound) return false;
-            _snprintf_s(out, cap, _TRUNCATE, "Missing");
+            w.Word("Missing");
             return true;
         }
 
         // An omitted Optional is itself a VARIANT, so the marker is asked first and reads
         // `Missing` rather than `Error(0x80020004)`. Safe because it demands two exact
         // constants: an application Error() value carries a different scode.
-        bool DescribeVariantOrMissing(std::uint64_t at, char* out, int cap, int maxElems)
+        bool DescribeVariantOrMissing(std::uint64_t at, core::ValueWriter& w)
         {
-            if (ReadMissingMarker(at, out, cap)) return true;
-            const char* held = "";
-            char* const vbuf = ThreadText(t_variantText);
-            if (!vbuf || !DescribeVariantValue(at, vbuf, kSlotRenderMax, &held, maxElems))
-                return false;
-            // `args` has no type column beside it, so the held type is named
-            // inline. Empty when the text already says it.
-            if (held[0]) _snprintf_s(out, cap, _TRUNCATE, "%s(%s)", held, vbuf);
-            else         _snprintf_s(out, cap, _TRUNCATE, "%s", vbuf);
-            return true;
+            return ReadMissingMarker(at, w) || DescribeVariantValue(at, w);
         }
 
         // A BSTR, direct or one indirection down: a `ByRef s As String` slot points to one.
         // Safe because a BSTR proves itself by length prefix, NUL termination and no control
         // characters. `followed` says a pointer was followed, which makes the slot ByRef in
         // substance.
-        bool ReadBstrDirectOrThrough(std::uint64_t p, char* out, int cap, bool& followed)
+        bool ReadBstrDirectOrThrough(std::uint64_t p, core::ValueWriter& w, bool& followed)
         {
             followed = false;
-            if (DescribeBstrValue(p, out, cap)) return true;
+            if (DescribeBstrValue(p, w)) return true;
             // Range check first: a guarded read of a small integer costs an access violation.
             if (!core::InUserRange(p)) return false;
             std::uint64_t inner = 0;
             if (!RdU64(p, inner)) return false;
-            if (!DescribeBstrValue(inner, out, cap)) return false;
+            if (!DescribeBstrValue(inner, w)) return false;
             followed = true;
             return true;
         }
@@ -152,8 +130,28 @@ namespace vba
         // A SAFEARRAY AT `p` (or one indirection down -- a `ByRef a()` parameter),
         // OR NOTHING. The structure describes itself, and every part of that
         // description is checked before anything is read through it.
-        bool ReadSafeArrayValue(std::uint64_t p, char* out, int cap)
+        // The descriptor VBA passes for an empty ParamArray: one dimension of no elements, and no
+        // feature bits, element width or data. It names no element type, so it is accepted only
+        // when every field is exactly that, and reads `?[0..-1]{}`.
+        bool ReadBlankEmptyArray(std::uint64_t psa, core::ValueWriter& w)
         {
+            if (!core::InRangeAndAligned(psa, 8)) return false;
+            std::uint64_t q[4] = {};
+            for (int i = 0; i < 4; ++i)
+                if (!RdU64(psa + static_cast<std::uint64_t>(i) * 8, q[i])) return false;
+            // cDims=1, fFeatures=0, cbElements=0 | cLocks=0 | pvData=0 | cElements=0, lLbound=0
+            if (q[0] != 1 || q[1] != 0 || q[2] != 0 || q[3] != 0) return false;
+            const long long lo = 0, hi = -1;
+            w.BeginArray(nullptr, 1, &lo, &hi);
+            w.BeginLevel();
+            w.EndLevel();
+            w.EndArray();
+            return true;
+        }
+
+        bool ReadSafeArrayValue(std::uint64_t p, core::ValueWriter& w)
+        {
+            if (ReadBlankEmptyArray(p, w)) return true;
             SaInfo s{};
             // DIRECT, OR ONE INDIRECTION DOWN -- a `ByRef a()` parameter points at
             // the SAFEARRAY pointer. No vtHint: nothing on this path has named an
@@ -166,7 +164,7 @@ namespace vba
             }
 
             // One array renderer, shared with the return column (vbaretdecode.h).
-            return RenderSafeArrayValue(s, out, cap, kMaxRenderedElems);
+            return RenderSafeArrayValue(s, w);
         }
 
         // Frame slots per parameter: one, or three for a ByVal Variant (a
@@ -193,10 +191,11 @@ namespace vba
         //      to find one marks the slot ByRef in substance, which the exit
         //      re-read needs for a write-only String.
         //   6. `Ref&` (747) is "eight bytes by reference" and nothing more; the
-        //      array case proved itself in 4, what remains is a 64-bit integer.
+        //      array case proved itself in 5, what remains is a 64-bit integer,
+        //      except zero, which an unallocated array also reads as.
         //   7. The raw qword.
         bool RenderSlot(std::uint64_t r14, int k, int slots, const char* tn,
-                        char* one, int cap, bool& viaPointer)
+                        core::ValueWriter& w, bool& viaPointer)
         {
             const std::uint64_t slotAt = r14 + static_cast<std::uint64_t>(k) * 8;
             std::uint64_t v = 0;
@@ -224,38 +223,42 @@ namespace vba
 
             bool done = false, declaredScalar = false;
             if (!ref && declared("Variant"))                                    // 1
-                done = (k + 1 < slots) &&
-                       DescribeVariantOrMissing(slotAt, one, cap, kMaxRenderedElems);
+                done = (k + 1 < slots) && DescribeVariantOrMissing(slotAt, w);
             else if (typed && declared("Variant"))                              // 2
-                done = DescribeVariantOrMissing(valueAt, one, cap, kMaxRenderedElems);
+                done = DescribeVariantOrMissing(valueAt, w);
             else if (const std::uint16_t vt = typed ? VartypeFor(tn, nameLen) : 0) // 3
             {
                 declaredScalar = true;
-                done = DescribeArrayElement(vt, valueAt, one, cap);
+                done = DescribeArrayElement(vt, valueAt, w);
             }
             if (!done && typed && declared("Udt"))                              // 4
             {
-                _snprintf_s(one, cap, _TRUNCATE, "udt@0x%llX",
-                            static_cast<unsigned long long>(valueAt));
+                w.Udt(valueAt);
                 done = true;
             }
             if (!done && !declaredScalar)                                       // 5
             {
                 bool followed = false;
-                done = ReadMissingMarker(shown, one, cap)
-                    || ReadBstrDirectOrThrough(shown, one, cap, followed)
-                    || ReadSafeArrayValue(shown, one, cap);
+                done = ReadMissingMarker(shown, w)
+                    || ReadBstrDirectOrThrough(shown, w, followed)
+                    || ReadSafeArrayValue(shown, w);
                 if (done && followed) viaPointer = true;
             }
-            if (!done && typed && declared("Ref"))                              // 6
+            // Zero is a LongLong 0 or an unallocated array, which no byte tells apart: it
+            // falls to the raw qword.
+            if (!done && typed && declared("Ref") && shown != 0)                // 6
             {
-                _snprintf_s(one, cap, _TRUNCATE, "%lld",
-                            static_cast<long long>(static_cast<std::int64_t>(shown)));
+                char t[32];
+                _snprintf_s(t, _TRUNCATE, "%lld", static_cast<long long>(static_cast<std::int64_t>(shown)));
+                w.Number("LongLong", t);
                 done = true;
             }
             if (!done)                                                          // 7
-                _snprintf_s(one, cap, _TRUNCATE, "0x%llX",
-                            static_cast<unsigned long long>(shown));
+            {
+                char t[32];
+                _snprintf_s(t, _TRUNCATE, "0x%llX", static_cast<unsigned long long>(shown));
+                w.Marker(t);
+            }
             return true;
         }
     }
@@ -271,6 +274,7 @@ namespace vba
         case ArgDecline::ArgSzOutOfRange:     return "argSz out of range";
         case ArgDecline::SlotUnreadable:      return "an argument slot faulted";
         case ArgDecline::NoRenderBuffer:      return "no render buffer";
+        case ArgDecline::TooLarge:            return "arguments over the value limit";
         default:                              return "?";
         }
     }
@@ -345,16 +349,16 @@ namespace vba
                 _snprintf_s(named, _TRUNCATE, "%s#%u", tn, static_cast<unsigned>(types.op[k]));
                 tn = named;
             }
-            const int w = _snprintf_s(out.signature + sj, cap - sj, _TRUNCATE,
-                                      "%s%s", params ? "," : "", tn);
-            // Out of buffer: say the signature was cut rather than close it
-            // short, which would read as fewer parameters than there are.
-            if (w < 0) { truncated = true; break; }
-            sj += w;
+            // Every parameter is counted, written or not: argcount is the count, not the text.
             ++params;
+            if (truncated) continue;
+            const int w = _snprintf_s(out.signature + sj, cap - sj, _TRUNCATE,
+                                      "%s%s", params > 1 ? "," : "", tn);
+            // Out of buffer: cut after the last whole name, with room for ",...", rather
+            // than close it short, which would read as fewer parameters than there are.
+            if (w < 0 || sj + w > cap - 6) { truncated = true; out.signature[sj] = 0; continue; }
+            sj += w;
         }
-        // Keep room for the marker, or the cut is invisible again.
-        if (truncated && sj > cap - 6) sj = cap - 6;
 
         // XRAYXL_DIAG: name the exit the walk ended on, so the opcode that
         // terminates a procedure can be read straight off a trace.
@@ -377,16 +381,15 @@ namespace vba
 
     bool CaptureArgs(std::uint64_t trailer, std::uint64_t r14, ArgCapture& out)
     {
-        out.ok = false; out.slots = 0;
-        // The caller owns the render buffer. No buffer -> decline cleanly:
-        // a failed per-thread allocation must not fault the hook.
-        char* const one = ThreadText(t_slotText);
-        if (!out.text || out.textCap < 2 || !one)
+        out.ok = false; out.slots = 0; out.byRefShapeOnly = false;
+        // The caller owns the render buffer. No buffer -> decline cleanly.
+        if (!out.text)
         {
             NoteDecline(ArgDecline::NoRenderBuffer);
             return false;
         }
-        out.text[0] = 0;
+        core::TextBuf& buf = *out.text;
+        buf.Clear();
 
         if (!trailer) { NoteDecline(ArgDecline::NoTrailer);   return false; }
         if (!r14)     { NoteDecline(ArgDecline::NoFrameBase); return false; }
@@ -435,47 +438,66 @@ namespace vba
 
         // `k` is the slot; the label a<n> counts slots from the first argument,
         // so a three-slot ByVal Variant at a1 puts the next parameter at a4 --
-        // the label is a position. 16 KB so an array argument renders in full.
+        // the label is a position.
         std::uint64_t refHash = core::kFnvOffset;
-        int j = 0;
-        for (int k = out.firstSlot; k < out.firstSlot + out.slots && k < ArgTypes::kMax; )
+        core::WithValueWriter(buf, [&](core::ValueWriter& w)
         {
-            const int   n  = k - out.firstSlot + 1;
-            const char* tn = haveTypes ? types.name[k] : nullptr;
-            const size_t tnLen = tn ? strlen(tn) : 0;
-            const bool  declaredRef = tnLen > 1 && tn[tnLen - 1] == '&';
-            // A named type is VBA's own metadata and the value was read as that type; a marker
-            // means the value was recognised from the bytes themselves. `tn` stays null into
-            // RenderSlot: the marker is a label, never a type to decode against.
-            char unk[24];
-            const char* label = tn ? tn : UnnamedTypeMarker(types, k, unk, sizeof unk,
-                                                            /*count=*/false);
-            bool followed = false;
-            if (!RenderSlot(r14, k, slots, tn, one, kSlotRenderMax, followed))
+            w.BeginArgs();
+            for (int k = out.firstSlot; k < out.firstSlot + out.slots && k < ArgTypes::kMax; )
             {
-                // Keep what is known, mark what is not.
-                NoteDecline(ArgDecline::SlotUnreadable);
-                if (!out.byRefOnly || declaredRef)
-                    _snprintf_s(out.text + j, out.textCap - j, _TRUNCATE, "%sa%d:%s=<unreadable>",
-                                j ? " " : "", n, label);
-                break;
+                const int   n  = k - out.firstSlot + 1;
+                const char* tn = haveTypes ? types.name[k] : nullptr;
+                const size_t tnLen = tn ? strlen(tn) : 0;
+                const bool  declaredRef = tnLen > 1 && tn[tnLen - 1] == '&';
+                // A named type is VBA's own metadata and the value was read as that type; a
+                // marker means the value was recognised from the bytes themselves. `tn` stays
+                // null into RenderSlot: the marker is a label, never a type to decode against.
+                char unk[24];
+                const char* label = tn ? tn : UnnamedTypeMarker(types, k, unk, sizeof unk,
+                                                                /*count=*/false);
+                const core::ValueWriter::Mark before = w.Save();
+                const int refusedBefore = buf.refused;
+                w.BeginArg(n, label);
+                const std::size_t valueAt = buf.Len();
+                bool followed = false;
+                if (!RenderSlot(r14, k, slots, tn, w, followed))
+                {
+                    // Keep what is known, mark what is not.
+                    NoteDecline(ArgDecline::SlotUnreadable);
+                    if (!out.byRefOnly || declaredRef) { w.ArgUnreadable(); w.EndArg(); }
+                    else                               w.Restore(before);
+                    break;
+                }
+                if (followed) out.viaPointer = true;
+                const bool isRef = declaredRef || followed;
+                if (out.byRefOnly && !isRef) { w.Restore(before); k += SlotWidth(tn); continue; }
+                // The slot, its label and its value, and not the separators, which depend on
+                // what was written before it.
+                if (isRef)
+                {
+                    if (buf.refused > refusedBefore) out.byRefShapeOnly = true;
+                    refHash = core::Fnv1aByte(refHash, 0x1F);
+                    refHash = core::Fnv1aByte(refHash, static_cast<std::uint8_t>(n));
+                    for (const char* c = label; *c; ++c)
+                        refHash = core::Fnv1aByte(refHash, static_cast<std::uint8_t>(*c));
+                    for (std::size_t q = valueAt; q < buf.Len(); ++q)
+                        refHash = core::Fnv1aByte(refHash, static_cast<std::uint8_t>(buf.Text()[q]));
+                }
+                w.EndArg();
+                k += SlotWidth(tn);
             }
-            if (followed) out.viaPointer = true;
-            const bool isRef = declaredRef || followed;
-            if (out.byRefOnly && !isRef) { k += SlotWidth(tn); continue; }
-            const int lead = j ? 1 : 0;
-            const int w = _snprintf_s(out.text + j, out.textCap - j, _TRUNCATE, "%sa%d:%s=%s",
-                                      lead ? " " : "", n, label, one);
-            if (w < 0) break;
-            // Hashed without the separator, which depends on what was rendered before it.
-            if (isRef)
-            {
-                refHash = core::Fnv1aByte(refHash, 0x1F);
-                for (int q = lead; q < w; ++q)
-                    refHash = core::Fnv1aByte(refHash, static_cast<std::uint8_t>(out.text[j + q]));
-            }
-            j += w;
-            k += SlotWidth(tn);
+            w.EndArgs();
+        });
+        // The exit re-read is compared, never written, so its refusals are not the file's.
+        if (out.byRefOnly && buf.refused > 0) core::g_valuesRefused.fetch_sub(buf.refused);
+
+        // Only an array refuses itself when it does not fit; anything else past the limit
+        // leaves text that cannot be trusted, so none of it is kept.
+        if (buf.Over())
+        {
+            buf.Clear();
+            NoteDecline(ArgDecline::TooLarge);
+            return false;
         }
 
         out.byRefHash = refHash;

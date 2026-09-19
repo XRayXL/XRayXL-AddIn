@@ -91,8 +91,9 @@ END
 #include <windows.h>
 #include "ui/optionsres.h"
 
-// The licence shown on the About page is the repository's own file, compiled in.
+// The texts on the About and Notices pages, compiled in. Both also ship beside the XLL.
 IDR_LICENSE RCDATA "..\\LICENSE"
+IDR_NOTICES RCDATA "..\\THIRD-PARTY-NOTICES.txt"
 
 IDD_XRAY_OPTIONS DIALOGEX 0, 0, 400, 186
 STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER |
@@ -123,14 +124,16 @@ BEGIN
     CONTROL         "Describe &objects (Range, Worksheet, Workbook)", IDC_VBA_OBJ, "Button", BS_OWNERDRAW | WS_TABSTOP, 198, 164, 192, 10
 
     // ---- Output --------------------------------------------------------
-    LTEXT           "Where the trace goes.", IDC_OUT_HDR, 122, 13, 268, 11
+    LTEXT           "Where the trace goes, and in what format.", IDC_OUT_HDR, 122, 13, 268, 11
     LTEXT           "Trace output", IDC_OUT_SEC1, 100, 36, 290, 9
     CONTROL         "", IDC_OUT_RULE1, "Static", SS_OWNERDRAW, 100, 40, 290, 1
-    LTEXT           "Output folder:", IDC_OUT_DIRLBL, 107, 50, 82, 9
-    EDITTEXT        IDC_OUT_DIR, 107, 60, 283, 13, ES_AUTOHSCROLL | ES_READONLY | NOT WS_TABSTOP | NOT WS_BORDER
-    LTEXT           "Trace file:", IDC_OUT_FILELBL, 107, 76, 82, 9
-    EDITTEXT        IDC_OUT_FILE, 107, 86, 283, 13, ES_AUTOHSCROLL | ES_READONLY | NOT WS_TABSTOP | NOT WS_BORDER
-    CONTROL         "&Tail in PowerShell", IDC_OUT_TAIL, "Button", BS_OWNERDRAW | WS_TABSTOP, 107, 102, 96, 15
+    LTEXT           "Format:", IDC_OUT_FMTLBL, 107, 56, 82, 9
+    COMBOBOX        IDC_OUT_FMT, 196, 54, 110, 60, CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Output folder:", IDC_OUT_DIRLBL, 107, 72, 82, 9
+    EDITTEXT        IDC_OUT_DIR, 107, 82, 283, 13, ES_AUTOHSCROLL | ES_READONLY | NOT WS_TABSTOP | NOT WS_BORDER
+    LTEXT           "Trace file:", IDC_OUT_FILELBL, 107, 98, 82, 9
+    EDITTEXT        IDC_OUT_FILE, 107, 108, 283, 13, ES_AUTOHSCROLL | ES_READONLY | NOT WS_TABSTOP | NOT WS_BORDER
+    CONTROL         "&Tail in PowerShell", IDC_OUT_TAIL, "Button", BS_OWNERDRAW | WS_TABSTOP, 107, 124, 96, 15
 
     // ---- Advanced ------------------------------------------------------
     LTEXT           "The output buffer, and the add-in's own log.", IDC_ADV_HDR, 122, 13, 268, 11
@@ -152,9 +155,12 @@ BEGIN
     // ---- About ---------------------------------------------------------
     LTEXT           "About XRayXL", IDC_ABT_HDR, 122, 13, 268, 11
     LTEXT           "", IDC_ABT_OWNER, 107, 36, 283, 9
-    CONTROL         "Third Party Notices", IDC_ABT_NOTICES, "Static", SS_LEFT | SS_NOTIFY, 107, 58, 90, 9
-    LTEXT           "GNU General Public License, version 3", IDC_ABT_LICLBL, 107, 70, 283, 9
-    EDITTEXT        IDC_ABT_LICENSE, 107, 80, 283, 80, ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL | NOT WS_BORDER
+    LTEXT           "GNU General Public License, version 3", IDC_ABT_LICLBL, 107, 58, 283, 9
+    EDITTEXT        IDC_ABT_LICENSE, 107, 68, 283, 92, ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL | NOT WS_BORDER
+
+    // ---- Notices -------------------------------------------------------
+    LTEXT           "Third Party Notices", IDC_NOT_HDR, 122, 13, 268, 11
+    EDITTEXT        IDC_NOT_TEXT, 107, 36, 283, 124, ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL | NOT WS_BORDER
 
     CONTROL         "OK", IDOK, "Button", BS_OWNERDRAW | BS_DEFPUSHBUTTON | WS_TABSTOP, 278, 169, 54, 15
     CONTROL         "Cancel", IDCANCEL, "Button", BS_OWNERDRAW | WS_TABSTOP, 336, 169, 54, 15

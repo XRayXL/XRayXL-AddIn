@@ -10,6 +10,7 @@
 #include "core/crashlog.h"
 #include "xlcall.h"
 #include "core/clock.h"
+#include "core/valueformat.h"
 
 #include <cstdio>
 
@@ -67,6 +68,10 @@ namespace xll
         };
         __declspec(thread) ThreadState t_state;
 
+        // The argument and return columns' text: per thread, on the heap, grown as needed.
+        __declspec(thread) core::TextBuf t_argsText;
+        __declspec(thread) core::TextBuf t_retText;
+
         long long Qpc()
         {
             return core::QpcNow();
@@ -103,29 +108,30 @@ namespace xll
 
             // One field, "a<slot>:<code>=<value>" joined by spaces -- the grammar VBA's args use -- so
             // the CSV stays rectangular whatever the arity. An O array renders once, at its first slot.
-            char args[2048]; args[0] = 0;
-            int n = 0;
+            core::TextBuf& args = t_argsText;
+            args.Clear();
             const bool wantArgs = (InterlockedCompareExchange(&g_capArgs, 0, 0) != 0);
             int described = 0;
-            for (int i = 0; wantArgs && i < t->plan.describedCount && n < static_cast<int>(sizeof(args)) - 160; i++)
+            if (wantArgs) core::WithValueWriter(args, [&](core::ValueWriter& w)
             {
-                const Slot& s = t->plan.slots[i];
-                if (s.kind == Kind::ArrayTriple && !s.tripleHead) { described = i + 1; continue; }
-                char v[kValueRenderMax] = { 0 };
-                DescribeArg(s, r, v, sizeof(v));
-                // The `?` is unreachable: a plan whose codes did not all parse is never hooked.
-                const int w = _snprintf_s(args + n, sizeof(args) - n, _TRUNCATE, "%sa%d:%s=%s",
-                                          n ? " " : "", i + 1, s.code[0] ? s.code : "?", v);
-                if (w < 0) break;
-                n += w;
-                described = i + 1;
-            }
-            // Say when the list stops short of the real arity.
-            if (wantArgs && described < t->plan.slotCount && n < static_cast<int>(sizeof(args)) - 64)
-            {
-                _snprintf_s(args + n, sizeof(args) - n, _TRUNCATE,
-                            "%s...(%d of %d slots described)", n ? " " : "", described, t->plan.slotCount);
-            }
+                w.BeginArgs();
+                for (int i = 0; i < t->plan.describedCount; i++)
+                {
+                    const Slot& s = t->plan.slots[i];
+                    if (s.kind == Kind::ArrayTriple && !s.tripleHead) { described = i + 1; continue; }
+                    // The `?` is unreachable: a plan whose codes did not all parse is never hooked.
+                    w.BeginArg(i + 1, s.code[0] ? s.code : "?");
+                    DescribeArg(s, r, w);
+                    w.EndArg();
+                    described = i + 1;
+                }
+                // Say when the plan describes fewer slots than the real arity.
+                if (described < t->plan.slotCount) w.ArgsNote(described, t->plan.slotCount);
+                w.EndArgs();
+            });
+            // Only an array refuses itself when it does not fit; other text past the limit
+            // cannot be trusted, so none of it is kept.
+            if (args.Over()) args.Clear();
 
             // No seq: emit::csv::WriteRow allocates it. argcount is the arity, not the number
             // decoded, so ARGS=FALSE does not make a call look nullary.
@@ -135,7 +141,7 @@ namespace xll
             row.module = t->module;  row.function = t->name;
             row.proc = t->procName;  row.typetext = t->plan.signature;
             row.caller = who.kind;  row.callerref = who.desc;
-            row.argcount = argcbuf;  row.args = args;
+            row.argcount = argcbuf;  row.args = args.Text();
             emit::csv::WriteRow(row);
         }
 
@@ -161,9 +167,15 @@ namespace xll
                 trustText = "exit";
             }
 
-            char ret[kValueRenderMax] = { 0 };
+            core::TextBuf& ret = t_retText;
+            ret.Clear();
             const bool wantRet = (InterlockedCompareExchange(&g_capRet, 0, 0) != 0);
-            if (wantRet) DescribeReturn(t->plan.returnKind, r, ret, sizeof(ret));
+            if (wantRet)
+            {
+                core::WithValueWriter(ret, [&](core::ValueWriter& w)
+                { DescribeReturn(t->plan.returnKind, r, w); });
+                if (ret.Over()) ret.Clear();
+            }
 
             // No caller on an exit row: it is the same activation as the entry
             // row it pairs with, which already named one.
@@ -172,7 +184,7 @@ namespace xll
             row.parent = parentb;  row.depth = depthb;
             row.module = t->module;  row.function = t->name;
             row.proc = t->procName;
-            row.ret = ret;
+            row.ret = ret.Text();
             // The registered return code with its flags ("Q$"); empty only when the return was not
             // captured, since an unparsed plan is never hooked.
             row.rettype = wantRet ? t->plan.returnText : "";

@@ -18,7 +18,7 @@ namespace vba
 
         // parent
         constexpr std::uint32_t kPar_pObjTbl       = 0x08;
-        constexpr std::uint32_t kPar_marker        = 0x20;   // == 0xFFFFFFFFFFFFFFFF
+        constexpr std::uint32_t kPar_marker        = 0x20;   // kMarker or kMarkerFromDisk
         constexpr std::uint32_t kPar_marker2       = 0x28;   // == 0
         constexpr std::uint32_t kPar_pListEntry    = 0x30;
         // WORD, not ULONG32. The published x64 struct declares this field and its
@@ -28,8 +28,8 @@ namespace vba
         constexpr std::uint32_t kPar_procMap       = 0x48;
 
         // module entry
-        constexpr std::uint32_t kCe_pParent        = 0x00;   // back-pointer
-        constexpr std::uint32_t kCe_marker         = 0x08;   // == 0xFFFFFFFFFFFFFFFF
+        constexpr std::uint32_t kCe_pParent        = 0x00;   // back-pointer, in the kMarker form
+        constexpr std::uint32_t kCe_marker         = 0x08;   // the same value as the parent's
         constexpr std::uint32_t kCe_pszModName     = 0x30;
         constexpr std::uint32_t kCe_nNumProcs      = 0x38;   // DWORD
         constexpr std::uint32_t kCe_ppszFnNames    = 0x40;
@@ -41,6 +41,9 @@ namespace vba
         constexpr std::uint32_t kOwn_wszFilename   = 0x26;   // inline wchar_t[]
 
         constexpr std::uint64_t kMarker            = 0xFFFFFFFFFFFFFFFFull;
+        // A class module loaded from a saved workbook carries this in both markers, and its
+        // module entry has no back-pointer.
+        constexpr std::uint64_t kMarkerFromDisk    = 0x8000000000000008ull;
         constexpr std::uint32_t kMaxProcs          = 65536;  // sanity, not preference
 
         volatile LONG64 g_declines[static_cast<int>(IdDecline::Count_)] = {};
@@ -178,6 +181,27 @@ namespace vba
 
             return core::NarrowUtf8(leaf, -1, dst, cap) > 0;
         }
+
+        // A WORKBOOK THAT WAS NEVER SAVED has no filename, and VBE7 keeps an internal id --
+        // ten hex digits on this build -- in the field where one would be. Said as what it is,
+        // because "006cd206e1" otherwise reads as a workbook a user could go and look for.
+        // Anything that could be a file name is left exactly as it was read.
+        void MarkIfUnsaved(char* name, int cap)
+        {
+            const int n = static_cast<int>(strlen(name));
+            if (n < 8 || n > 32) return;
+            for (int i = 0; i < n; ++i)
+            {
+                const char c = name[i];
+                const bool hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+                if (!hex) return;
+            }
+            static const char kTag[] = "unsaved:";
+            const int t = static_cast<int>(sizeof(kTag)) - 1;
+            if (n + t >= cap) return;
+            memmove(name + t, name, static_cast<std::size_t>(n) + 1);
+            memcpy(name, kTag, static_cast<std::size_t>(t));
+        }
     }
 
     const char* IdDeclineName(IdDecline d)
@@ -192,6 +216,7 @@ namespace vba
         case IdDecline::ListEntryUnreadable: return "module entry unreadable";
         case IdDecline::BackPointerMismatch: return "module entry does not point back at the parent";
         case IdDecline::ProcCountInsane:     return "procedure count out of range";
+        case IdDecline::ProcCountMismatch:   return "parent and module entry disagree on the procedure count";
         case IdDecline::ProcMapMiss:         return "trailer not found in the parent's procMap";
         case IdDecline::NameUnreadable:      return "name string unreadable";
         default:                             return "?";
@@ -233,7 +258,7 @@ namespace vba
         std::uint64_t m1 = 0, m2 = 1;
         if (!RdU64(parent + kPar_marker, m1) || !RdU64(parent + kPar_marker2, m2))
         { Decline(IdDecline::ParentUnreadable); return false; }
-        if (m1 != kMarker || m2 != 0) { Decline(IdDecline::ParentMarkerBad); return false; }
+        if ((m1 != kMarker && m1 != kMarkerFromDisk) || m2 != 0) { Decline(IdDecline::ParentMarkerBad); return false; }
 
         std::uint64_t listEntry = 0, objTbl = 0, procMap = 0;
         std::uint16_t nProcs = 0;
@@ -245,15 +270,14 @@ namespace vba
 
         if (!InRangeAndAligned(listEntry, 8)) { Decline(IdDecline::ListEntryUnreadable); return false; }
 
-        // The module entry's own marker, and -- the strongest check available --
-        // its back-pointer to the parent we came from. Two independent
-        // structures agreeing about each other is hard to fake by accident.
+        // The module entry must carry the parent's marker, and in the kMarker form point back
+        // at the parent. Two independent structures agreeing is hard to fake by accident.
         std::uint64_t ceMarker = 0, ceParent = 0;
         if (!RdU64(listEntry + kCe_marker, ceMarker) ||
             !RdU64(listEntry + kCe_pParent, ceParent))
         { Decline(IdDecline::ListEntryUnreadable); return false; }
-        if (ceMarker != kMarker) { Decline(IdDecline::ListEntryUnreadable); return false; }
-        if (ceParent != parent)  { Decline(IdDecline::BackPointerMismatch); return false; }
+        if (ceMarker != m1) { Decline(IdDecline::ListEntryUnreadable); return false; }
+        if (m1 == kMarker && ceParent != parent) { Decline(IdDecline::BackPointerMismatch); return false; }
 
         std::uint32_t nNames = 0;
         std::uint64_t pszMod = 0, ppszNames = 0;
@@ -269,6 +293,13 @@ namespace vba
         {
             CaptureDebug(trailer, parent, listEntry);
             Decline(IdDecline::ProcCountInsane);
+            return false;
+        }
+        // One module, counted twice: the parent and its module entry must agree.
+        if (mapCount != nameCount)
+        {
+            CaptureDebug(trailer, parent, listEntry);
+            Decline(IdDecline::ProcCountMismatch);
             return false;
         }
 
@@ -315,7 +346,10 @@ namespace vba
         {
             std::uint64_t owner = 0;
             if (RdU64(objTbl + kOt_pOwner, owner) && InRangeAndAligned(owner, 8))
+            {
                 RdWideAsAnsi(owner + kOwn_wszFilename, out.workbook, sizeof(out.workbook));
+                MarkIfUnsaved(out.workbook, sizeof(out.workbook));
+            }
             else
                 Decline(IdDecline::ObjTableUnreadable);   // the owner half failed
         }

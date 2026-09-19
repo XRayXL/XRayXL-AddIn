@@ -1,8 +1,10 @@
 #pragma once
 #include "xlcall.h"
+#include "core/contained.h"
 #include "core/crashlog.h"
 #include "core/log.h"
 #include "emit/csv.h"
+#include "session.h"
 
 // WHAT EVERY WORKSHEET-CALLABLE EXPORT SHARES. Internal to app/: the three
 // files that implement the XRayXL_* functions include it, nothing else does.
@@ -24,22 +26,23 @@ namespace app
     // with, so the two can never disagree.
     bool AnythingArmed();
 
-    // EVERY EXPORT RUNS THROUGH THIS: the body, or on a contained fault a note
-    // and #VALUE!. Pointer arguments only, so __try shares its frame with
-    // nothing that needs unwinding (C2712).
+    // EVERY EXPORT RUNS THROUGH THIS: the body, or on a contained fault a logged line
+    // and #VALUE!. `name` null keeps the fault out of the log, for the probe that faults on
+    // purpose. Pointer arguments only, so __try shares its frame with nothing that needs
+    // unwinding (C2712).
     template <class Fn, class... Args>
-    LPXLOPER12 GuardedOper(const char* faultNote, Fn body, Args... args)
+    LPXLOPER12 GuardedOper(const char* name, Fn body, Args... args)
     {
         __try
         {
             return body(args...);
         }
-        __except (EXCEPTION_EXECUTE_HANDLER)
+        __except (core::contained::Note(GetExceptionInformation(), "XRayXL function",
+                                        name ? name : "an export", "contained; #VALUE! returned"))
         {
             // No destructor ran in this unwind, so a lock the body held is still held.
-            core::Log::ReleaseHeldByThisThread();
-            emit::csv::ReleaseHeldByThisThread();
-            if (faultNote) core::crashlog::Note(faultNote);
+            app::ReleaseHeldByThisThread();
+            if (name) core::contained::Report();
             return FaultOper();
         }
     }

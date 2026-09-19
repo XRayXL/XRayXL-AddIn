@@ -12,6 +12,7 @@
 #include "core/excel_api.h"
 #include "core/execpage.h"
 #include "core/moduleid.h"
+#include "MinHook.h"
 
 #include <windows.h>
 #include <cstring>
@@ -24,7 +25,6 @@
 // The shared thunks, from vbathunk.asm. Entered by CALL from a per-slot stub.
 extern "C" void XRayVbaBosThunk(void);
 extern "C" void XRayVbaExitThunk(void);
-extern "C" void XRayVbaRaiseThunk(void);
 extern "C" void XRayVbaEndThunk(void);
 
 namespace vba
@@ -78,20 +78,80 @@ namespace vba
         bool                 g_armed = false;
 
         // Arm and Disarm both rewrite g_patched and the dispatch table; this makes
-        // the pair mutually exclusive.
+        // the pair mutually exclusive. The owner is kept so a contained fault, which runs no
+        // destructor, can still let the gate go.
         volatile LONG g_armBusy = 0;
+        volatile LONG g_armBusyOwner = 0;
 
         struct ArmGate
         {
             bool held;
-            ArmGate() : held(InterlockedCompareExchange(&g_armBusy, 1, 0) == 0) {}
-            ~ArmGate() { if (held) InterlockedExchange(&g_armBusy, 0); }
+            ArmGate() : held(InterlockedCompareExchange(&g_armBusy, 1, 0) == 0)
+            {
+                if (held) InterlockedExchange(&g_armBusyOwner, static_cast<LONG>(GetCurrentThreadId()));
+            }
+            ~ArmGate()
+            {
+                if (!held) return;
+                InterlockedExchange(&g_armBusyOwner, 0);
+                InterlockedExchange(&g_armBusy, 0);
+            }
         };
         std::uint8_t*        g_page = nullptr;
         std::vector<Patched> g_patched;
         std::uint64_t        g_base = 0;
+
+        // ---- rtcDoEvents -----------------------------------------------------
+        // Excel runs timer macros and events from inside DoEvents, so a procedure that opens
+        // while a frame waits there is not that frame's callee. A detour on the export is
+        // what says so: the alternative, unwinding the stack at every entry, is the walk KB
+        // hazard B warns about. Four register arguments are passed straight through, so the
+        // real arity does not matter; rtcDoEvents takes no floating-point argument.
+        using DoEventsFn = INT_PTR(__stdcall*)(INT_PTR, INT_PTR, INT_PTR, INT_PTR);
+        DoEventsFn g_doEventsOrig = nullptr;
+        void*      g_doEventsTarget = nullptr;
+        bool       g_doEventsHooked = false;
+
+        INT_PTR __stdcall DoEventsDetour(INT_PTR a, INT_PTR b, INT_PTR c, INT_PTR d)
+        {
+            INT_PTR r = 0;
+            NoteDoEventsEnter();
+            // __finally, because End inside DoEvents unwinds and never returns here.
+            __try   { r = g_doEventsOrig(a, b, c, d); }
+            __finally { NoteDoEventsLeave(); }
+            return r;
+        }
+
+        // Created once and kept; enabled with the patches and disabled with them.
+        bool HookDoEvents(std::string& why)
+        {
+            if (g_doEventsHooked) return MH_EnableHook(g_doEventsTarget) == MH_OK;
+
+            FARPROC fp = GetProcAddress(reinterpret_cast<HMODULE>(g_base), "rtcDoEvents");
+            if (fp == nullptr) { why = "rtcDoEvents not exported"; return false; }
+            g_doEventsTarget = reinterpret_cast<void*>(fp);
+
+            const MH_STATUS init = MH_Initialize();
+            if (init != MH_OK && init != MH_ERROR_ALREADY_INITIALIZED)
+            { why = MH_StatusToString(init); return false; }
+
+            void* tramp = nullptr;
+            const MH_STATUS ch = MH_CreateHook(g_doEventsTarget, reinterpret_cast<void*>(&DoEventsDetour), &tramp);
+            if (ch != MH_OK) { why = MH_StatusToString(ch); return false; }
+            g_doEventsOrig = reinterpret_cast<DoEventsFn>(tramp);
+
+            const MH_STATUS en = MH_EnableHook(g_doEventsTarget);
+            if (en != MH_OK) { why = MH_StatusToString(en); return false; }
+            g_doEventsHooked = true;
+            return true;
+        }
+
+        void UnhookDoEvents()
+        {
+            if (g_doEventsHooked) MH_DisableHook(g_doEventsTarget);
+        }
         core::ModuleId       g_vbe7;        // the image armed; disarm restores into no other
-        int                  g_bosSlots = 0, g_exitSlots = 0, g_raiseSlots = 0;
+        int                  g_bosSlots = 0, g_exitSlots = 0;
         int                  g_endSlots = 0;
 
         // ROLES ARE MATCHED WHOLE, never by first letter. "end" and "exit"
@@ -107,7 +167,6 @@ namespace vba
         const void* ThunkForRole(const char* role)
         {
             if (IsRole(role, "bos"))   return reinterpret_cast<const void*>(&XRayVbaBosThunk);
-            if (IsRole(role, "raise")) return reinterpret_cast<const void*>(&XRayVbaRaiseThunk);
             if (IsRole(role, "end"))   return reinterpret_cast<const void*>(&XRayVbaEndThunk);
             if (IsRole(role, "exit"))  return reinterpret_cast<const void*>(&XRayVbaExitThunk);
             return nullptr;
@@ -115,6 +174,27 @@ namespace vba
     }
 
     bool IsVbaArmed() { return g_armed; }
+
+    // After a fault part-way through arm or disarm. Disarm restores only slots that still hold
+    // our stubs, so releasing the gate makes it safe to try again; holding it would refuse every
+    // arm and disarm for the life of the process.
+    // XRAYXL_DIAG instrument: faults while holding the gate, as a fault part-way through
+    // arm or disarm would.
+    void FaultWhileArmGateHeldForProbe()
+    {
+        ArmGate gate;
+        volatile int* nowhere = nullptr;
+        *nowhere = gate.held ? 1 : 2;
+    }
+
+    bool ReleaseArmGateHeldByThisThread()
+    {
+        if (InterlockedCompareExchange(&g_armBusyOwner, 0, 0) != static_cast<LONG>(GetCurrentThreadId()))
+            return false;
+        InterlockedExchange(&g_armBusyOwner, 0);
+        InterlockedExchange(&g_armBusy, 0);
+        return true;
+    }
 
     std::string ArmCounting()
     {
@@ -299,9 +379,18 @@ namespace vba
         // no XLL add-ins is ordinary -- so it cannot rely on the XLL half having
         // opened the trace. Same file either way: one timeline, not two.
         // Open and Close are counted in csv, so this side just opens and closes.
-        emit::csv::Open(core::modes::GetBufferBytes(), core::modes::GetPauseOnFull());
+        emit::csv::Open(core::modes::GetBufferBytes(), core::modes::GetPauseOnFull(),
+                        core::modes::GetFormat());
 
-        g_bosSlots = g_exitSlots = g_raiseSlots = g_endSlots = 0;
+        // Before any slot is live, so no frame opens without it.
+        {
+            std::string why;
+            if (!HookDoEvents(why))
+                core::Log::Note("VBA tracing: rtcDoEvents not hooked (" + why + "), so a macro Excel "
+                                "runs inside another's DoEvents is reported beneath it");
+        }
+
+        g_bosSlots = g_exitSlots = g_endSlots = 0;
         for (const PatchSite& site : s.sites)
         {
             const std::uint64_t orig = g_base + site.handlerRva;
@@ -315,7 +404,6 @@ namespace vba
             g_patched.push_back({ slot, orig, stub });
             InterlockedExchange64(reinterpret_cast<volatile LONG64*>(slot), static_cast<LONG64>(stub));
             if      (IsRole(site.role, "bos"))   ++g_bosSlots;
-            else if (IsRole(site.role, "raise")) ++g_raiseSlots;
             else if (IsRole(site.role, "end"))   ++g_endSlots;
             else                                 ++g_exitSlots;
         }
@@ -351,14 +439,9 @@ namespace vba
         o << "VBA tracing: ARMED [" << core::modes::DepthName(core::modes::GetDepth(core::modes::Source::Vba)) << "] -- "
           << g_patched.size() << " of " << s.sites.size() << " slots patched ("
           << g_bosSlots << " bos, " << g_exitSlots << " exit, "
-          << g_raiseSlots << " raise, " << g_endSlots << " end; "
+          << g_endSlots << " end; "
           << byOriginal.size() << " stubs), table +0x" << std::hex << s.tableRva << std::dec;
-        // SAY WHEN A FEATURE IS ABSENT: without the raise slot the outcome
-        // column reads `unknown` for every row, which is indistinguishable from
-        // "no errors happened" unless the arm line says so.
-        if (!s.raiseOk)
-            o << " -- NO ERROR ATTRIBUTION: the raise slot did not verify";
-        // THE SAME RULE FOR `End`. Without it a chain killed by `End` is closed
+        // SAY WHEN A FEATURE IS ABSENT. Without the `End` slot a chain killed by `End` is closed
         // only by the stack-pointer backstop, so whatever runs next can nest
         // under frames that are already dead -- the depth is inflated and the
         // parentage invented, silently.
@@ -400,6 +483,15 @@ namespace vba
         // blaming nothing, because every break follows a resync.
         long long walks = 0, clean = 0;
         PcodeHealth(walks, clean);
+        // Always said, good news included, so the number can be trusted when it is good.
+        if (walks > 0)
+        {
+            char m[200];
+            _snprintf_s(m, sizeof m, _TRUNCATE,
+                "VBA p-code: %lld of %lld procedure(s) walked cleanly (offset 0 to a clean end, "
+                "no resynchronisation)", clean, walks);
+            core::Log::Note(m);
+        }
         if (walks >= 20 && clean * 10 < walks * 9)
         {
             char m[320];
@@ -497,6 +589,7 @@ namespace vba
             // NOT ClearArmedLengths() here: the report below asks whether a length
             // table exists. Cleared after it.
         }
+        UnhookDoEvents();
         g_patched.clear();
         g_armed = false;
         // Skip the close if the hooks did not drain: a stub may still write a row.

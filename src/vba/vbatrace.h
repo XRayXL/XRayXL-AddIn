@@ -21,9 +21,11 @@ namespace vba
     //                (vbaregs.h is the one authority for these offsets)
     extern "C" void XRayVbaOnStatement(std::uint64_t dispatchSp, std::uint64_t savedRegs);
     extern "C" void XRayVbaOnExit(std::uint64_t dispatchSp, std::uint64_t savedRegs);
-    // The RAISE opcode. Fires four times per Err.Raise, so the recorder
-    // dedupes. Patched only when the raise slot verified (vbaderive.h).
-    extern "C" void XRayVbaOnRaise(std::uint64_t dispatchSp, std::uint64_t savedRegs);
+
+    // Called from the detour on VBE7's rtcDoEvents, on the thread entering and leaving it: a
+    // procedure that opens while a frame waits in there was started by Excel, not called.
+    void NoteDoEventsEnter();
+    void NoteDoEventsLeave();
 
     struct Totals
     {
@@ -121,6 +123,8 @@ namespace vba
         // one and it was empty".
         std::uint64_t returnsRead = 0;
         std::uint64_t returnsDeclined = 0;
+        // Not asked for: RETVAL=FALSE. Kept apart, so "off" never reads as refusals.
+        std::uint64_t returnsOff = 0;
         // An exit opcode ExitReturnKind has no mapping for -- NOT a declined
         // read, since the decoder was never called. The action log names the
         // opcodes, because the value is what has to be mapped.
@@ -139,30 +143,17 @@ namespace vba
 
         // ---- ERRORS: where one was thrown, and who caught it -------------
         //
-        // `raises` counts firings AFTER dedupe -- the opcode fires four times
-        // per Err.Raise, so the raw count is meaningless. `threw`, `unwound` and
-        // `handled` are activations: threw == handled where every error was
-        // caught, and a shortfall is an error that reached the top.
-        std::uint64_t raises = 0;
-        std::uint64_t raisesDeduped = 0;   // the extra firings, discarded
+        // Activations: threw == handled where every error was caught, and a
+        // shortfall is an error that reached the top.
         std::uint64_t threw = 0;
         std::uint64_t unwound = 0;
         std::uint64_t handled = 0;
-        // A raise VBE7 resolved IN PLACE. Ordinary object-model VBA -- a cell
-        // write, For Each, Application.OnTime -- reaches the same raise opcode
-        // (497) as Err.Raise, but its frame keeps running where a real unhandled
-        // throw unwinds. Counted so it is not read as the throw it is not.
-        std::uint64_t raisesBenign = 0;
-        // A raise whose frame was not open yet, held until it was. Ordinary for
-        // a UDF beginning with Err.Raise, not a fault.
-        std::uint64_t errLateOpen = 0;
-        // A raise with an empty shadow stack: nothing to attribute it to, so
-        // counted rather than guessed at.
-        std::uint64_t errNoFrame = 0;
         // An error that unwound past every frame and left VBA -- into a cell as
         // #VALUE!, or into whatever called the macro. `threw` exceeds `handled`
         // by exactly this.
         std::uint64_t errEscaped = 0;
+        // Chains Excel started while another VBA frame waited in DoEvents, reported at depth 1.
+        std::uint64_t doEventsChains = 0;
 
         // ---- WAS THE DURATION MEASURED, OR BOUNDED? ----------------------
         //

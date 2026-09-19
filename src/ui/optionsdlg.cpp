@@ -5,6 +5,7 @@
 #include "softdraw.h"
 #include "softtext.h"
 #include "glyphs.h"
+#include "reflow.h"
 
 #include <algorithm>
 
@@ -16,7 +17,6 @@
 #include "emit/csv.h"
 
 #include <windows.h>
-#include <shellapi.h>
 #include <cwchar>
 #include <string>
 
@@ -39,32 +39,36 @@ namespace
                              IDC_XLL_ARGS, IDC_XLL_RET,
                              IDC_VBA_SEC1, IDC_VBA_RULE1, IDC_VBA_DEPTHLBL, IDC_VBA_DEPTH,
                              IDC_VBA_ARGS, IDC_VBA_RET, IDC_VBA_OBJ };
-    const int kOut[]     = { IDC_OUT_HDR, IDC_OUT_SEC1, IDC_OUT_RULE1,
+    const int kOut[]     = { IDC_OUT_HDR, IDC_OUT_SEC1, IDC_OUT_RULE1, IDC_OUT_FMTLBL, IDC_OUT_FMT,
                              IDC_OUT_DIRLBL, IDC_OUT_DIR, IDC_OUT_FILELBL, IDC_OUT_FILE, IDC_OUT_TAIL };
     const int kAdvanced[] = { IDC_ADV_HDR, IDC_ADV_SEC1, IDC_ADV_RULE1, IDC_ADV_BUFLBL, IDC_ADV_BUF,
                               IDC_ADV_BUFHINT, IDC_ADV_FULLLBL, IDC_ADV_FULL,
                               IDC_ADV_SEC2, IDC_ADV_RULE2, IDC_ADV_LVLLBL, IDC_ADV_LVL, IDC_ADV_LVLNOTE,
                               IDC_ADV_LOGLBL, IDC_ADV_LOG };
-    const int kAbout[]   = { IDC_ABT_HDR, IDC_ABT_OWNER, IDC_ABT_NOTICES, IDC_ABT_LICLBL, IDC_ABT_LICENSE };
+    const int kAbout[]   = { IDC_ABT_HDR, IDC_ABT_OWNER, IDC_ABT_LICLBL, IDC_ABT_LICENSE };
+    const int kNotices[] = { IDC_NOT_HDR, IDC_NOT_TEXT };
 
 #define XRAY_PAGE(name, ids) { name, ids, static_cast<int>(sizeof(ids) / sizeof(int)) }
     const Page kPages[] = {
         XRAY_PAGE(L"Capture", kCapture), XRAY_PAGE(L"Output", kOut),
         XRAY_PAGE(L"Advanced", kAdvanced), XRAY_PAGE(L"About", kAbout),
+        XRAY_PAGE(L"Notices", kNotices),
     };
 #undef XRAY_PAGE
     constexpr int kPageCount = static_cast<int>(sizeof(kPages) / sizeof(kPages[0]));
-    constexpr int kAboutPage = kPageCount - 1;
+    constexpr int kAboutPage = kPageCount - 2;     // About and Notices change no setting
     const glyph::Kind kPageGlyphs[kPageCount] = { glyph::Kind::Capture, glyph::Kind::Output,
-                                                  glyph::Kind::Advanced, glyph::Kind::About };
+                                                  glyph::Kind::Advanced, glyph::Kind::About,
+                                                  glyph::Kind::Notices };
 
     const int kHeadingIds[] = { IDC_XLL_SEC1, IDC_VBA_SEC1, IDC_OUT_SEC1, IDC_ADV_SEC1, IDC_ADV_SEC2 };
     const int kRuleIds[]    = { IDC_XLL_RULE1, IDC_VBA_RULE1, IDC_OUT_RULE1, IDC_ADV_RULE1, IDC_ADV_RULE2 };
-    const int kTitleIds[]   = { IDC_CAP_HDR, IDC_OUT_HDR, IDC_ADV_HDR, IDC_ABT_HDR };
+    const int kTitleIds[]   = { IDC_CAP_HDR, IDC_OUT_HDR, IDC_ADV_HDR, IDC_ABT_HDR, IDC_NOT_HDR };
     const int kCheckIds[]   = { IDC_XLL_ARGS, IDC_XLL_RET, IDC_VBA_ARGS, IDC_VBA_RET, IDC_VBA_OBJ };
     const int kButtonIds[]  = { IDOK, IDCANCEL, IDC_OUT_TAIL };
-    const int kComboIds[]   = { IDC_XLL_DEPTH, IDC_VBA_DEPTH, IDC_ADV_FULL, IDC_ADV_LVL };
-    const int kEditIds[]    = { IDC_OUT_DIR, IDC_OUT_FILE, IDC_ADV_BUF, IDC_ADV_LOG, IDC_ABT_LICENSE };
+    const int kComboIds[]   = { IDC_XLL_DEPTH, IDC_VBA_DEPTH, IDC_OUT_FMT, IDC_ADV_FULL, IDC_ADV_LVL };
+    const int kEditIds[]    = { IDC_OUT_DIR, IDC_OUT_FILE, IDC_ADV_BUF, IDC_ADV_LOG, IDC_ABT_LICENSE,
+                                IDC_NOT_TEXT };
 
     template <size_t N> bool In(const int (&ids)[N], int id)
     {
@@ -80,6 +84,7 @@ namespace
         bool xllArgs = false, xllRet = false;
         bool vbaArgs = false, vbaRet = false, vbaObj = false;
         bool pauseOnFull = true;
+        int  format = 0;            // core::modes::Format
         wchar_t buffer[32] = {};
         int  logLevel = 0;
         bool armed = false;
@@ -115,6 +120,7 @@ namespace
         d.vbaRet   = M::ReadToggle(L"cbVbaRet");
         d.vbaObj   = M::ReadToggle(L"cbVbaObj");
         d.pauseOnFull = M::ReadToggle(L"cbPauseFull");
+        d.format   = static_cast<int>(core::modes::GetFormat());
         M::BufferText(d.buffer, 32);
         const int level = static_cast<int>(core::Log::GetLevel());
         d.logLevel = (level >= 0 && level < kLevelCount) ? level : 1;
@@ -130,6 +136,7 @@ namespace
         d.vbaRet   = IsChecked(dlg, IDC_VBA_RET);
         d.vbaObj   = IsChecked(dlg, IDC_VBA_OBJ);
         d.pauseOnFull = SendDlgItemMessageW(dlg, IDC_ADV_FULL, CB_GETCURSEL, 0, 0) == 0;
+        d.format   = static_cast<int>(SendDlgItemMessageW(dlg, IDC_OUT_FMT, CB_GETCURSEL, 0, 0));
         GetDlgItemTextW(dlg, IDC_ADV_BUF, d.buffer, 32);
         d.logLevel = static_cast<int>(SendDlgItemMessageW(dlg, IDC_ADV_LVL, CB_GETCURSEL, 0, 0));
     }
@@ -152,6 +159,9 @@ namespace
         M::WriteToggle(L"cbVbaRet",   d.vbaRet);
         M::WriteToggle(L"cbVbaObj",   d.vbaObj);
         M::WriteToggle(L"cbPauseFull", d.pauseOnFull);
+        if (d.format == static_cast<int>(core::modes::Format::Csv) ||
+            d.format == static_cast<int>(core::modes::Format::Jsonl))
+            core::modes::SetFormat(static_cast<core::modes::Format>(d.format));
         if (M::SetBufferText(d.buffer)) return true;
 
         MessageBoxW(dlg,
@@ -179,7 +189,6 @@ namespace
     constexpr COLORREF kDisabled  = RGB(0x9A, 0x9A, 0x9A);
     constexpr COLORREF kCheckOn   = RGB(0x10, 0x7C, 0x41);
     constexpr COLORREF kCheckHot  = RGB(0x0F, 0x70, 0x3B);
-    constexpr COLORREF kLink      = RGB(0x10, 0x7C, 0x41);
     constexpr COLORREF kListFrame = RGB(0x61, 0x61, 0x61);
     constexpr COLORREF kIconInk   = RGB(0x2B, 0x57, 0x9A);
 
@@ -263,9 +272,10 @@ namespace
 
         { IDC_OUT_HDR,      222,  15,   0,  30 },
         { IDC_OUT_SEC1,     169,  64,   0,  20 }, { IDC_OUT_RULE1,  169,  87,   0,  1 },
-        { IDC_OUT_DIRLBL,   182,  97,   0,  15 }, { IDC_OUT_DIR,    182, 115,   0, 23 },
-        { IDC_OUT_FILELBL,  182, 146,   0,  15 }, { IDC_OUT_FILE,   182, 164,   0, 23 },
-        { IDC_OUT_TAIL,     182, 197, 130,  24 },
+        { IDC_OUT_FMTLBL,   182,  97, 118,  21 }, { IDC_OUT_FMT,    302,  97, 180,  0 },
+        { IDC_OUT_DIRLBL,   182, 133,   0,  15 }, { IDC_OUT_DIR,    182, 151,   0, 23 },
+        { IDC_OUT_FILELBL,  182, 182,   0,  15 }, { IDC_OUT_FILE,   182, 200,   0, 23 },
+        { IDC_OUT_TAIL,     182, 233, 130,  24 },
 
         { IDC_ADV_HDR,      222,  15,   0,  30 },
         { IDC_ADV_SEC1,     169,  64,   0,  20 }, { IDC_ADV_RULE1,  169,  87,   0,  1 },
@@ -278,6 +288,7 @@ namespace
         { IDC_ADV_LOGLBL,   182, 264,   0,  15 }, { IDC_ADV_LOG,    182, 282,   0, 23 },
 
         { IDC_ABT_HDR,      222,  15,   0,  30 },
+        { IDC_NOT_HDR,      222,  15,   0,  30 },
     };
     constexpr int kClientW = 671, kClientH = 436;
 
@@ -335,17 +346,16 @@ namespace
 
         // About: half-line gaps, and the licence box runs down to the pane's bottom edge.
         const int x = left + Px(dlg, 182 - 169), w = right - x, lineH = Px(dlg, 15), gap = Px(dlg, 8);
-        int y = top + Px(dlg, 61 - 7);
+        const int firstY = top + Px(dlg, 61 - 7);
+        int y = firstY;
         place(GetDlgItem(dlg, IDC_ABT_OWNER), x, y, w, lineH);
-        y += lineH + gap;
-        if (HWND link = GetDlgItem(dlg, IDC_ABT_NOTICES))
-        {
-            place(link, x, y, Px(dlg, 150), lineH);
-            y += lineH + gap + lineH;
-        }
+        y += lineH + gap + lineH;
         place(GetDlgItem(dlg, IDC_ABT_LICLBL), x, y, w, lineH);
         y += lineH + Px(dlg, 3);
         place(GetDlgItem(dlg, IDC_ABT_LICENSE), x, y, w, paneBottom - y);
+
+        // Notices: the one box, from the first line down to the same edge.
+        place(GetDlgItem(dlg, IDC_NOT_TEXT), x, firstY, w, paneBottom - firstY);
     }
 
     HFONT EditFont(HWND dlg, DWORD quality)
@@ -367,7 +377,7 @@ namespace
         for (int id : kEditIds)
         {
             HWND e = GetDlgItem(dlg, id);
-            const HFONT f = (id == IDC_ABT_LICENSE) ? g_editSoft : g_edit;
+            const HFONT f = (id == IDC_ABT_LICENSE || id == IDC_NOT_TEXT) ? g_editSoft : g_edit;
             SendMessageW(e, WM_SETFONT, reinterpret_cast<WPARAM>(f), FALSE);
             SendMessageW(e, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, 0);
             SetWindowPos(e, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
@@ -381,15 +391,6 @@ namespace
         }
         SendDlgItemMessageW(dlg, IDC_CATEGORIES, LB_SETITEMHEIGHT, 0, Px(dlg, 27));
 
-        // The link is only as wide as its text, so only the text is clickable.
-        if (HWND link = GetDlgItem(dlg, IDC_ABT_NOTICES))
-        {
-            wchar_t text[64] = {};
-            GetWindowTextW(link, text, 64);
-            SIZE sz{};
-            ui::text::Measure(text, Face::Body, 0, DpiOf(dlg), sz);
-            SetWindowPos(link, nullptr, 0, 0, sz.cx + 1, Px(dlg, 15), SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
-        }
         RedrawWindow(dlg, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN);
     }
 
@@ -403,11 +404,10 @@ namespace
         const bool heading = In(kHeadingIds, id), title = In(kTitleIds, id);
         const bool oneLine = (di->rcItem.bottom - di->rcItem.top) < Px(di->hwndItem, 28);
         unsigned flags = heading ? 0u : (title || oneLine) ? ui::text::kVCentre : ui::text::kWrap;
-        if (id == IDC_ABT_NOTICES) flags |= ui::text::kUnderline;
         const Face face = heading ? Face::Bold : title ? Face::Title : Face::Body;
         Buffered(di->hDC, di->rcItem, [&](HDC dc, const RECT& rc) {
             FillRect(dc, &rc, g_white);
-            Text(di->hwndItem, dc, rc, text, face, id == IDC_ABT_NOTICES ? kLink : kText, flags); });
+            Text(di->hwndItem, dc, rc, text, face, kText, flags); });
     }
 
     void DrawPageIcon(const DRAWITEMSTRUCT* di)
@@ -939,47 +939,14 @@ namespace
         return self;
     }
 
-    // Beside the XLL, if the distribution put one there.
-    std::wstring NoticesPath()
+    // A compiled-in text file, reflowed so the box can wrap it.
+    std::wstring ResourceText(int id)
     {
-        wchar_t path[MAX_PATH * 2] = {};
-        GetModuleFileNameW(Self(), path, MAX_PATH * 2);
-        std::wstring p = path;
-        const size_t slash = p.find_last_of(L"\\/");
-        p = (slash == std::wstring::npos ? std::wstring() : p.substr(0, slash + 1)) + L"THIRD-PARTY-NOTICES.txt";
-        return GetFileAttributesW(p.c_str()) == INVALID_FILE_ATTRIBUTES ? std::wstring() : p;
-    }
-
-    // The compiled-in LICENSE, its hard-wrapped lines rejoined so the box can wrap them.
-    std::wstring LicenseText()
-    {
-        HRSRC res = FindResourceW(Self(), MAKEINTRESOURCEW(IDR_LICENSE), RT_RCDATA);
+        HRSRC res = FindResourceW(Self(), MAKEINTRESOURCEW(id), RT_RCDATA);
         HGLOBAL mem = res ? LoadResource(Self(), res) : nullptr;
         const char* bytes = mem ? static_cast<const char*>(LockResource(mem)) : nullptr;
         if (!bytes) return L"";
-        const std::string all(bytes, SizeofResource(Self(), res));
-
-        std::string out;
-        bool inParagraph = false, breakAfter = false;
-        for (size_t at = 0; at < all.size(); )
-        {
-            size_t end = all.find('\n', at);
-            if (end == std::string::npos) end = all.size();
-            const std::string raw = all.substr(at, end - at);
-            at = end + 1;
-
-            const size_t first = raw.find_first_not_of(" \t\r"), last = raw.find_last_not_of(" \t\r");
-            if (first == std::string::npos)
-            {
-                if (inParagraph) out += "\r\n\r\n";
-                inParagraph = false;
-                continue;
-            }
-            if (inParagraph) out += breakAfter ? "\r\n" : " ";
-            out += raw.substr(first, last - first + 1);
-            inParagraph = true;
-            breakAfter = first >= 10 || raw[last] == '>';
-        }
+        const std::string out = ui::text::Reflow(std::string(bytes, SizeofResource(Self(), res)));
 
         std::wstring wide(out.size(), L'\0');
         const int got = MultiByteToWideChar(CP_UTF8, 0, out.data(), static_cast<int>(out.size()),
@@ -999,8 +966,8 @@ namespace
         SetDlgItemTextW(dlg, IDC_ABT_HDR, line);
         SetDlgItemTextW(dlg, IDC_ABT_OWNER, L"\u00A9 2026 Andrew Lockhart");
         SetDlgItemTextW(dlg, IDC_ADV_LOG, core::Log::Path().c_str());
-        SetDlgItemTextW(dlg, IDC_ABT_LICENSE, LicenseText().c_str());
-        if (NoticesPath().empty()) DestroyWindow(GetDlgItem(dlg, IDC_ABT_NOTICES));
+        SetDlgItemTextW(dlg, IDC_ABT_LICENSE, ResourceText(IDR_LICENSE).c_str());
+        SetDlgItemTextW(dlg, IDC_NOT_TEXT, ResourceText(IDR_NOTICES).c_str());
     }
 
     void ShowPage(HWND dlg, int page)
@@ -1008,7 +975,7 @@ namespace
         for (int p = 0; p < kPageCount; ++p)
             for (int i = 0; i < kPages[p].count; ++i)
                 ShowWindow(GetDlgItem(dlg, kPages[p].ids[i]), (p == page) ? SW_SHOW : SW_HIDE);
-        ShowWindow(GetDlgItem(dlg, IDC_ARMEDNOTE), page == kAboutPage ? SW_HIDE : SW_SHOW);
+        ShowWindow(GetDlgItem(dlg, IDC_ARMEDNOTE), page >= kAboutPage ? SW_HIDE : SW_SHOW);
         g_page = page;
         InvalidateRect(GetDlgItem(dlg, IDC_PAGEICON), nullptr, FALSE);
     }
@@ -1018,7 +985,7 @@ namespace
     {
         const int locked[] = { IDC_XLL_DEPTH, IDC_XLL_ARGS, IDC_XLL_RET,
                                IDC_VBA_DEPTH, IDC_VBA_ARGS, IDC_VBA_RET, IDC_VBA_OBJ,
-                               IDC_ADV_BUF, IDC_ADV_FULL };
+                               IDC_ADV_BUF, IDC_ADV_FULL, IDC_OUT_FMT };
         for (int id : locked) EnableWindow(GetDlgItem(dlg, id), armed ? FALSE : TRUE);
         SetDlgItemTextW(dlg, IDC_ARMEDNOTE, armed
             ? L"Tracing is armed. These settings are read when a session starts, so "
@@ -1039,6 +1006,9 @@ namespace
         }
         for (const wchar_t* t : { L"Pause (lose nothing)", L"Drop (never wait)" })
             SendDlgItemMessageW(dlg, IDC_ADV_FULL, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(t));
+        // In core::modes::Format order.
+        for (const wchar_t* t : { L"CSV", L"JSON Lines" })
+            SendDlgItemMessageW(dlg, IDC_OUT_FMT, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(t));
         for (const char* t : kLevelNames)
         {
             wchar_t w[16];
@@ -1054,6 +1024,7 @@ namespace
         SetChecked(dlg, IDC_VBA_RET,  d.vbaRet);
         SetChecked(dlg, IDC_VBA_OBJ,  d.vbaObj);
         SendDlgItemMessageW(dlg, IDC_ADV_FULL, CB_SETCURSEL, d.pauseOnFull ? 0 : 1, 0);
+        SendDlgItemMessageW(dlg, IDC_OUT_FMT, CB_SETCURSEL, d.format, 0);
         SetDlgItemTextW(dlg, IDC_ADV_BUF, d.buffer);
         SendDlgItemMessageW(dlg, IDC_ADV_LVL, CB_SETCURSEL, d.logLevel, 0);
 
@@ -1165,15 +1136,6 @@ namespace
             return reinterpret_cast<INT_PTR>(lit ? g_hot : g_white);
         }
 
-        case WM_SETCURSOR:
-            if (reinterpret_cast<HWND>(wp) == GetDlgItem(dlg, IDC_ABT_NOTICES) && wp)
-            {
-                SetCursor(LoadCursorW(nullptr, IDC_HAND));
-                SetWindowLongPtrW(dlg, DWLP_MSGRESULT, TRUE);
-                return TRUE;
-            }
-            return FALSE;
-
         case WM_COMMAND:
         {
             const int id = LOWORD(wp);
@@ -1191,12 +1153,6 @@ namespace
             if (HIWORD(wp) == BN_CLICKED && In(kCheckIds, id))
             {
                 SetChecked(dlg, id, !IsChecked(dlg, id));   // an owner-drawn box has no state of its own
-                return TRUE;
-            }
-            if (id == IDC_ABT_NOTICES && HIWORD(wp) == STN_CLICKED)
-            {
-                const std::wstring quoted = L"\"" + NoticesPath() + L"\"";
-                ShellExecuteW(dlg, L"open", L"notepad.exe", quoted.c_str(), nullptr, SW_SHOWNORMAL);
                 return TRUE;
             }
             if (id == IDC_OUT_TAIL)

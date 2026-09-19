@@ -1,20 +1,13 @@
-# A rendered array must say where it ends.
+# A rendered array is whole: it opens with a type and bounds, carries every element and closes.
 #
-# Both columns build an array's text into a bounded buffer, and sixty-four doubles at fifteen
-# significant digits is roughly 1300 characters. The closing `}` and the `,...` truncation
-# marker are appended last, so they are the first things lost, and what comes out would read as
-# a complete array that happens to end:
-#
-#    Double[1..64]{1.123456789012,2.123456789012,...,17.12345678
-#
-# So the assertion is shape, not content: every rendered array opens with a type and bounds and
-# closes, and says so if it does not carry all of its elements. Both columns are checked on the
-# same arrays, because they have separate buffers.
+# Sixty-four doubles at fifteen significant digits is roughly 1300 characters, and a buffer that
+# cut them would lose the closing `}` first, leaving what reads as a complete array that happens
+# to end. Both columns are checked on the same arrays, because they have separate buffers.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
-# 64 elements is the cap both columns share, so this is the widest thing they
-# are ever asked to print -- the worst case, not an extreme one.
+# 64 elements of about fourteen characters each: wider than any fixed buffer the columns
+# once had, so a cut would show.
 $moduleCode = @'
 ' Wide DOUBLES: %.15g gives about fourteen characters each.
 Public Function WideDblRet() As Double()
@@ -138,25 +131,20 @@ try {
     Check 'every-rendered-array-closes-its-brace' ($unclosed.Count -eq 0) `
           ("unclosed: " + $(if ($unclosed.Count) { (@($unclosed | ForEach-Object { "$($_.Where)/$($_.Fn) ends '$($_.Text.Substring([Math]::Max(0,$_.Text.Length-24)))'" }) -join ' | ') } else { 'none' }))
 
-    # ---- and an incomplete one says it is incomplete ------------------------
+    # ---- and it carries every element ----------------------------------------
     #
-    # Counting elements by commas is only valid once the brace check passes,
-    # so this is a separate case: a full 64 needs no marker, anything short
-    # of it does.
-    $silent = @()
+    # Arrays are not truncated. Counting elements by commas is only valid once
+    # the brace check passes, so this is a separate case.
+    $short = @()
     foreach ($s in $seen) {
         if (-not $s.Text) { continue }
         if ($s.Text -notmatch '\{(.*)\}$') { continue }        # unclosed, reported above
-        $body = $Matches[1]
         $want = if ($s.Wide) { 64 } else { 3 }
-        $has  = @($body -split ',').Count
-        $marked = $body -match '\.\.\.'
-        if (($has -lt $want) -and (-not $marked)) {
-            $silent += ("{0}/{1} shows {2} of {3} with no marker" -f $s.Where, $s.Fn, $has, $want)
-        }
+        $has  = @($Matches[1] -split ',').Count
+        if ($has -ne $want) { $short += ("{0}/{1} shows {2} of {3}" -f $s.Where, $s.Fn, $has, $want) }
     }
-    Check 'a-truncated-array-says-it-was-truncated' ($silent.Count -eq 0) `
-          ("silently short: " + $(if ($silent.Count) { $silent -join ' | ' } else { 'none' }))
+    Check 'every-array-carries-all-its-elements' ($short.Count -eq 0) `
+          ("short: " + $(if ($short.Count) { $short -join ' | ' } else { 'none' }))
 
     # The control: three Longs fit anything. The arguments column prefixes its slot, as in
     # `a1:Ref&=Long[1..3]{1,2,3}`, so the array text is matched where it sits rather than
@@ -184,24 +172,16 @@ try {
     Check 'both-columns-give-the-same-header-for-the-same-array' ($disagree.Count -eq 0) `
           ("disagreements: " + $(if ($disagree.Count) { $disagree -join ' | ' } else { 'none' }))
 
-    # ---- and they truncate at comparable points -----------------------------
-    #
-    # The same array should show a similar number of elements in both columns;
-    # nothing in a row says the two columns had different room.
-    #
-    # Not equality: the columns carry different surrounding text, so a few
-    # elements either way is structure rather than drift. A four-fold gap is
-    # drift.
-    $lopsided = @()
+    # ---- and they render the same array identically -------------------------
+    # The argument column prefixes its slot, so the array text is taken from where it starts.
+    $differ = @()
     foreach ($p in $pairs) {
-        $na = if ($p.A -match '\((\d+) of \d+ shown\)') { [int]$Matches[1] } elseif ($p.A -match '\{(.*)\}') { @($Matches[1] -split ',').Count } else { 0 }
-        $nr = if ($p.R -match '\((\d+) of \d+ shown\)') { [int]$Matches[1] } elseif ($p.R -match '\{(.*)\}') { @($Matches[1] -split ',').Count } else { 0 }
-        if ($na -lt 1 -or $nr -lt 1) { $lopsided += ("{0}: arg {1}, ret {2}" -f $p.Name, $na, $nr); continue }
-        $ratio = [Math]::Max($na, $nr) / [Math]::Min($na, $nr)
-        if ($ratio -gt 2) { $lopsided += ("{0}: arg showed {1}, ret showed {2}" -f $p.Name, $na, $nr) }
+        $ta = if ($p.A -match '([A-Za-z]+\[-?\d+\.\.-?\d+\]\{.*\})$') { $Matches[1] } else { '(none)' }
+        $tr = if ($p.R -match '([A-Za-z]+\[-?\d+\.\.-?\d+\]\{.*\})$') { $Matches[1] } else { '(none)' }
+        if ($ta -ne $tr) { $differ += ("{0}: arg and ret differ" -f $p.Name) }
     }
-    Check 'the-two-columns-show-comparable-numbers-of-elements' ($lopsided.Count -eq 0) `
-          ("lopsided: " + $(if ($lopsided.Count) { $lopsided -join ' | ' } else { 'none' }))
+    Check 'the-two-columns-render-the-same-array-identically' ($differ.Count -eq 0) `
+          ("differ: " + $(if ($differ.Count) { $differ -join ' | ' } else { 'none' }))
 
     $checkFails = Get-XRayCheckFailures
     if ($checkFails) { Complete-Test -Fail -Detail "$checkFails case(s) failed" }

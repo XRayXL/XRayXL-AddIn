@@ -102,6 +102,12 @@ extern "C" __declspec(dllexport) LPXLOPER12 __stdcall TxStackArgs(
     double a, double b, double c, double d, double e)
 { return RetNum(a * 10000 + b * 1000 + c * 100 + d * 10 + e); }
 
+// Registered QBB at load and QBBBBB again while the tracer is armed (TxRegisterReshape).
+// Excel keeps one registration, so after the second one it calls this to the wider shape.
+extern "C" __declspec(dllexport) LPXLOPER12 __stdcall TxTwoShapes(
+    double a, double b, double c, double d, double e)
+{ return RetNum(a + b + c + d + e); }
+
 // A: boolean as a short.
 extern "C" __declspec(dllexport) LPXLOPER12 __stdcall TxA(short flag)
 { return RetNum(flag ? 1 : 0); }
@@ -482,6 +488,16 @@ extern "C" __declspec(dllexport) int __stdcall TxRegisterNoResult()
     return 1;
 }
 
+// TxTwoShapes again, under a WIDER type text: five arguments where arming saw two.
+extern "C" __declspec(dllexport) int __stdcall TxRegisterReshape()
+{
+    XLOPER12 xDLL; ZeroMemory(&xDLL, sizeof(xDLL));
+    Excel12(xlGetName, &xDLL, 0);
+    Register(xDLL, L"TxTwoShapes", L"QBBBBB", L"TxShapeWide");
+    Excel12(xlFree, nullptr, 1, &xDLL);
+    return 1;
+}
+
 // A procedure name longer than the watch's 127-character capture. The .def
 // exports TxPrefixImpl under a 127-character name and TxLongImpl under that
 // name plus "Tail", so the cut capture of the long one spells the short one.
@@ -623,6 +639,8 @@ extern "C" __declspec(dllexport) int __stdcall xlAutoOpen()
     // The same export under a second name: arming must hook it once.
     Register(xDLL, L"TxB",           L"QBB", L"TxBAgain");
 
+    Register(xDLL, L"TxTwoShapes",   L"QBB",    L"TxShapeNarrow");
+
     Register(xDLL, L"TxHammered",    L"BB");
     Register(xDLL, L"TxHammerCalls", L"Q");
     Register(xDLL, L"TxCallsPrefix", L"QB");
@@ -630,6 +648,7 @@ extern "C" __declspec(dllexport) int __stdcall xlAutoOpen()
     RegisterCommand(xDLL, L"TxHammerStop");
     RegisterCommand(xDLL, L"TxRegisterNoResult");
     RegisterCommand(xDLL, L"TxRegisterLongName");
+    RegisterCommand(xDLL, L"TxRegisterReshape");
 
     Excel12(xlFree, nullptr, 1, &xDLL);
     return 1;

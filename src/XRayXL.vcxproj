@@ -110,6 +110,9 @@
     <ClCompile Include="core\crashlog.cpp" />
     <ClCompile Include="core\log.cpp" />
     <ClCompile Include="core\tracemodes.cpp" />
+    <ClCompile Include="core\textvalue.cpp" />
+    <ClCompile Include="core\jsonvalue.cpp" />
+    <ClCompile Include="core\contained.cpp" />
     <ClCompile Include="core\notify.cpp" />
     <ClCompile Include="ui\ribbon.cpp" />
     <ClCompile Include="ui\ribbonmodel.cpp" />
@@ -134,6 +137,7 @@
     <ClCompile Include="emit\csv.cpp" />
     <ClCompile Include="emit\ring.cpp" />
     <ClCompile Include="emit\rowcsv.cpp" />
+    <ClCompile Include="emit\rowjson.cpp" />
     <ClCompile Include="app\paramparse.cpp" />
     <ClCompile Include="vba\vbaproctable.cpp" />
     <ClCompile Include="vba\vbaderive.cpp" />
@@ -182,6 +186,13 @@
     <ClInclude Include="ui\glyphs.h" />
     <ClInclude Include="core\caller.h" />
     <ClInclude Include="core\render.h" />
+    <ClInclude Include="core\textbuf.h" />
+    <ClInclude Include="core\textvalue.h" />
+    <ClInclude Include="core\jsonvalue.h" />
+    <ClInclude Include="core\contained.h" />
+    <ClInclude Include="core\framedwriter.h" />
+    <ClInclude Include="core\valueformat.h" />
+    <ClInclude Include="core\valuewriter.h" />
     <ClInclude Include="core\text.h" />
     <ClInclude Include="core\safemem.h" />
     <ClInclude Include="core\moduleid.h" />

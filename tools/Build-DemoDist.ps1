@@ -48,7 +48,7 @@ foreach ($a in @('DemoFinance\DemoFinance64.xll', 'DemoBehaviors\DemoBehaviors64
 Copy-Item (Join-Path $Root 'LICENSE')                 $out -Force
 Copy-Item (Join-Path $Root 'docs\DemoWalkthrough.md') (Join-Path $outD 'README.md') -Force
 # MinHook's licence wants its notice to travel with binaries; the committed file is current.
-Copy-Item (Join-Path $Root 'dist\THIRD-PARTY-NOTICES.txt') $out -Force
+Copy-Item (Join-Path $Root 'THIRD-PARTY-NOTICES.txt') $out -Force
 
 $books = @(Get-ChildItem $srcD -Filter *.xlsm -ErrorAction SilentlyContinue)
 if (-not $books) { throw "no workbooks in $srcD -- run tools\Build-DemoWorkbooks.ps1 (it needs Excel)" }

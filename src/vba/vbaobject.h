@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include "core/valuewriter.h"
 
 // Describes a COM object argument or result. The one part of the tracer that calls the object
 // model, which runs Excel's own code, so it sits behind the OBJECTS setting and is confined to
@@ -17,16 +18,16 @@ namespace vba
     void ObjectTotals(long long& described, long long& namedOnly, long long& unknown);
     void ResetObjectTotals();
 
-    // `ptr` is an IUnknown*/IDispatch* taken from a VBA slot. Writes the class name and,
-    // separately, whatever detail we can fetch. The caller renders `<Class>@0x<addr><detail>`:
+    // `ptr` is an IUnknown*/IDispatch* taken from a VBA slot. Writes the object as its class,
+    // its address and whatever detail we can fetch:
     //
     //    Collection@0x27DB4C21EE0
     //    Worksheet@0x27DB4C21EE0([Book1]Sheet1)
-    //    Range@0x27DB4C21EE0([Book1]Sheet1!A1:B2)=Variant[1..2,1..2]{1,2,"x",True}
-    //    object@0x27DB4C21EE0                      -- nothing worked out
+    //    Range@0x27DB4C21EE0([Book1]Sheet1!A1:B2)=Variant[1..2,1..2]{{1,2},{"x",TRUE}}
     //
-    // The address stays because it is how one object is followed from an argument to a result.
-    // Every path is guarded: a COM call that faults costs this description and nothing else.
-    bool DescribeObjectDetail(std::uint64_t ptr, char* cls, int clsCap,
-                              char* detail, int detailCap);
+    // False, having written nothing, when the class cannot be named; the caller then writes the
+    // address alone. The address stays because it is how one object is followed from an
+    // argument to a result. Every path is guarded: a COM call that faults costs this
+    // description and nothing else.
+    bool DescribeObjectDetail(std::uint64_t ptr, core::ValueWriter& w);
 }

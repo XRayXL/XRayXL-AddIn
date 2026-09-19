@@ -81,7 +81,13 @@ End Function
     # A filter that matches nothing SAYS so, rather than returning an empty
     # grid that reads as a broken formula.
     $names = @((Summary 'ZZZ_NOTHING*').Rows | ForEach-Object { $_.Function })
-    Check 'empty-result-says-so' (($names -join ',') -match 'nothing traced') ($names -join ',')
+    Check 'empty-result-says-so' (($names -join ',') -match 'nothing matches the filter') ($names -join ',')
+
+    # The filter matches the module too, so one add-in or one workbook can be picked out.
+    $names = @((Summary '*.xll').Rows | ForEach-Object { $_.Function })
+    Check 'filter-matches-an-xll-module' (($names -contains 'TxB') -and ($names -notcontains 'S_Add')) ($names -join ',')
+    $names = @((Summary "[$($book.Leaf)]*").Rows | ForEach-Object { $_.Function })
+    Check 'filter-matches-a-workbook-module' (($names -contains 'S_Add') -and ($names -notcontains 'TxB')) ($names -join ',')
 
     # ---- SHAPE, THROUGH A SHEET -------------------------------------------
     # Application.Run flattens, so the column count is asserted where it is

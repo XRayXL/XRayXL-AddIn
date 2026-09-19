@@ -2,8 +2,8 @@
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
     <XRayVersionMajor>0</XRayVersionMajor>
-    <XRayVersionMinor>1</XRayVersionMinor>
-    <XRayVersionPatch>1</XRayVersionPatch>
+    <XRayVersionMinor>2</XRayVersionMinor>
+    <XRayVersionPatch>0</XRayVersionPatch>
   </PropertyGroup>
 
   <!-- The configuration the binary was built as, carried into its VERSIONINFO: the suites load

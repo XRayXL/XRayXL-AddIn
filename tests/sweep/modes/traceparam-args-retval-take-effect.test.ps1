@@ -99,6 +99,11 @@ End Function
               "opened on=$($tOn.framesOpened) off=$($tOff.framesOpened)"
         Check 'no-frame-leak-with-capture-off' ($tOff.framesOpened -eq $tOff.framesClosed) `
               "opened $($tOff.framesOpened), closed $($tOff.framesClosed)"
+        # A return not asked for is `returnsOff`, never a decline: off must not read as failures.
+        Check 'retval-off-is-not-counted-as-declined' (($tOff.returnsDeclined -eq 0) -and ($tOff.returnsOff -ge 1)) `
+              "off: returnsDeclined=$($tOff.returnsDeclined) returnsOff=$($tOff.returnsOff)"
+        Check 'retval-on-counts-nothing-as-off' (($tOn.returnsOff -eq 0) -and ($tOn.returnsRead -ge 1)) `
+              "on: returnsRead=$($tOn.returnsRead) returnsOff=$($tOn.returnsOff)"
     }
     else { Check 'totals-present' $false 'no totals line after disarm' }
 

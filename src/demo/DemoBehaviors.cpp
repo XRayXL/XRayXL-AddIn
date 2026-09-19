@@ -12,8 +12,17 @@ ReverseText(const wchar_t* s)
 {
     wchar_t buf[512]{};
     size_t len = s ? wcslen(s) : 0; if (len > 500) len = 500;
-    for (size_t i = 0; i < len; i++) buf[i] = s[len - 1 - i];
-    buf[len] = 0;
+    // Characters, not UTF-16 units: a surrogate pair (an emoji) stays in order.
+    const auto high = [](wchar_t c) { return c >= 0xD800 && c <= 0xDBFF; };
+    const auto low  = [](wchar_t c) { return c >= 0xDC00 && c <= 0xDFFF; };
+    if (len > 0 && high(s[len - 1])) --len;          // the cap cut a pair in half
+    size_t o = 0;
+    for (size_t i = len; i > 0; --i)
+    {
+        if (i >= 2 && low(s[i - 1]) && high(s[i - 2])) { buf[o++] = s[i - 2]; buf[o++] = s[i - 1]; --i; }
+        else buf[o++] = s[i - 1];
+    }
+    buf[o] = 0;
     return RetStr(buf);
 }
 

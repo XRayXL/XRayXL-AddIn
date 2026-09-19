@@ -13,7 +13,7 @@
 #
 #    - the catcher resumed, so it must read `handled`
 #    - every exit row carries an outcome
-#    - a raise is either attributed to a frame or counted as unattributable (errNoFrame)
+#    - the error reads `threw` in some frame
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -134,11 +134,6 @@ try {
         [void](Invoke-XRayCommand $sx 'XRayXL_Arm')
         $armLine = Wait-LogLine $paths.Log 'VBA tracing: ' $mark
         if ($armLine -notmatch 'ARMED') { Complete-Test -Fail -Detail "did not arm: $armLine" }
-        # an unverified raise slot is a product failure, not a SKIP: every shape would read `returned`
-        if ($armLine -match 'NO ERROR ATTRIBUTION') {
-            Complete-Test -Fail -Detail ("the raise slot did not verify on this VBE7, so the " +
-                                         "'$which' shape cannot be attributed: $armLine")
-        }
 
         $threw = ''
         try { $app.Run($leaf + '!C_Outer', $which) | Out-Null }
@@ -146,7 +141,6 @@ try {
         $lossy = Stop-XRayTrace $sx
         if ($lossy) { Complete-Test -Fail -Detail $lossy }
 
-        $totals = Wait-LogLine $paths.Log 'VBA trace: statements=' $mark 20
         $rows   = @(Read-TraceRows $sx.ProcId)
         $exits  = @($rows | Where-Object { ($_.kind -eq 'exit' -and $_.source -eq 'VBA') })
 
@@ -157,15 +151,11 @@ try {
         $nThrew   = @($exits | Where-Object { $_.outcome -eq 'threw' }).Count
         $nHandled = @($exits | Where-Object { $_.outcome -eq 'handled' }).Count
         $noOutcome = @($exits | Where-Object { -not $_.outcome }).Count
-        $errNoFrame = 0
-        if ($totals -match 'errNoFrame=(\d+)') { $errNoFrame = [int]$Matches[1] }
-        $raises = 0
-        if ($totals -match ' raises=(\d+)')   { $raises = [int]$Matches[1] }
 
         $report += [pscustomobject]@{
             Shape = $which; Chain = ($chain -join ' -> ')
             Threw = $nThrew; Handled = $nHandled; NoOutcome = $noOutcome
-            Raises = $raises; NoFrame = $errNoFrame; Ex = $threw
+            Ex = $threw
         }
 
         # What must hold whatever the interpreter does, except for Class_Terminate, which VBA
@@ -180,17 +170,16 @@ try {
         }
         Check "$which-every-exit-has-an-outcome" ($noOutcome -eq 0) `
               "rows without outcome: $noOutcome of $($exits.Count)"
-        # A raise is attributed to SOME frame, or counted as unattributable.
-        # Vanishing silently is the only bug here.
-        Check "$which-raise-accounted-for" (($nThrew -ge 1) -or ($errNoFrame -ge 1)) `
-              "threw=$nThrew errNoFrame=$errNoFrame raises=$raises  chain: $($chain -join ' -> ')"
+        # The error is attributed to SOME frame. Vanishing silently is the only bug here.
+        Check "$which-error-reads-threw" ($nThrew -ge 1) `
+              "threw=$nThrew  chain: $($chain -join ' -> ')"
     }
 
     Write-Output ''
     Write-Output 'PER SHAPE -- reported, not asserted:'
     foreach ($r in $report) {
-        Write-Output ("  {0,-7} raises={1} threw={2} handled={3} noFrame={4}  {5}" -f `
-            $r.Shape, $r.Raises, $r.Threw, $r.Handled, $r.NoFrame, $r.Chain)
+        Write-Output ("  {0,-7} threw={1} handled={2}  {3}" -f `
+            $r.Shape, $r.Threw, $r.Handled, $r.Chain)
         if ($r.Ex) { Write-Output ("            COM said: {0}" -f ($r.Ex -replace '\s+',' ')) }
     }
 

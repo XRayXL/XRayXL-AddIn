@@ -34,6 +34,9 @@ namespace modes
         // 1 = PAUSE by default: a full ring makes the calc wait until it is half empty, and loses nothing.
         volatile LONG g_pauseOnFull = 1;
 
+        // CSV by default: the format every reader of a trace already understands.
+        volatile LONG g_format = static_cast<LONG>(Format::Csv);
+
         int Ix(Source s) { return (s == Source::Vba) ? 1 : 0; }
 
         LONG Read(volatile LONG* a, Source s)
@@ -94,6 +97,11 @@ namespace modes
 
     bool GetPauseOnFull() { return InterlockedCompareExchange(&g_pauseOnFull, 0, 0) != 0; }
     void SetPauseOnFull(bool pause) { InterlockedExchange(&g_pauseOnFull, pause ? 1 : 0); NotifyStateChanged(); }
+
+    Format GetFormat() { return static_cast<Format>(InterlockedCompareExchange(&g_format, 0, 0)); }
+    void   SetFormat(Format f) { InterlockedExchange(&g_format, static_cast<LONG>(f)); NotifyStateChanged(); }
+    const char*    FormatName (Format f) { return f == Format::Jsonl ? "JSONL" : "CSV"; }
+    const wchar_t* FormatNameW(Format f) { return f == Format::Jsonl ? L"JSONL" : L"CSV"; }
 
     // Cached for the life of the process: a ship-vs-investigate choice, not
     // something to flip mid-session.

@@ -14,6 +14,7 @@
 // SAFEARRAY).
 #pragma once
 #include <cstdint>
+#include "core/textbuf.h"
 
 namespace vba
 {
@@ -42,12 +43,9 @@ namespace vba
         // count arguments (a1, a2, ...) while reads are done at slots.
         int  firstSlot = 1;
 
-        // CALLER-PROVIDED (a large per-thread render buffer), so a big
-        // array or variant argument is not trimmed to a fixed inline size and
-        // ArgCapture stays small on the hot-path stack. The render stops at
-        // `textCap`; a null `text` makes CaptureArgs decline cleanly.
-        char* text    = nullptr;
-        int   textCap = 0;
+        // CALLER-PROVIDED (a per-thread buffer), so ArgCapture stays small on the hot-path
+        // stack. A null `text` makes CaptureArgs decline cleanly.
+        core::TextBuf* text = nullptr;
 
         // A slot that had to be DEREFERENCED is ByRef in substance, whatever the
         // p-code declared -- the property the exit re-read needs. A
@@ -60,6 +58,8 @@ namespace vba
 
         // FNV-1a over the ByRef slots as rendered, so the exit can tell whether they moved.
         std::uint64_t byRefHash = 0;
+        // A ByRef slot was written as its shape alone, so the hash cannot see its contents.
+        bool byRefShapeOnly = false;
 
         // Recovered from the procedure's own p-code, e.g. "(Long,String)". A
         // position reads "?" when that parameter's type was not recoverable --
@@ -78,6 +78,7 @@ namespace vba
         ArgSzOutOfRange,
         SlotUnreadable,
         NoRenderBuffer,
+        TooLarge,
         Count_
     };
 

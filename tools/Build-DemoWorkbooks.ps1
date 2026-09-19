@@ -1,5 +1,5 @@
 <#
-  Build-DemoWorkbooks.ps1 -- regenerate dist\demo\*.xlsm.
+  Build-DemoWorkbooks.ps1 -- regenerate dist\demo\01..04 and 06..09 *.xlsm.
 
     .\tools\Build-DemoWorkbooks.ps1
 
@@ -15,6 +15,11 @@
   Settings). That is why the finished .xlsm files are committed, and why this
   runs only when the demo content itself changes. Opening and using them needs
   nothing but ordinary macro-enabling.
+
+  05_VBACurves.xlsm is not generated: it is a hand-built model, committed as it is.
+
+  The workbooks carry no Arm or Disarm buttons: XRayXL is driven from its ribbon group.
+  A button appears only where the thing being traced is itself a macro.
 #>
 $ErrorActionPreference = 'Stop'
 
@@ -23,17 +28,16 @@ $wbOut = Join-Path $root 'dist\demo'
 $built = Join-Path $root 'build\x64\Release'
 New-Item -ItemType Directory -Force $wbOut | Out-Null
 
-# The add-ins whose functions the saved formulas call. Build them first
-# (msbuild XRayXL.sln) or the workbooks save with #NAME? cached in every cell.
-# All three come straight from the build output, never from dist\ -- dist\ is
-# what a RELEASE assembled, so generating against it would bake last release's
-# behaviour into this release's workbooks. XRayXL itself is optional here: it
-# is registered only so the Arm/Disarm buttons resolve while the book is made.
+# The add-ins whose functions the saved formulas call, straight from the build output and
+# never from dist\ -- dist\ is what a RELEASE assembled. Build them first (msbuild XRayXL.sln)
+# or the workbooks save with #NAME? cached in every cell.
 $registerXlls = @(
     (Join-Path $built 'DemoFinance\DemoFinance64.xll')
     (Join-Path $built 'DemoBehaviors\DemoBehaviors64.xll')
-    (Join-Path $built 'XRayXL\XRayXL64.xll')
 )
+
+# The workbooks this script used to make, under the names they had.
+$retired = @('01_CalcChain.xlsm', '02_Events.xlsm', '03_Errors.xlsm', '04_Advanced.xlsm')
 
 function Clear-ComRef($Refs) {
     # an unreleased COM wrapper keeps Excel alive after Quit
@@ -42,70 +46,22 @@ function Clear-ComRef($Refs) {
     }
 }
 
-# ---------------------------------------------------------------------------
-# Generate the workbooks with Excel automation + VBA injection.
-# ---------------------------------------------------------------------------
+Add-Type -Namespace DemoBuild -Name Win -MemberDefinition @'
+[DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+'@
+
 $xl = New-Object -ComObject Excel.Application
+[uint32]$xlPid = 0
+[void][DemoBuild.Win]::GetWindowThreadProcessId([IntPtr]$xl.Hwnd, [ref]$xlPid)
 $xl.Visible = $false
 $xl.DisplayAlerts = $false
 try { $xl.EnableEvents = $false } catch {}   # don't fire events WHILE we build
 
 # try/finally, so a failed build does not leave a hidden Excel running
 try {
-    # Load the demo XLLs so the saved formulas carry cached values (they resolve
-    # again when the user loads the XLLs).
     foreach ($p in $registerXlls) {
         if (Test-Path $p) { try { [void]$xl.RegisterXLL($p) } catch { Write-Warning "RegisterXLL $(Split-Path $p -Leaf): $($_.Exception.Message)" } }
         else { Write-Warning "not built, so its formulas will cache as #NAME?: $p" }
-    }
-
-    function Save-Book($wb, $ws, $proj, $leaf) {
-        # One-click Arm / Disarm on every sheet, so XRayXL can be driven without the
-        # VBA editor. These call the tracer's XLL commands via Application.Run.
-        $c = $proj.VBComponents.Add(1); $c.Name = 'XRay'
-        $c.CodeModule.AddFromString(@'
-Public Sub ArmXRay()
-    On Error GoTo NoTracer
-    Application.Run "XRayXL_SetTraceParam", "VBA", "DEPTH", "ALL"
-    Dim ok: ok = Application.Run("XRayXL_Arm")
-    MsgBox "XRayXL armed. Recalculate or press the demo button, then Disarm.", vbInformation, "XRayXL"
-    Exit Sub
-NoTracer:
-    MsgBox "Could not reach XRayXL. Load it with File > Open on XRayXL64.xll," & vbCrLf & _
-           "then press Arm again.", vbExclamation, "XRayXL"
-End Sub
-
-Public Sub DisarmXRay()
-    On Error GoTo NoTracer
-    Dim dropped: dropped = Application.Run("XRayXL_Disarm")
-    On Error Resume Next
-    Shell "explorer.exe """ & Environ$("TEMP") & "\XRayXL\TraceFiles""", vbNormalFocus
-    MsgBox "XRayXL disarmed (" & dropped & " rows dropped)." & vbCrLf & _
-           "The newest CSV in the opened folder is your trace.", vbInformation, "XRayXL"
-    Exit Sub
-NoTracer:
-    MsgBox "XRayXL was not reachable.", vbExclamation, "XRayXL"
-End Sub
-'@)
-        $a = $ws.Buttons().Add(460, 10, 120, 24); $a.Text = 'Arm XRayXL';      $a.OnAction = 'ArmXRay'
-        $d = $ws.Buttons().Add(460, 40, 120, 24); $d.Text = 'Disarm + trace';  $d.OnAction = 'DisarmXRay'
-        $path = Join-Path $wbOut $leaf
-        Remove-Item $path -ErrorAction SilentlyContinue
-        $wb.SaveAs($path, 52)      # 52 = xlOpenXMLWorkbookMacroEnabled (.xlsm)
-        $wb.Close($false)
-        Write-Host "  workbook -> $leaf"
-        # release now rather than waiting for a GC before the next book
-        Clear-ComRef @($a, $d, $c, $proj, $ws, $wb)
-    }
-    function Add-Module($proj, $name, $code) {
-        $c = $proj.VBComponents.Add(1); $c.Name = $name       # 1 = standard module
-        $c.CodeModule.AddFromString($code)
-        Clear-ComRef @($c)
-    }
-    function Set-SheetCode($proj, $codeName, $code) {
-        $comp = $proj.VBComponents.Item($codeName)
-        $comp.CodeModule.AddFromString($code)
-        Clear-ComRef @($comp)
     }
 
     # Prove VBA trust once, up front, with a clear message. The finally below quits Excel.
@@ -113,15 +69,89 @@ End Sub
     catch { throw "Cannot inject VBA: enable File > Options > Trust Center > Macro Settings > 'Trust access to the VBA project object model', then re-run." }
     finally { Clear-ComRef @($probe) }
 
-    # ===== 01 -- a VBA -> XLL calculation chain ================================
-    $wb = $xl.Workbooks.Add()
-    $ws = $wb.Worksheets.Item(1); $ws.Name = 'Book'
-    $proj = $wb.VBProject
-    Add-Module $proj 'CalcChain' @'
-' A VBA UDF that calls a NESTED VBA helper -- one recalc, two VBA frames.
+    function New-DemoBook([string]$sheetName) {
+        $wb = $xl.Workbooks.Add()
+        $ws = $wb.Worksheets.Item(1)
+        $ws.Name = $sheetName
+        $xl.ActiveWindow.DisplayGridlines = $false
+        $ws.Cells.Font.Name = 'Segoe UI'
+        $ws.Cells.Font.Size = 10
+        return @{ Book = $wb; Sheet = $ws; Project = $wb.VBProject }
+    }
+
+    function Add-Module($proj, $name, $code) {
+        $c = $proj.VBComponents.Add(1); $c.Name = $name       # 1 = standard module
+        $c.CodeModule.AddFromString($code)
+        Clear-ComRef @($c)
+    }
+
+    function Set-SheetCode($proj, $codeName, $code) {
+        $comp = $proj.VBComponents.Item($codeName)
+        $comp.CodeModule.AddFromString($code)
+        Clear-ComRef @($comp)
+    }
+
+    # The top of every sheet: a title, one line on what it shows, and the steps to run it.
+    # Returns the first free row.
+    function Write-Guide($ws, [string]$title, [string]$purpose, [string[]]$steps) {
+        $t = $ws.Range('A1'); $t.Value2 = $title; $t.Font.Size = 16; $t.Font.Bold = $true
+        $ws.Range('A2').Value2 = $purpose
+        $ws.Range('A2').Font.Italic = $true
+        $r = 4
+        $h = $ws.Range("A$r"); $h.Value2 = 'Try it'; $h.Font.Bold = $true
+        $r++
+        $n = 1
+        foreach ($s in $steps) { $ws.Range("A$r").Value2 = "$n.  $s"; $r++; $n++ }
+        return $r + 1
+    }
+
+    # A section heading with a rule under it.
+    function Write-Heading($ws, [int]$row, [string]$text) {
+        $c = $ws.Range("A$row"); $c.Value2 = $text; $c.Font.Bold = $true; $c.Font.Size = 11
+        $ws.Range("A${row}:H${row}").Borders.Item(9).LineStyle = 1   # 9 = xlEdgeBottom
+    }
+
+    # One demo row: what it is, the formula, and what to look for in the trace.
+    function Write-Demo($ws, [int]$row, [string]$label, [string]$formula, [string]$look, [switch]$Spill) {
+        $ws.Range("A$row").Value2 = $label
+        if ($Spill) { $ws.Range("B$row").Formula2 = $formula } else { $ws.Range("B$row").Formula = $formula }
+        $ws.Range("B$row").HorizontalAlignment = -4131   # xlLeft
+        if ($look) { $ws.Range("J$row").Value2 = $look; $ws.Range("J$row").Font.Color = 0x606060 }
+    }
+
+    function Add-Button($ws, [string]$name, [string]$text, [string]$macro, $anchor) {
+        $cell = $ws.Range($anchor)
+        $b = $ws.Buttons().Add($cell.Left, $cell.Top, 150, 22)
+        $b.Name = $name; $b.Text = $text; $b.OnAction = $macro
+        Clear-ComRef @($b, $cell)
+    }
+
+    function Save-Book($demo, [string]$leaf) {
+        $ws = $demo.Sheet
+        $ws.Columns('A').ColumnWidth = 44
+        $ws.Columns('B:I').ColumnWidth = 11
+        $ws.Columns('J').ColumnWidth = 70
+        $ws.Range('A1').Select() | Out-Null
+        $path = Join-Path $wbOut $leaf
+        Remove-Item $path -ErrorAction SilentlyContinue
+        $demo.Book.SaveAs($path, 52)      # 52 = xlOpenXMLWorkbookMacroEnabled (.xlsm)
+        $demo.Book.Close($false)
+        Write-Host "  workbook -> $leaf"
+        Clear-ComRef @($demo.Project, $ws, $demo.Book)
+    }
+
+    $armStep     = 'Developer tab > XRayXL > Arm.'
+    $disarmStep  = 'Developer tab > XRayXL > Disarm.'
+    $readStep    = 'Open the trace: Options > Output > right-click Trace file > Reveal in File Explorer. (Tail in PowerShell, pressed before step 2, shows rows as they arrive.)'
+
+    # ===== 01 -- the first trace: VBA and XLL in one recalculation ============
+    $d = New-DemoBook 'First trace'
+    Add-Module $d.Project 'FirstTrace' @'
+' A VBA function that calls a nested VBA helper: one cell, two VBA frames.
 Public Function RiskWeighted(ByVal exposure As Double, ByVal rating As Long) As Double
     RiskWeighted = exposure * WeightFor(rating)
 End Function
+
 Private Function WeightFor(ByVal rating As Long) As Double
     Select Case rating
         Case 1: WeightFor = 0.2
@@ -130,163 +160,508 @@ Private Function WeightFor(ByVal rating As Long) As Double
     End Select
 End Function
 
-' A VBA UDF that calls an XLL function (Application.Run) and adjusts it in VBA:
-' the trace shows VBA -> XLL in one activation.
+' A VBA function that calls an XLL function: the XLL row nests inside the VBA one.
 Public Function OptionBook(ByVal spot As Double) As Double
-    Dim price As Double
-    price = Application.Run("BlackScholes", spot, 100#, 1#, 0.05, 0.2)
-    OptionBook = price * 100#          ' 100 contracts
+    OptionBook = 100# * Application.Run("BlackScholes", spot, 100#, 1#, 0.05, 0.2)
+End Function
+'@
+    $ws = $d.Sheet
+    $r = Write-Guide $ws '01  Your first trace' `
+        'One recalculation traced: VBA functions, XLL functions, and one calling the other.' `
+        @($armStep, 'Press Ctrl+Alt+F9 to recalculate everything.', $disarmStep, $readStep)
+    Write-Heading $ws $r 'What gets calculated'
+    $ws.Range("J$r").Value2 = 'Look for this in the trace'; $ws.Range("J$r").Font.Bold = $true
+    $r++
+    Write-Demo $ws $r 'RiskWeighted -- VBA calling VBA' '=RiskWeighted(1000000,3)' `
+        'RiskWeighted at depth 1, then WeightFor at depth 2 with parent = RiskWeighted''s span'; $r++
+    Write-Demo $ws $r 'OptionBook -- VBA calling an XLL' '=OptionBook(100)' `
+        'BlackScholes''s rows fall between OptionBook''s entry and exit, same callerref; each source counts its own depth'; $r++
+    Write-Demo $ws $r 'BlackScholes -- an XLL function' '=BlackScholes(100,100,1,0.05,0.2)' `
+        'source XLL; args a1:B=100 ... ; ret and rettype Q'; $r++
+    Write-Demo $ws $r 'SlowSum -- a slow XLL function' '=SlowSum(2,3)' `
+        'the ticks column: this one is far slower than its neighbours'; $r++
+    Write-Demo $ws $r 'Fibonacci -- a heavy XLL function' '=Fibonacci(30)' `
+        'ticks again; callerref names the cell each call came from'; $r++
+    Save-Book $d '01_FirstTrace.xlsm'
+
+    # ===== 02 -- values: ranges, arrays, Variants and types =====================
+    $d = New-DemoBook 'Values'
+    Add-Module $d.Project 'Values' @'
+' A range argument: the trace shows the Range, its address, and its cells row by row.
+Public Function CellCount(ByVal cells As Variant) As Long
+    CellCount = cells.Count
 End Function
 
-' A button/macro target: dirty the volatile cells and recalculate everything.
-Public Sub RunChain()
-    Application.CalculateFull
-End Sub
-'@
-    $ws.Range('A1').Value2 = 'A VBA->XLL calc chain. Load the demo XLLs + XRayXL, arm, then Recalculate.'
-    $ws.Range('A3').Value2 = 'RiskWeighted (VBA+nested):'; $ws.Range('B3').Formula = '=RiskWeighted(1000000,3)'
-    $ws.Range('A4').Value2 = 'OptionBook (VBA->XLL):';     $ws.Range('B4').Formula = '=OptionBook(100)'
-    $ws.Range('A5').Value2 = 'BlackScholes (XLL):';        $ws.Range('B5').Formula = '=BlackScholes(100,100,1,0.05,0.2)'
-    $ws.Range('A6').Value2 = 'SlowSum (slow XLL):';        $ws.Range('B6').Formula = '=SlowSum(2,3)'
-    $ws.Range('A7').Value2 = 'Fibonacci (heavy XLL):';     $ws.Range('B7').Formula = '=Fibonacci(30)'
-    $b = $ws.Buttons().Add(230, 15, 120, 28); $b.Text = 'Recalculate'; $b.OnAction = 'RunChain'
-    $ws.Columns('A:B').AutoFit() | Out-Null
-    Save-Book $wb $ws $proj '01_CalcChain.xlsm'
-    Clear-ComRef @($b)
+' A Variant array of mixed types: in a Variant, a number other than a Double names its type.
+Public Function MixedTypes() As Variant
+    MixedTypes = Array(CInt(1), 2.5, CLng(3), CCur(1.5), DateSerial(2026, 9, 19), "text", True)
+End Function
 
-    # ===== 02 -- events (Change / Open / button) ==============================
-    $wb = $xl.Workbooks.Add()
-    $ws = $wb.Worksheets.Item(1); $ws.Name = 'Book'
-    $proj = $wb.VBProject
-    Add-Module $proj 'Events' @'
-Public g_inChange As Boolean
-Public Sub Recalc()
-    ActiveSheet.Range("Trigger").Value = ActiveSheet.Range("Trigger").Value + 1
+' A 2-D typed array: both bounds of each dimension, then one brace level per row.
+Public Function TimesTable(ByVal n As Long) As Variant
+    Dim t() As Long, r As Long, c As Long
+    ReDim t(1 To n, 1 To n)
+    For r = 1 To n
+        For c = 1 To n
+            t(r, c) = r * c
+        Next c
+    Next r
+    TimesTable = t
+End Function
+
+' An array handed on by reference: the bytecode says only "a reference", so the trace
+' recognises the array from its own descriptor rather than from a declaration.
+Public Function SumOfSquares(ByVal n As Long) As Double
+    Dim a() As Double, i As Long
+    ReDim a(1 To n)
+    For i = 1 To n
+        a(i) = i * i
+    Next i
+    SumOfSquares = Total(a)
+End Function
+
+Private Function Total(ByRef squares() As Double) As Double
+    Dim i As Long, s As Double
+    For i = LBound(squares) To UBound(squares)
+        s = s + squares(i)
+    Next i
+    Total = s
+End Function
+'@
+    $ws = $d.Sheet
+    $r = Write-Guide $ws '02  Arguments and values' `
+        'How the trace writes what goes in and comes out: ranges, arrays, Variants and their types.' `
+        @($armStep, 'Press Ctrl+Alt+F9 to recalculate everything.', $disarmStep, $readStep)
+    Write-Heading $ws $r 'What gets calculated'
+    $ws.Range("J$r").Value2 = 'Look for this in the trace'; $ws.Range("J$r").Font.Bold = $true
+    $r++
+    $dataRow = $r + 12
+    Write-Demo $ws $r 'CellCount -- a range as an argument' "=CellCount(B${dataRow}:D$($dataRow + 2))" `
+        "a1 is Range@0x...([02_Values.xlsm]Values!B${dataRow}:D$($dataRow + 2))= followed by Variant[1..3,1..3]{{...},{...},{...}}: row 1 first, each row in its own braces"; $r++
+    Write-Demo $ws $r 'MixedTypes -- a Variant array of mixed types' '=MixedTypes()' `
+        'ret Variant[0..6]{Integer(1),2.5,Long(3),Currency(1.5000),Date(46284),"text",TRUE}: a bare number is a Double' -Spill; $r++
+    Write-Demo $ws $r 'TimesTable -- a 2-D typed array' '=TimesTable(3)' `
+        'ret Long[1..3,1..3]{{1,2,3},{2,4,6},{3,6,9}}: the elements are bare because the header says Long' -Spill; $r += 3
+    Write-Demo $ws $r 'SumOfSquares -- an array passed by reference' '=SumOfSquares(5)' `
+        'Total''s a1 is Ref&=Double[1..5]{1,4,9,16,25}: recognised from the array itself (see Declared or inferred)'; $r++
+    Write-Demo $ws $r 'MakeSeries -- an XLL returning an array' '=MakeSeries(4)' `
+        'ret Variant[1..1,1..4]{{1,4,9,16}}: an XLL array reads like a VBA one' -Spill; $r += 5
+    $ws.Range("A$dataRow").Value2 = 'The range CellCount reads:'
+    $ws.Range("B$dataRow").Value2 = 1.5;         $ws.Range("C$dataRow").Value2 = 'text'; $ws.Range("D$dataRow").Value2 = $true
+    $ws.Range("B$($dataRow + 1)").Value2 = 42;   $ws.Range("C$($dataRow + 1)").Formula = '=NA()'
+    $ws.Range("B$($dataRow + 2)").Value2 = -2.25; $ws.Range("C$($dataRow + 2)").Value2 = 'more'; $ws.Range("D$($dataRow + 2)").Value2 = 46284
+    $ws.Range("B${dataRow}:D$($dataRow + 2)").Borders.LineStyle = 1
+    $ws.Range("J$dataRow").Value2 = 'numbers bare, text quoted, TRUE, #N/A, Empty for the blank cell'
+    $ws.Range("J$dataRow").Font.Color = 0x606060
+    Save-Book $d '02_Values.xlsm'
+
+    # ===== 03 -- callers: what started each call ================================
+    $d = New-DemoBook 'Callers'
+    Add-Module $d.Project 'Callers' @'
+' A plain VBA function in a cell: the caller is that cell.
+Public Function Twice(ByVal x As Double) As Double
+    Twice = 2 * x
+End Function
+
+' An array formula entered over three cells: the caller is the whole range.
+Public Function ThreeOf(ByVal x As Double) As Variant
+    ThreeOf = Array(x, x * 2, x * 3)
+End Function
+
+' Run by the button: the caller is the button.
+Public Sub FromTheButton()
+    Helper "button"
 End Sub
-Private Sub Helper()
-    Dim t As Long: t = 1
+
+' The button schedules this with Application.OnTime: Excel runs it a second later.
+Public Sub StartTimer()
+    Application.OnTime Now + TimeSerial(0, 0, 1), "TimerTick"
 End Sub
-Public Sub OnChangeWork()
-    Helper                       ' a nested VBA frame from the Change event
+
+Public Sub TimerTick()
+    Helper "timer"
+End Sub
+
+Public Sub Helper(ByVal who As String)
+    Dim note As String
+    note = "called from the " & who
 End Sub
 '@
-    Set-SheetCode $proj $ws.CodeName @'
+    Set-SheetCode $d.Project $d.Sheet.CodeName @'
+' Runs when you edit the Trigger cell: VBA started by an event, not by a calculation.
 Private Sub Worksheet_Change(ByVal Target As Range)
-    If g_inChange Then Exit Sub
-    g_inChange = True
-    OnChangeWork
-    g_inChange = False
+    If Intersect(Target, Me.Range("Trigger")) Is Nothing Then Exit Sub
+    Helper "change event"
 End Sub
 '@
-    $proj.VBComponents.Item('ThisWorkbook').CodeModule.AddFromString(@'
-Private Sub Workbook_Open()
-    ThisWorkbook.Worksheets("Book").Range("Opened").Value = Now
-End Sub
-'@)
-    $ws.Range('A1').Value2 = 'Events demo. Arm XRayXL, then edit the Trigger cell or press the button.'
-    $ws.Range('A3').Value2 = 'Trigger (edit me):'; $ws.Range('B3').Name = 'Trigger'; $ws.Range('B3').Value2 = 0
-    $ws.Range('A4').Value2 = 'Opened at:';         $ws.Range('B4').Name = 'Opened'
-    $ws.Range('A5').Value2 = 'A volatile XLL:';    $ws.Range('B5').Formula = '=CallCounter()'
-    $b = $ws.Buttons().Add(230, 15, 120, 28); $b.Text = 'Recalc (event)'; $b.OnAction = 'Recalc'
-    $ws.Columns('A:B').AutoFit() | Out-Null
-    Save-Book $wb $ws $proj '02_Events.xlsm'
-    Clear-ComRef @($b)
+    $ws = $d.Sheet
+    $r = Write-Guide $ws '03  Who called it' `
+        'The caller and callerref columns: a cell, an array formula, an event, a button and a timer.' `
+        @($armStep, 'Press Ctrl+Alt+F9, type a number into the Trigger cell, press Run a macro, then press Start a timer and wait a second.', $disarmStep, $readStep)
+    Write-Heading $ws $r 'What starts a call'
+    $ws.Range("J$r").Value2 = 'Look for this in the trace'; $ws.Range("J$r").Font.Bold = $true
+    $r++
+    Write-Demo $ws $r 'Twice -- a function in a cell' '=Twice(7)' `
+        "caller cell, callerref '[03_Callers.xlsm]Callers'!B$r"; $r++
+    $ws.Range("A$r").Value2 = 'ThreeOf -- an array formula over three cells'
+    $ws.Range("B${r}:D$r").FormulaArray = '=ThreeOf(5)'
+    $ws.Range("J$r").Value2 = "caller cell, callerref the whole range ...!B${r}:D$r"; $ws.Range("J$r").Font.Color = 0x606060
+    $r++
+    Write-Demo $ws $r 'CallCounter -- a volatile XLL function' '=CallCounter()' `
+        'volatile: it runs again whenever anything recalculates, as the Trigger edit shows'; $r++
+    $ws.Range("A$r").Value2 = 'Trigger -- type a number here:'
+    $ws.Range("B$r").Name = 'Trigger'; $ws.Range("B$r").Value2 = 0
+    $ws.Range("B$r").Interior.Color = 0xCCF2FF
+    $ws.Range("J$r").Value2 = 'Worksheet_Change, then Helper beneath it: VBA run by an event'; $ws.Range("J$r").Font.Color = 0x606060
+    $r++
+    $ws.Range("A$r").Value2 = 'A button that runs a macro:'
+    Add-Button $ws 'RunAMacro' 'Run a macro' 'FromTheButton' "B$r"
+    $ws.Range("J$r").Value2 = 'FromTheButton with caller name, callerref RunAMacro -- the button''s name'; $ws.Range("J$r").Font.Color = 0x606060
+    $r++
+    $ws.Range("A$r").Value2 = 'A timer (Application.OnTime):'
+    Add-Button $ws 'StartATimer' 'Start a timer' 'StartTimer' "B$r"
+    $ws.Range("J$r").Value2 = 'StartTimer from the button, then TimerTick a second later, run by Excel itself'; $ws.Range("J$r").Font.Color = 0x606060
+    $r++
+    foreach ($row in 1..$r) { $ws.Rows($row).RowHeight = 22 }
+    Save-Book $d '03_Callers.xlsm'
 
-    # ===== 03 -- error handling chains ========================================
-    $wb = $xl.Workbooks.Add()
-    $ws = $wb.Worksheets.Item(1); $ws.Name = 'Book'
-    $proj = $wb.VBProject
-    Add-Module $proj 'Errors' @'
-' Outer catches; Middle only passes the error through; Thrower raises it.
-' In the trace: Thrower=threw, Middle=unwound, Outer=handled.
-Public Sub RunErrors()
-    E_Outer
+    # ===== 04 -- errors: how each call ended ======================================
+    $d = New-DemoBook 'Errors'
+    Add-Module $d.Project 'Errors' @'
+' Divides, and VBA raises "Division by zero" when b is 0.
+Private Function Divide(ByVal a As Double, ByVal b As Double) As Double
+    Divide = a / b
+End Function
+
+' Catches the error itself, so the cell shows "n/a": Divide threw, SafeRatio handled it.
+Public Function SafeRatio(ByVal a As Double, ByVal b As Double) As Variant
+    On Error GoTo Failed
+    SafeRatio = Divide(a, b)
+    Exit Function
+Failed:
+    SafeRatio = "n/a"
+End Function
+
+' Nothing catches it, so Excel shows #VALUE!: Divide threw, RawRatio did not handle it.
+Public Function RawRatio(ByVal a As Double, ByVal b As Double) As Double
+    RawRatio = Divide(a, b)
+End Function
+
+' Returning an error VALUE is not an error: the call returns normally, with #N/A.
+Public Function CodeFor(ByVal ccy As String) As Variant
+    If ccy = "EUR" Then CodeFor = 978 Else CodeFor = CVErr(xlErrNA)
+End Function
+
+' An Optional argument left out arrives as Missing.
+Public Function Scaled(ByVal x As Double, Optional ByVal factor As Variant) As Double
+    If IsMissing(factor) Then Scaled = x Else Scaled = x * factor
+End Function
+
+' Run by the button: Thrower raises, Middle passes it on, Outer catches it.
+Public Sub RunErrorChain()
+    Outer
 End Sub
-Public Sub E_Outer()
+
+Private Sub Outer()
     On Error GoTo Caught
-    E_Middle
+    Middle
     Exit Sub
 Caught:
-    Dim n As Long: n = 1: n = 2      ' the handler resumed -> "handled"
+    Dim resumed As Long
+    resumed = 1
 End Sub
-Public Sub E_Middle()
-    E_Thrower
+
+Private Sub Middle()
+    Thrower
 End Sub
-Public Sub E_Thrower()
+
+Private Sub Thrower()
     Err.Raise 5, "Demo", "a deliberate error"
 End Sub
 '@
-    $ws.Range('A1').Value2 = 'Error chains. Arm XRayXL, press Run, then read the outcome column of the trace.'
-    $ws.Range('A3').Value2 = 'MightDivide(10,0) [XLL error]:'; $ws.Range('B3').Formula = '=MightDivide(10,0)'
-    $ws.Range('A4').Value2 = 'SafeDivide(10,0) [XLL safe]:';   $ws.Range('B4').Formula = '=SafeDivide(10,0)'
-    $b = $ws.Buttons().Add(280, 15, 140, 28); $b.Text = 'Run error chain'; $b.OnAction = 'RunErrors'
-    $ws.Columns('A:B').AutoFit() | Out-Null
-    Save-Book $wb $ws $proj '03_Errors.xlsm'
-    Clear-ComRef @($b)
+    $ws = $d.Sheet
+    $r = Write-Guide $ws '04  Errors and how calls end' `
+        'The outcome column: returned, threw, unwound, handled and unhandled -- and error values that are not errors.' `
+        @($armStep, 'Press Ctrl+Alt+F9, then press Run the error chain.', $disarmStep, $readStep)
+    Write-Heading $ws $r 'What gets calculated'
+    $ws.Range("J$r").Value2 = 'Look for this in the trace'; $ws.Range("J$r").Font.Bold = $true
+    $r++
+    Write-Demo $ws $r 'SafeRatio(1,0) -- an error caught in VBA' '=SafeRatio(1,0)' `
+        'Divide: outcome threw.  SafeRatio: outcome handled, ret "n/a"'; $r++
+    Write-Demo $ws $r 'RawRatio(1,0) -- an error nothing catches' '=RawRatio(1,0)' `
+        'Divide: threw.  RawRatio: unhandled, and Excel shows #VALUE!'; $r++
+    Write-Demo $ws $r 'CodeFor("GBP") -- returning an error value' '=CodeFor("GBP")' `
+        'outcome returned, ret #N/A: an error value is a result, not an error'; $r++
+    Write-Demo $ws $r 'Scaled(10) -- an Optional left out' '=Scaled(10)' `
+        'a2:Variant=Missing'; $r++
+    Write-Demo $ws $r 'MightDivide(10,0) -- an XLL returning an error' '=MightDivide(10,0)' `
+        'source XLL, ret #DIV/0!, outcome returned'; $r++
+    Write-Demo $ws $r 'SafeDivide(10,0) -- an XLL that avoids it' '=SafeDivide(10,0)' `
+        'the same inputs, a plain value back'; $r++
+    $r++
+    Write-Heading $ws $r 'An error passed up a chain of macros'
+    $r++
+    $ws.Range("A$r").Value2 = 'Outer calls Middle calls Thrower:'
+    Add-Button $ws 'RunTheErrorChain' 'Run the error chain' 'RunErrorChain' "B$r"
+    $ws.Range("J$r").Value2 = 'Thrower: threw.  Middle: unwound -- it did not catch it.  Outer: handled.'; $ws.Range("J$r").Font.Color = 0x606060
+    foreach ($row in 1..$r) { $ws.Rows($row).RowHeight = 22 }
+    Save-Book $d '04_Errors.xlsm'
 
-    # ===== 04 -- advanced: form+timer, recursion, class module ================
-    $wb = $xl.Workbooks.Add()
-    $ws = $wb.Worksheets.Item(1); $ws.Name = 'Book'
-    $proj = $wb.VBProject
-    Add-Module $proj 'Advanced' @'
-' Recursion, a class, and a UserForm whose OnTime "timer" drives a recalc.
-Public Sub RunAdvanced()
-    Dim p As New Position
-    p.Init 1000000, 3
-    ThisWorkbook.Worksheets("Book").Range("Weighted").Value = p.Weighted
+    # ===== 06 -- objects: a class module, and Excel objects as arguments =========
+    $d = New-DemoBook 'Objects'
+    $cls = $d.Project.VBComponents.Add(2); $cls.Name = 'Position'     # 2 = class module
+    $cls.CodeModule.AddFromString(@'
+Private mQty As Double
 
-    ThisWorkbook.Worksheets("Book").Range("Tree").Value = WalkTree(6)
-
-    Dim f As New DemoForm         ' UserForm_Initialize runs; Arm schedules the timer
-    f.Arm
-    Set f = Nothing
+Private Sub Class_Initialize()
+    mQty = 0
 End Sub
 
-Public Function WalkTree(ByVal depth As Long) As Long
-    If depth <= 0 Then
-        WalkTree = 1
+Public Property Let Qty(ByVal q As Double)
+    mQty = q
+End Property
+
+Public Property Get Qty() As Double
+    Qty = mQty
+End Property
+
+Public Function Value(ByVal px As Double) As Double
+    Value = mQty * px
+End Function
+
+Private Sub Class_Terminate()
+    mQty = 0
+End Sub
+'@)
+    Clear-ComRef @($cls)
+    Add-Module $d.Project 'Objects' @'
+' Creates a Position, sets it up, values it, and lets it go: every class member shows as a call.
+Public Function PositionValue(ByVal units As Double, ByVal px As Double) As Double
+    Dim p As Position
+    Set p = New Position
+    p.Qty = units
+    PositionValue = p.Value(px)
+End Function
+
+' A Range argument: the trace names it, gives its address and reads its cells.
+Public Function RangeInfo(ByVal r As Range) As String
+    RangeInfo = r.Address(False, False) & " has " & r.Cells.Count & " cells"
+End Function
+
+' Run by the button: a Worksheet, a Workbook and a Collection passed as arguments,
+' and a Range returned.
+Public Sub DescribeThings()
+    Describe ActiveSheet
+    Describe ThisWorkbook
+    Describe New Collection
+    Dim c As Range
+    Set c = FirstDataCell()
+End Sub
+
+Private Sub Describe(ByVal o As Object)
+    Dim n As String
+    n = TypeName(o)
+End Sub
+
+Private Function FirstDataCell() As Range
+    Set FirstDataCell = ThisWorkbook.Worksheets("Objects").Range("DataStart")
+End Function
+'@
+    $ws = $d.Sheet
+    $r = Write-Guide $ws '06  Objects and classes' `
+        'A class module''s members as calls, and Excel objects -- a Range, a Worksheet, a Workbook -- as arguments.' `
+        @($armStep, 'Press Ctrl+Alt+F9, then press Describe the objects.', $disarmStep, $readStep)
+    Write-Heading $ws $r 'What gets calculated'
+    $ws.Range("J$r").Value2 = 'Look for this in the trace'; $ws.Range("J$r").Font.Bold = $true
+    $r++
+    $dataRow = $r + 6
+    Write-Demo $ws $r 'PositionValue -- a class, created and released' '=PositionValue(100,2.5)' `
+        'under PositionValue: Class_Initialize, Qty (a1:Double=100), Value (ret 250); then Class_Terminate, after PositionValue''s exit, when VBA releases the object'; $r++
+    Write-Demo $ws $r 'RangeInfo -- a Range as an argument' "=RangeInfo(B${dataRow}:C$($dataRow + 1))" `
+        "a1:Object=Range@0x...([06_Objects.xlsm]Objects!B${dataRow}:C$($dataRow + 1))=Variant[1..2,1..2]{{1.5,`"a`"},{2.5,`"b`"}}"; $r++
+    $r++
+    $ws.Range("A$r").Value2 = 'Objects passed by a macro:'
+    Add-Button $ws 'DescribeTheObjects' 'Describe the objects' 'DescribeThings' "B$r"
+    $ws.Range("J$r").Value2 = 'Describe three times: Worksheet@0x...([06_Objects.xlsm]Objects), Workbook@0x...([06_Objects.xlsm]), Collection@0x...; FirstDataCell ret Range@0x...(...!B' + $dataRow + ')=1.5'
+    $ws.Range("J$r").Font.Color = 0x606060
+    $ws.Range("A$dataRow").Value2 = 'The range RangeInfo reads:'
+    $ws.Range("B$dataRow").Name = 'DataStart'
+    $ws.Range("B$dataRow").Value2 = 1.5;       $ws.Range("C$dataRow").Value2 = 'a'
+    $ws.Range("B$($dataRow + 1)").Value2 = 2.5; $ws.Range("C$($dataRow + 1)").Value2 = 'b'
+    $ws.Range("B${dataRow}:C$($dataRow + 1)").Borders.LineStyle = 1
+    foreach ($row in 1..($dataRow + 1)) { $ws.Rows($row).RowHeight = 22 }
+    Save-Book $d '06_Objects.xlsm'
+
+    # ===== 07 -- the call tree: recursion, ByRef changes, and End ================
+    $d = New-DemoBook 'Call tree'
+    Add-Module $d.Project 'CallTree' @'
+' Straight recursion: one chain, five deep.
+Public Function Factorial(ByVal n As Long) As Double
+    If n <= 1 Then
+        Factorial = 1
     Else
-        WalkTree = 1 + WalkTree(depth - 1) + WalkTree(depth - 1)
+        Factorial = n * Factorial(n - 1)
     End If
 End Function
 
-Public Sub TimerTick()
-    ThisWorkbook.Worksheets("Book").Range("Ticked").Value = Now
-    ThisWorkbook.Worksheets("Book").Calculate
+' Recursion that branches: nine calls, and only `parent` says which called which.
+Public Function VbaFib(ByVal n As Long) As Long
+    If n < 2 Then
+        VbaFib = n
+    Else
+        VbaFib = VbaFib(n - 1) + VbaFib(n - 2)
+    End If
+End Function
+
+' ClampInPlace changes its ByRef argument, and the exit row shows the new value.
+Public Function Clamped(ByVal x As Double) As Double
+    Dim v As Double
+    v = x
+    ClampInPlace v, 0, 100
+    Clamped = v
+End Function
+
+Private Sub ClampInPlace(ByRef v As Double, ByVal lo As Double, ByVal hi As Double)
+    If v < lo Then v = lo
+    If v > hi Then v = hi
+End Sub
+
+' Run by the button: End stops all VBA at once, and no procedure returns.
+Public Sub StopEverything()
+    Level1
+End Sub
+
+Private Sub Level1()
+    Level2
+End Sub
+
+Private Sub Level2()
+    End
 End Sub
 '@
-    $cls = $proj.VBComponents.Add(2); $cls.Name = 'Position'   # 2 = class module
-    $cls.CodeModule.AddFromString(@'
-Private mExposure As Double
-Private mRating As Long
-Public Sub Init(ByVal exposure As Double, ByVal rating As Long)
-    mExposure = exposure
-    mRating = rating
-End Sub
-Public Property Get Weighted() As Double
-    Weighted = mExposure * IIf(mRating <= 1, 0.2, IIf(mRating = 2, 0.5, 1#))
-End Property
-'@)
-    $frm = $proj.VBComponents.Add(3); $frm.Name = 'DemoForm'    # 3 = UserForm
-    $frm.CodeModule.AddFromString(@'
-Private Sub UserForm_Initialize()
-    Dim marker As Long: marker = 1
-End Sub
-Public Sub Arm()
-    Application.OnTime Now, ThisWorkbook.Name & "!TimerTick"
-End Sub
-'@)
-    $ws.Range('A1').Value2 = 'Advanced: recursion, a class, and a form+timer. Arm XRayXL, then press Run.'
-    $ws.Range('A3').Value2 = 'Weighted (class):'; $ws.Range('B3').Name = 'Weighted'
-    $ws.Range('A4').Value2 = 'WalkTree (recursion):'; $ws.Range('B4').Name = 'Tree'
-    $ws.Range('A5').Value2 = 'Timer ticked at:'; $ws.Range('B5').Name = 'Ticked'
-    $ws.Range('A7').Value2 = 'MakeSeries(6) [spilling XLL array]:'; $ws.Range('B7').Formula = '=MakeSeries(6)'
-    $ws.Range('A9').Value2 = 'ThreadSafeSquare down a column [multi-threaded XLL]:'
-    for ($i = 0; $i -lt 12; $i++) { $ws.Range("B$(10+$i)").Formula = "=ThreadSafeSquare($($i+1))" }
-    $b = $ws.Buttons().Add(320, 15, 120, 28); $b.Text = 'Run advanced'; $b.OnAction = 'RunAdvanced'
-    $ws.Columns('A:B').AutoFit() | Out-Null
-    Save-Book $wb $ws $proj '04_Advanced.xlsm'
-    Clear-ComRef @($b, $frm, $cls)
+    $ws = $d.Sheet
+    $r = Write-Guide $ws '07  The call tree' `
+        'depth and parent through recursion, a ByRef argument changing, and End stopping everything.' `
+        @($armStep, 'Press Ctrl+Alt+F9, then press Stop everything.', $disarmStep, $readStep)
+    Write-Heading $ws $r 'What gets calculated'
+    $ws.Range("J$r").Value2 = 'Look for this in the trace'; $ws.Range("J$r").Font.Bold = $true
+    $r++
+    Write-Demo $ws $r 'Factorial(5) -- one chain, five deep' '=Factorial(5)' `
+        'depth 1 to 5, each parent the span above it; a1 5,4,3,2,1; exits innermost first, ret 1,2,6,24,120'; $r++
+    Write-Demo $ws $r 'VbaFib(4) -- recursion that branches' '=VbaFib(4)' `
+        'nine VbaFib calls, deepest at depth 4; two calls at the same depth have different parents'; $r++
+    Write-Demo $ws $r 'Clamped(150) -- a ByRef argument changed' '=Clamped(150)' `
+        'ClampInPlace entry a1:Double&=150; its exit row carries a1:Double&=100, the new value'; $r++
+    Write-Demo $ws $r 'Clamped(50) -- a ByRef argument left alone' '=Clamped(50)' `
+        'ClampInPlace exit row carries no args: nothing changed'; $r++
+    $r++
+    $ws.Range("A$r").Value2 = 'End, three calls deep:'
+    Add-Button $ws 'StopEverything' 'Stop everything' 'StopEverything' "B$r"
+    $ws.Range("J$r").Value2 = 'StopEverything, Level1, Level2: outcome abandoned, trust end -- none of them returned'
+    $ws.Range("J$r").Font.Color = 0x606060
+    foreach ($row in 1..$r) { $ws.Rows($row).RowHeight = 22 }
+    Save-Book $d '07_CallTree.xlsm'
+
+    # ===== 08 -- threads: multi-threaded recalculation ============================
+    $d = New-DemoBook 'Threads'
+    Add-Module $d.Project 'Threads' @'
+' VBA always runs on Excel's main thread, whatever the calculation settings.
+Public Function VbaSquare(ByVal x As Double) As Double
+    VbaSquare = x * x
+End Function
+'@
+    $ws = $d.Sheet
+    $r = Write-Guide $ws '08  Threads' `
+        'The thread column: a thread-safe XLL spread across calculation threads, and VBA on the main thread.' `
+        @('Check File > Options > Advanced > Formulas: Enable multi-threaded calculation.', $armStep,
+          'Press Ctrl+Alt+F9.', $disarmStep, $readStep)
+    Write-Heading $ws $r 'What gets calculated'
+    $ws.Range("J$r").Value2 = 'Look for this in the trace'; $ws.Range("J$r").Font.Bold = $true
+    $r++
+    Write-Demo $ws $r 'ReverseText -- an XLL taking and returning text' '=ReverseText("hello")' `
+        'typetext C%, a1:C%="hello", ret "olleh"'; $r++
+    $r++
+    $ws.Range("A$r").Value2 = 'Columns D and E, 500 rows each:'
+    $ws.Range("J$r").Value2 = 'ThreadSafeSquare (rettype Q$) on several thread ids; VbaSquare all on one'
+    $ws.Range("J$r").Font.Color = 0x606060
+    $top = $r
+    $ws.Range("D$top").Value2 = 'ThreadSafeSquare'; $ws.Range("E$top").Value2 = 'VbaSquare'
+    $ws.Range("D${top}:E$top").Font.Bold = $true
+    $ws.Range("D$($top + 1):D$($top + 500)").Formula = '=ThreadSafeSquare(ROW())'
+    $ws.Range("E$($top + 1):E$($top + 500)").Formula = '=VbaSquare(ROW())'
+    $ws.Columns('D:E').ColumnWidth = 16
+    Save-Book $d '08_Threads.xlsm'
+
+    # ===== 09 -- a bigger model, all XLL: an option book ==========================
+    # Fixed rows, so the addresses on the sheet and in the walkthrough are the trace's own.
+    $d = New-DemoBook 'Pricing'
+    $ws = $d.Sheet
+    [void](Write-Guide $ws '09  An option book, all XLL' `
+        'A priced portfolio built from XLL functions: text, ranges, arrays and references as arguments, arrays as results.' `
+        @($armStep, 'Press Ctrl+Alt+F9.', $disarmStep, $readStep))
+    $ws.Range('A11').Value2 = 'Quotes';  $ws.Range('A11').Font.Bold = $true
+    # A table goes in as one 2-D array, set through InvokeMember with every value unwrapped:
+    # in this script PowerShell's COM binder takes Value2 for a string property and refuses
+    # a number, and COM cannot marshal a PSObject wrapper.
+    function Set-Table($ws, [string]$topLeft, $rows) {
+        $n = $rows.Count; $m = $rows[0].Count
+        $grid = [object[,]]::new($n, $m)
+        for ($i = 0; $i -lt $n; $i++) { for ($j = 0; $j -lt $m; $j++) { $grid[$i, $j] = $rows[$i][$j].PSObject.BaseObject } }
+        $target = $ws.Range($topLeft).Resize($n, $m)
+        $argv = [object[]]::new(1); $argv[0] = $grid
+        [void][System.__ComObject].InvokeMember('Value2', [Reflection.BindingFlags]::SetProperty, $null, $target, $argv)
+    }
+    Set-Table $ws 'A12' @(@('ACME', 102.5), @('BOLT', 48.2), @('CRUX', 250), @('DYNA', 75.4), @('EXPO', 12.9))
+    $ws.Range('A12:B16').Name = 'Quotes'
+    $ws.Range('D12').Value2 = 'Rate'; $ws.Range('E12').Value2 = 0.05; $ws.Range('E12').Name = 'Rate'
+
+    $ws.Range('A18').Value2 = 'Positions'; $ws.Range('A18').Font.Bold = $true
+    Set-Table $ws 'A19' @(,@('Ticker', 'Strike', 'Years', 'Vol', 'Qty', 'Spot', 'Price', 'Value'))
+    $ws.Range('A19:H19').Font.Bold = $true
+    Set-Table $ws 'A20' @(
+        @('ACME', 100, 1, 0.20, 10), @('ACME', 110, 0.5, 0.25, -5), @('BOLT', 50, 2, 0.30, 20),
+        @('BOLT', 45, 1, 0.30, 15),  @('CRUX', 240, 1, 0.18, 2),    @('CRUX', 260, 3, 0.22, 4),
+        @('DYNA', 80, 0.25, 0.35, 8), @('DYNA', 70, 1, 0.35, -6),   @('EXPO', 12, 2, 0.40, 50),
+        @('ZZZZ', 10, 1, 0.20, 1))
+    $ws.Range('F20:F29').Formula = '=QuoteLookup(A20,Quotes)'
+    $ws.Range('G20:G29').Formula = '=BlackScholes(F20,B20,C20,Rate,D20)'
+    $ws.Range('H20:H29').Formula = '=E20*G20'
+    $ws.Range('J20').Value2 = 'QuoteLookup ten times: a1:C%="ACME", a2:Q=Variant[1..5,1..2]{{"ACME",102.5},...}; ZZZZ returns #N/A'
+    $ws.Range('J21').Value2 = 'BlackScholes nine times, not ten: Excel never calls it for row 29, whose spot is #N/A'
+
+    $ws.Range('A31').Value2 = 'Portfolio'; $ws.Range('A31').Font.Bold = $true
+    $ws.Range('A32').Value2 = 'Qty-weighted average price'; $ws.Range('B32').Formula = '=WeightedAverage(G20:G28,E20:E28)'
+    $ws.Range('J32').Value2 = 'a1:K%=Double[1..9,1..1]{{...}} a2:K%=Double[1..9,1..1]{{10},{-5},...}: plain double arrays'
+    $ws.Range('A33').Value2 = 'Cells in the positions table'; $ws.Range('B33').Formula = '=RangeSize(A20:H29)'
+    $ws.Range('J33').Value2 = 'a1:U=SRef(R20C1:R29C8): a reference, named and not read; ret 80'
+    $ws.Range('A34').Value2 = 'NPV of the bond cashflows'; $ws.Range('B34').Formula = '=NetPresentValue(Rate,B37:F37)'
+    $ws.Range('J34').Value2 = 'a1:B=0.05 a2:Q=Variant[1..1,1..5]{{100,100,100,100,1100}}'
+    $ws.Range('A35').Value2 = 'Grown for 10 years, then discounted'; $ws.Range('B35').Formula = '=PresentValue(CompoundReturn(1000,0.07,10),Rate,10)'
+    $ws.Range('J35').Value2 = 'CompoundReturn then PresentValue, both depth 1 and callerref B35: the inner call finishes first'
+    $ws.Range('A37').Value2 = 'Bond cashflows'
+    Set-Table $ws 'B37' @(,@(100, 100, 100, 100, 1100))
+
+    $ws.Range('A39').Value2 = 'Discount curve'; $ws.Range('A39').Font.Bold = $true
+    Set-Table $ws 'B40' @(@(0.5), @(1), @(2), @(5), @(10))
+    $ws.Range('C40').Formula2 = '=DiscountCurve(Rate,B40:B44)'
+    $ws.Range('J40').Value2 = 'one call; ret Variant[1..5,1..1]{{0.97...},...}: a column in, a column out'
+
+    $ws.Range('A46').Value2 = 'Price grid: strike across, vol down'; $ws.Range('A46').Font.Bold = $true
+    Set-Table $ws 'B47' @(,@(80, 90, 100, 110, 120))
+    Set-Table $ws 'A48' @(@(0.1), @(0.2), @(0.3), @(0.4))
+    $ws.Range('B48:F51').Formula = '=BlackScholes(100,B$47,1,Rate,$A48)'
+    $ws.Range('J48').Value2 = 'twenty more BlackScholes calls, one per cell, callerref B48 to F51'
+    $ws.Range('J20:J48').Font.Color = 0x606060
+    $ws.Columns('A').ColumnWidth = 34
+    $ws.Columns('B:H').ColumnWidth = 11
+    $ws.Columns('J').ColumnWidth = 90
+    $ws.Range('A1').Select() | Out-Null
+    $path = Join-Path $wbOut '09_XLLPricing.xlsm'
+    Remove-Item $path -ErrorAction SilentlyContinue
+    $d.Book.SaveAs($path, 52)
+    $d.Book.Close($false)
+    Write-Host '  workbook -> 09_XLLPricing.xlsm'
+    Clear-ComRef @($d.Project, $ws, $d.Book)
 }
 finally {
     # dropping the variable releases nothing: Excel is a ref-counted COM server
@@ -295,7 +670,14 @@ finally {
         Clear-ComRef @($xl)
     }
     [GC]::Collect(); [GC]::WaitForPendingFinalizers()
+    # a failed build can leave references Quit cannot outlive; end our own Excel, by its pid
+    Start-Sleep -Seconds 2
+    if ($xlPid -and (Get-Process -Id $xlPid -ErrorAction SilentlyContinue)) { Stop-Process -Id $xlPid -Force }
 }
 
+foreach ($leaf in $retired) {
+    $old = Join-Path $wbOut $leaf
+    if (Test-Path $old) { Remove-Item $old; Write-Host "  retired -> $leaf" }
+}
 Write-Host "workbooks -> $wbOut"
 Write-Host "done."

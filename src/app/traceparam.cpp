@@ -117,7 +117,28 @@ namespace
         core::Log::Note(line);
         return EchoStr(pause
             ? L"BUFFERWHENFULL=PAUSE (a full ring makes traced threads wait until it is half empty; never loses; takes effect at next arm)"
-            : L"BUFFERWHENFULL=DROP (rows dropped when the ring is full, marked once; takes effect at next arm)");
+            : L"BUFFERWHENFULL=DROP (rows dropped when the ring is full, each leaving a hole in the input column; takes effect at next arm)");
+    }
+
+    // FORMAT is source-less too: the file's format, CSV or JSONL. Same landing rule and return
+    // convention as BUFFERWHENFULL.
+    LPXLOPER12 HandleFormatParam(LPXLOPER12 srcArg, LPXLOPER12 nameArg, LPXLOPER12 valArg)
+    {
+        LPXLOPER12 v = ValueAfterWord(srcArg, nameArg, valArg, L"FORMAT");
+        if (!v) return nullptr;
+
+        if (AnythingArmed())
+            return EchoStr(L"#Err - cannot change settings while armed; XRayXL_Disarm first, then set, then XRayXL_Arm");
+        core::modes::Format f = core::modes::Format::Csv;
+        if (!ParseFormat(v, f))
+            return EchoStr(L"#Err - FORMAT must be CSV or JSONL; nothing changed");
+        core::modes::SetFormat(f);
+        char line[64];
+        _snprintf_s(line, _TRUNCATE, "trace param set: FORMAT -> %s", core::modes::FormatName(f));
+        core::Log::Note(line);
+        return EchoStr(f == core::modes::Format::Jsonl
+            ? L"FORMAT=JSONL (one JSON object a line, every value typed; takes effect at next arm)"
+            : L"FORMAT=CSV (one row a line, values as text; takes effect at next arm)");
     }
 
     // LOGLEVEL is source-less and, unlike the trace params, settable AT ANY
@@ -155,14 +176,18 @@ namespace
         if (LPXLOPER12 r = HandleLogLevelParam(srcArg, nameArg, valArg)) return r;
         if (LPXLOPER12 r = HandleBufferSizeParam(srcArg, nameArg, valArg))   return r;
         if (LPXLOPER12 r = HandleBufferWhenFullParam(srcArg, nameArg, valArg)) return r;
+        if (LPXLOPER12 r = HandleFormatParam(srcArg, nameArg, valArg))         return r;
 
         bool both = false; core::modes::Source s = core::modes::Source::Xll;
         if (!ParseSource(srcArg, both, s))
             return EchoStr(L"#Err - Source must be XLL or VBA, or omitted for both; nothing changed");
 
         core::modes::Param p = core::modes::Param::Depth;
+        // With no Source, the settings of the recording as a whole are candidates too.
         if (!ParseParam(nameArg, p))
-            return EchoStr(L"#Err - Name must be DEPTH, ARGS, RETVAL or OBJECTS; nothing changed");
+            return EchoStr(both
+                ? L"#Err - Name must be DEPTH, ARGS, RETVAL, OBJECTS, BUFFERSIZE, BUFFERWHENFULL, FORMAT or LOGLEVEL; nothing changed"
+                : L"#Err - Name must be DEPTH, ARGS, RETVAL or OBJECTS; nothing changed");
 
         // OBJECTS is VBA only, so it is refused for XLL and for an omitted Source: "both" cannot mean one.
         if (p == core::modes::Param::Objects && (both || s == core::modes::Source::Xll))
@@ -208,7 +233,8 @@ namespace
     // The XLOPER-grid mechanics are xlgrid.h. None of these is registered
     // thread-safe, so Excel calls them on its main thread; thread-local keeps
     // that true should one ever be.
-    __declspec(thread) app::XlGrid<32, 32> t_param;
+    // 128 characters a cell: the longest answer is an error message, and one cut short misleads.
+    __declspec(thread) app::XlGrid<32, 128> t_param;
 
     void       CellStr (int i, const wchar_t* text) { t_param.Str(i, text); }
     LPXLOPER12 CellEcho(const wchar_t* text)        { return t_param.Scalar(text); }
@@ -227,6 +253,9 @@ namespace
 
         if (NamesWord(srcArg, nameArg, L"BUFFERWHENFULL"))
             return CellEcho(core::modes::GetPauseOnFull() ? L"PAUSE" : L"DROP");
+
+        if (NamesWord(srcArg, nameArg, L"FORMAT"))
+            return CellEcho(core::modes::FormatNameW(core::modes::GetFormat()));
 
         // LOGLEVEL is source-less too, and reads back the current log level.
         if (NamesWord(srcArg, nameArg, L"LOGLEVEL"))
@@ -300,11 +329,11 @@ namespace
 
 extern "C" LPXLOPER12 __stdcall XRayXL_SetTraceParam(LPXLOPER12 src, LPXLOPER12 name, LPXLOPER12 value)
 {
-    return GuardedOper("XRayXL_SetTraceParam FAULTED -- contained; nothing changed",
+    return GuardedOper("XRayXL_SetTraceParam",
                        SetTraceParamBody, src, name, value);
 }
 
 extern "C" LPXLOPER12 __stdcall XRayXL_GetTraceParam(LPXLOPER12 src, LPXLOPER12 name)
 {
-    return GuardedOper("XRayXL_GetTraceParam FAULTED -- contained", GetTraceParamBody, src, name);
+    return GuardedOper("XRayXL_GetTraceParam", GetTraceParamBody, src, name);
 }

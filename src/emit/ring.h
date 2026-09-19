@@ -55,6 +55,10 @@ namespace emit
         // is inactive.
         bool  TryDeposit(const char* data, int n, HANDLE wake);
 
+        // CONSUMER, single thread only. The length of the next committed record, or -1 when
+        // none is ready, so the caller can size the buffer it pops into.
+        int   PendingLen() const;
+
         // CONSUMER, single thread only. Pops the next committed record into
         // `out` -- which must be large enough for the biggest record ever
         // deposited -- sets `len`, and returns true. False when nothing is ready

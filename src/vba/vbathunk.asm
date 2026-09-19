@@ -50,7 +50,6 @@ option casemap:none
 
 EXTERN XRayVbaOnStatement : PROC
 EXTERN XRayVbaOnExit      : PROC
-EXTERN XRayVbaOnRaise     : PROC
 EXTERN XRayVbaOnEnd       : PROC
 
 .code
@@ -155,8 +154,6 @@ ENDM
 
 HOOK_THUNK XRayVbaBosThunk,   XRayVbaOnStatement
 HOOK_THUNK XRayVbaExitThunk,  XRayVbaOnExit
-; The raise opcode (slot 497) fires four times per Err.Raise; the recorder dedupes.
-HOOK_THUNK XRayVbaRaiseThunk, XRayVbaOnRaise
 ; The End opcode (slot 619) fires no exit for the frames it kills, and runs before its handler.
 HOOK_THUNK XRayVbaEndThunk,   XRayVbaOnEnd
 

@@ -230,10 +230,10 @@ try {
     $vArray  = @($exits | Where-Object { $_.function -eq 'RVariantArr' })
     $vString = @($exits | Where-Object { $_.function -eq 'RVariantStr' })
     Check 'variant-scalar-decodes' `
-          (($vScalar.Count -ge 1) -and ($vScalar[0].ret -eq '42')) `
+          (($vScalar.Count -ge 1) -and ($vScalar[0].ret -eq 'Integer(42)')) `
           ("RVariant ret='$($vScalar[0].ret)' type='$($vScalar[0].rettype)'")
     Check 'variant-holding-an-array-reads-as-an-array' `
-          (($vArray.Count -ge 1) -and ($vArray[0].ret -eq 'Variant[0..2]{11,22,33}')) `
+          (($vArray.Count -ge 1) -and ($vArray[0].ret -eq 'Variant[0..2]{Integer(11),Integer(22),Integer(33)}')) `
           ("RVariantArr ret='$($vArray[0].ret)' type='$($vArray[0].rettype)'")
     Check 'variant-holding-a-string-reads-as-a-string' `
           (($vString.Count -ge 1) -and ($vString[0].ret -match 'in a variant')) `

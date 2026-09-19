@@ -43,9 +43,10 @@ End Function
         # A COLUMN OF THREE IS 2-D -- three rows by one column. Asserted here as
         # well as in the sibling case because a MIXED column is the shape a
         # reader is most likely to meet.
-        if ($val -notmatch '^Variant\[1\.\.3,1\.\.1\]\{(.+)\}$') {
-            return "expected Variant[1..3,1..1]{...}, got [$val]" }
-        $elems = $Matches[1] -split ','
+        # One brace level per row, so each row is {one element}.
+        if ($val -notmatch '^Variant\[1\.\.3,1\.\.1\]\{\{(.+)\}\}$') {
+            return "expected Variant[1..3,1..1]{{...},{...},{...}}, got [$val]" }
+        $elems = $Matches[1] -split '\},\{'
 
         # EACH TYPE KEEPS ITS OWN RENDERING inside the one array: the string
         # quoted, the numbers bare. Nothing coerces them to a common form.

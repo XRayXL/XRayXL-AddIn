@@ -14,6 +14,7 @@
 #include "core/clock.h"
 #include "core/hash.h"
 #include "core/safemem.h"
+#include "core/valueformat.h"
 
 #include <windows.h>
 #include <cstring>
@@ -91,22 +92,20 @@ namespace vba
             std::uint64_t sp;            // interpreter rsp when this frame was seen
             std::uint64_t span;          // pairs this frame's entry and exit rows
             std::uint64_t parent;        // the span we were called from, 0 at the top
+            // The depth rows report: 1 for a chain Excel started inside another's DoEvents,
+            // though that chain still sits above it on the shadow stack.
+            int           shownDepth;
             // HOW THIS ACTIVATION ENDED.
             //
             //   returned  it finished normally
-            //   threw     the error was raised IN this frame
+            //   threw     an error left it, and it was the innermost frame to go
             //   unwound   the error passed THROUGH it -- it ran nothing after the
-            //             raise, so it did not handle it
-            //   handled   it ran again after the raise, so it caught it
+            //             error, so it did not handle it
+            //   handled   it ran again after the error, so it caught it
             //
             // A chain reads threw -> unwound -> unwound -> handled from the throwing
             // frame outwards: where was it thrown, and who caught it.
             std::uint8_t  outcome;
-
-            // Did the raise opcode fire in this frame? The outcome is decided at close, because
-            // at the raise a real Err.Raise and ordinary object-model VBA (a cell write, For
-            // Each, OnTime) are identical. How the frame left tells them apart.
-            bool          raised;
 
             // EXCEL STARTED THIS FRAME as a worksheet-function activation, so an error
             // leaving it becomes a cell's #VALUE! rather than a VBA caller's error.
@@ -125,6 +124,8 @@ namespace vba
             // 64 KB x kMaxDepth to answer a yes/no question. The "before" text is
             // already in the entry ROW, which is where a reader gets it.
             std::uint64_t argsHash;
+            // A ByRef argument was written as its shape alone at entry, so no exit can compare.
+            bool          argsShapeOnly;
 
             // No caller gate: the exit opcode says whether a result exists (a
             // Sub leaves through slot 635) and of what kind, so the return is
@@ -146,47 +147,29 @@ namespace vba
             int    overflowDepth;
             std::uint32_t generation;   // which arming session this belongs to
 
-            // An error in flight on this thread. A frame that ran nothing since the raise
-            // unwound; a statement running again in a frame that predates the raise means that
-            // frame caught it.
-            //
-            // errActive is set at the thrower's close, not at the raise, so a benign raise's
-            // provisional state cannot suppress a genuine throw in a nested frame.
+            // An error in flight on this thread, set when the thrower closes. A frame that
+            // ran nothing since unwound; a statement running again in a frame that predates
+            // the throw means that frame caught it.
             bool          errActive;
+            // DoEvents open on this thread, and the frame depth each call was made at, so a
+            // procedure Excel runs while a frame waits there can be told from one it called.
+            int           doEventsMarks;
+            int           doEventsAt[8];
+
             // THE SPAN OF THE FRAME THAT THREW. Spans only ever increase, so a frame
-            // with a LOWER span existed before the raise and can be the handler; a higher
+            // with a LOWER span existed before the throw and can be the handler; a higher
             // one opened during the unwind and cannot.
             std::uint64_t errSpan;
-            // THE RAISING FRAME IS USUALLY NOT OPEN YET: a procedure opens at
-            // its FIRST statement, so a UDF beginning with Err.Raise raises one
-            // opcode before it exists, and marking the top of the stack would
-            // give the error to its CALLER. Held here, applied when it opens.
-            bool          errPending;
         };
 
         // TLS, because hooks run reentrantly across threads. The STORAGE is
         // thread-local, not a thread-local pointer to the heap.
         __declspec(thread) ThreadState t_state;
 
-        // The rendered argument-list buffer: heap, allocated on each thread's first hook call,
-        // so ArgCapture stays tiny on the deeply nested interpreter stack. Leaked at thread
-        // exit, one block per hooking thread.
-        constexpr int kArgRenderMax = 64 * 1024;
-        __declspec(thread) char* t_argRender = nullptr;
-        char* ArgRenderBuf()
-        {
-            if (!t_argRender) t_argRender = static_cast<char*>(malloc(kArgRenderMax));
-            return t_argRender;   // may be null -- CaptureArgs then declines cleanly
-        }
-
-        // The return column's buffer, on the same terms.
-        constexpr int kRetRenderMax = 16384;
-        __declspec(thread) char* t_retRender = nullptr;
-        char* RetRenderBuf()
-        {
-            if (!t_retRender) t_retRender = static_cast<char*>(malloc(kRetRenderMax));
-            return t_retRender;
-        }
+        // The argument and return columns' buffers: per thread, on the heap, so ArgCapture
+        // stays tiny on the deeply nested interpreter stack. Leaked at thread exit.
+        __declspec(thread) core::TextBuf t_argRender;
+        __declspec(thread) core::TextBuf t_retRender;
 
         // The procedure name/count table (Proc + the open-addressed map) lives in
         // vbaproctable.h/.cpp now. Its per-Proc counters are still incremented
@@ -308,7 +291,7 @@ namespace vba
             const char* sigText  = "";
             if (args && args->ok)
             {
-                argsText = args->text;
+                argsText = args->text->Text();
                 if (!argValuesOnly)
                 {
                     _snprintf_s(argcb, _TRUNCATE, "%d", args->params);
@@ -447,7 +430,8 @@ namespace vba
                 s->depth = 0; s->current = 0; s->currentSp = 0; s->statements = 0;
                 s->overflowDepth = 0;
                 s->errActive = false;
-                s->errPending = false; s->errSpan = 0;
+                s->errSpan = 0;
+                s->doEventsMarks = 0;
                 s->generation = gen;
             }
             return s;
@@ -478,19 +462,18 @@ namespace vba
             }
         }
 
-        // Decide the outcome as the frame closes. The raise opcode (497) fires for both a real
-        // Err.Raise and ordinary object-model VBA, and only the frame's fate separates them:
-        // one that raised and ran its own epilogue resolved it in place, one that raised and
-        // unwound with no epilogue threw. `ranEpilogue` is (exitOp != 0).
+        // Decide the outcome as the frame closes, from how it left. Only an error unwind leaves
+        // without an epilogue once End and disarm are set aside, whether Err.Raise or the
+        // runtime (a division by zero) raised it. `ranEpilogue` is (exitOp != 0).
         void DecideOutcomeAtClose(ThreadState* s, Frame& f, bool ranEpilogue, bool stillRunning)
         {
-            // Already resolved as the catcher -- unless it then raised an error that left it,
-            // which makes it that error's thrower.
-            if (f.outcome == kOutHandled && !(f.raised && !ranEpilogue)) return;
+            // Already resolved as the catcher -- unless an error then left it, which makes it
+            // that error's thrower.
+            if (f.outcome == kOutHandled && ranEpilogue) return;
             // `End` already settled this one, and no epilogue ran anywhere, so
             // every rule below would read it as an unwind it was not part of.
             if (f.outcome == kOutAbandoned) return;
-            // Disarm closed it while it was still running: a raise in it is not a throw.
+            // Disarm closed it while it was still running: no epilogue, but no throw either.
             if (stillRunning) return;
 
             // Ran its own epilogue while a deeper throw was unclaimed, so it resumed
@@ -503,24 +486,15 @@ namespace vba
                 return;
             }
 
-            if (f.raised && ranEpilogue)
-            {
-                // Raised, then exited normally: a benign object-model raise, or a same-frame
-                // handler. A same-frame On Error Resume Next of a real error also lands here as
-                // `returned`.
-                f.outcome = kOutReturned;
-                Bump(g_totals.raisesBenign);
-                return;
-            }
+            // A same-frame On Error Resume Next of a real error also reads `returned`.
+            if (ranEpilogue) return;
 
-            // A DEEPER error already unwinding (span greater than this frame's)
-            // is the fatal one; this frame's own raise, if any, is beside it.
+            // A DEEPER error already unwinding (span greater than this frame's) is the fatal
+            // one, and this frame is unwound through. Otherwise the error started here.
             const bool deeperError = s->errActive && s->errSpan > f.span;
 
-            if (f.raised && !ranEpilogue && !deeperError)
+            if (!deeperError)
             {
-                // Raised and unwound with no epilogue: THIS frame threw and owns
-                // the episode, and the frames outside it now unwind through.
                 f.outcome     = kOutThrew;
                 Bump(g_totals.threw);
                 s->errActive  = true;
@@ -528,11 +502,7 @@ namespace vba
                 return;
             }
 
-            // NOT THE THROWER. Only a frame OUTER than the raise is unwound
-            // THROUGH; one the raiser had called INTO (higher span) is a
-            // finished nested call, not a casualty.
-            if (s->errActive && f.span < s->errSpan && !ranEpilogue &&
-                f.outcome == kOutReturned)
+            if (f.outcome == kOutReturned)
             {
                 f.outcome = kOutUnwound;
                 Bump(g_totals.unwound);
@@ -602,6 +572,12 @@ namespace vba
                 Bump(g_totals.byrefDeclined);
                 return nullptr;
             }
+            // A shape says nothing about contents: comparing two would call any change "same".
+            if (f.argsShapeOnly || out.byRefShapeOnly)
+            {
+                Bump(g_totals.byrefDeclined);
+                return nullptr;
+            }
             if (out.byRefHash != f.argsHash)
             {
                 Bump(g_totals.byrefChanged);
@@ -616,9 +592,12 @@ namespace vba
         void CountReturnOutcome(std::uint64_t trailer, std::uint64_t r14, RetKind kind,
                                 std::uint16_t exitOp, bool haveRet)
         {
+            const bool readable = (r14 != 0 && kind != RetKind::None && kind != RetKind::Unknown);
             if (haveRet)
                 Bump(g_totals.returnsRead);
-            else if (r14 != 0 && kind != RetKind::None && kind != RetKind::Unknown)
+            else if (readable && InterlockedCompareExchange(&g_capRet, 0, 0) == 0)
+                Bump(g_totals.returnsOff);
+            else if (readable)
                 Bump(g_totals.returnsDeclined);
             else if (r14 != 0 && kind == RetKind::Unknown && exitOp != 0)
             {
@@ -693,31 +672,31 @@ namespace vba
                                  static_cast<LONG64>(s->statements - f.stmtsAtEntry));
             }
             // The result. The exit opcode says what kind it is and whether one exists; slot 634
-            // alone needs the store opcode to split LongLong from an array. The buffer is the
-            // size of the argument column's, on the per-thread heap rather than the stack.
-            char* const retText = RetRenderBuf();
+            // alone needs the store opcode to split LongLong from an array.
+            core::TextBuf& retText = t_retRender;
+            retText.Clear();
             const char* retType = "";
             bool haveRet = false;
             std::uint16_t storeOp = 0;
             const RetKind kind = DecideReturnKind(f.trailer, exitOp, storeOp);
             const bool readable = (r14 != 0 && kind != RetKind::None && kind != RetKind::Unknown);
-            if (retText && readable && InterlockedCompareExchange(&g_capRet, 0, 0) != 0)
+            if (readable && InterlockedCompareExchange(&g_capRet, 0, 0) != 0)
             {
-                retText[0] = 0;
-                haveRet = DescribeReturnKind(r14, kind, storeOp, retText, kRetRenderMax, &retType);
+                core::WithValueWriter(retText, [&](core::ValueWriter& w)
+                { haveRet = DescribeReturnKind(r14, kind, storeOp, w, &retType); });
+                haveRet = haveRet && !retText.Over();
             }
             // The "after" for the entry's "before": see ReadByRefChanges. Reuses
             // the same per-thread render buffer -- the entry's text is already
             // written and only its hash is kept, so nothing live is overwritten.
             ArgCapture outArgs;
-            outArgs.text = ArgRenderBuf();
-            outArgs.textCap = outArgs.text ? kArgRenderMax : 0;
+            outArgs.text = &t_argRender;
             const ArgCapture* outArgsPtr = ReadByRefChanges(f, r14, outArgs);
 
-            if (!g_topLevelOnly || s->depth == 1)
-                EmitRow("exit", f, nowTicks, nowTicks - f.startTicks, s->depth, p,
+            if (!g_topLevelOnly || f.shownDepth == 1)
+                EmitRow("exit", f, nowTicks, nowTicks - f.startTicks, f.shownDepth, p,
                         outArgsPtr, nullptr, nullptr,
-                        haveRet ? retText : "",
+                        haveRet ? retText.Text() : "",
                         haveRet ? retType : "",
                         closedBy, /*argValuesOnly=*/true);
             CountReturnOutcome(f.trailer, r14, kind, exitOp, haveRet);
@@ -789,7 +768,6 @@ namespace vba
 
         void OnStatementBody(std::uint64_t dispatchSp, std::uint64_t savedRegs);
         void OnExitBody(std::uint64_t dispatchSp, std::uint64_t savedRegs);
-        void OnRaiseBody(std::uint64_t dispatchSp, std::uint64_t savedRegs);
         void OnEndBody();
     }
 
@@ -829,11 +807,6 @@ namespace vba
         RunHook(OnExitBody, dispatchSp, savedRegs);
     }
 
-    extern "C" void XRayVbaOnRaise(std::uint64_t dispatchSp, std::uint64_t savedRegs)
-    {
-        RunHook(OnRaiseBody, dispatchSp, savedRegs);
-    }
-
     // The End opcode has no frame to read; its arguments are unused.
     extern "C" void XRayVbaOnEnd(std::uint64_t dispatchSp, std::uint64_t savedRegs)
     {
@@ -842,53 +815,12 @@ namespace vba
 
     namespace
     {
-    // AN ERROR WAS RAISED HERE.
-    //
-    // The opcode fires FOUR TIMES for one Err.Raise, so the first wins and the
-    // rest are counted and discarded. Dedupe is PER FRAME: a second raise in the
-    // same activation, after the first resolved, is a real second error.
-    void OnRaiseBody(std::uint64_t dispatchSp, std::uint64_t savedRegs)
-    {
-        (void)savedRegs;
-        (void)dispatchSp;
-        ThreadState* s = State();
-        if (!s) return;
-
-        // Mark that a raise fired here and decide nothing yet; the outcome waits for
-        // DecideOutcomeAtClose. The per-frame flag is idempotent, so the extra fires are
-        // counted as deduped.
-        if (s->depth <= 0)
-        {
-            // Nothing open to attribute it to: the raising procedure has not
-            // reached its first statement. Held for the next frame to open --
-            // marking the top of the stack would hand the error to the CALLER.
-            if (s->errPending)
-            {
-                Bump(g_totals.raisesDeduped);
-                return;
-            }
-            s->errPending = true;
-            Bump(g_totals.raises);
-            Bump(g_totals.errNoFrame);
-            return;
-        }
-
-        Frame& f = s->stack[s->depth - 1];
-        if (f.raised)
-        {
-            Bump(g_totals.raisesDeduped);
-            return;
-        }
-        f.raised = true;
-        Bump(g_totals.raises);
-    }
-
     // Did somebody catch it? A statement running again means the error was dealt with, by the
     // frame it ran in. Called first in OnStatementBody, before the fast path returns.
     //
     // errActive is set when the thrower closes, so the first statement that observes it is the
     // handler's second, by which point the unwind's closes are done and the top of the stack is
-    // the frame that resumed. Only a frame that predates the raise can be the handler: a
+    // the frame that resumed. Only a frame that predates the throw can be the handler: a
     // destructor opened during the unwind has a higher span.
     void MarkHandlerIfErrorResumed(ThreadState* s)
     {
@@ -963,6 +895,17 @@ namespace vba
     {
         if (!callerIsCell) return false;
         return s->depth < 2 || s->stack[s->depth - 2].callerHash != callerHash;
+    }
+
+    // Is a frame on this thread waiting inside DoEvents, with nothing of its own since?
+    // Excel runs timer macros and events from in there, so such a procedure is not its callee.
+    // A mark left behind -- End pressed inside DoEvents runs no epilogue -- is dropped here,
+    // because the frame it was made at is gone.
+    bool WaitingInDoEvents(ThreadState* s)
+    {
+        while (s->doEventsMarks > 0 && s->doEventsAt[s->doEventsMarks - 1] > s->depth)
+            --s->doEventsMarks;
+        return s->doEventsMarks > 0 && s->doEventsAt[s->doEventsMarks - 1] == s->depth;
     }
 
     // Is this frame still executing? The interpreter keeps a frame's trailer at the dispatch
@@ -1079,7 +1022,11 @@ namespace vba
                 break;
             }
 
-        const std::uint64_t parent = (s->depth > 0) ? s->stack[s->depth - 1].span : 0;
+        // Excel ran this from inside the open frame's DoEvents: a new chain, not a callee.
+        const bool newChain = atEntry && s->depth > 0 && WaitingInDoEvents(s);
+        if (newChain) Bump(g_totals.doEventsChains);
+        const std::uint64_t parent = (s->depth > 0 && !newChain) ? s->stack[s->depth - 1].span : 0;
+        const int shownDepth = (s->depth > 0 && !newChain) ? s->stack[s->depth - 1].shownDepth + 1 : 1;
         Frame& f = s->stack[s->depth++];
         f.trailer      = trailer;
         f.startTicks   = now;
@@ -1089,23 +1036,14 @@ namespace vba
         f.sp           = dispatchSp;
         f.span         = emit::csv::NextSpan();
         f.parent       = parent;
+        f.shownDepth   = shownDepth;
         f.outcome      = kOutReturned;
-        f.raised       = false;
         f.hasByRef     = false;
         f.argsHash     = 0;
+        f.argsShapeOnly = false;
         f.fromExcel    = false;
         f.callerHash   = 0;
 
-        // A RAISE THAT ARRIVED BEFORE ITS FRAME EXISTED: Err.Raise on the first
-        // line fires one opcode before the procedure opens, so the mark was held
-        // rather than given to the caller. This is that frame, and like any
-        // raise its fate is decided at close.
-        if (s->errPending)
-        {
-            f.raised      = true;
-            s->errPending = false;
-            Bump(g_totals.errLateOpen);
-        }
         Bump(g_totals.framesOpened);
 
         ResolvedName nm{};
@@ -1125,8 +1063,7 @@ namespace vba
             Bump(g_totals.regReadFailures);
 
         ArgCapture args;
-        args.text = ArgRenderBuf();                 // the per-thread render buffer
-        args.textCap = args.text ? kArgRenderMax : 0;
+        args.text = &t_argRender;                   // the per-thread render buffer
         // ARGS latched at arm: when off the column is empty and the
         // decline is counted, so it never reads as "no arguments".
         if (haveR14 && InterlockedCompareExchange(&g_capArgs, 0, 0) != 0)
@@ -1141,6 +1078,7 @@ namespace vba
                 // nothing declared it, such as a write-only String.
                 f.hasByRef = SignatureHasByRef(args.signature) || args.viaPointer;
                 f.argsHash = args.byRefHash;
+                f.argsShapeOnly = args.byRefShapeOnly;
             }
         }
 
@@ -1149,8 +1087,8 @@ namespace vba
         f.callerHash = who.isCell ? core::Fnv1aText(who.desc) : 0;
         f.fromExcel  = IsExcelTheCaller(s, who.isCell, f.callerHash);
 
-        if (!g_topLevelOnly || s->depth == 1)
-            EmitRow("entry", f, now, 0, s->depth, p, &args, &nm, &who);
+        if (!g_topLevelOnly || f.shownDepth == 1)
+            EmitRow("entry", f, now, 0, f.shownDepth, p, &args, &nm, &who);
 
         RaiseMax32(&g_totals.maxDepth, static_cast<std::uint32_t>(s->depth));
     }
@@ -1291,6 +1229,23 @@ namespace vba
 
     // -------------------------------------------------------------------
 
+    // Called by the rtcDoEvents detour, on the thread that is entering or leaving it. Nesting
+    // is kept because a macro run inside DoEvents may call DoEvents itself; past the small
+    // stack the outermost marks are kept and the innermost dropped, which only costs the
+    // parenting of a chain nested that deep.
+    void NoteDoEventsEnter()
+    {
+        ThreadState* s = State();
+        if (s->doEventsMarks < static_cast<int>(sizeof(s->doEventsAt) / sizeof(s->doEventsAt[0])))
+            s->doEventsAt[s->doEventsMarks++] = s->depth;
+    }
+
+    void NoteDoEventsLeave()
+    {
+        ThreadState* s = State();
+        if (s->doEventsMarks > 0) --s->doEventsMarks;
+    }
+
     void FlushOpenFrames()
     {
         // t_state is the storage itself, not a pointer to it, so a thread that
@@ -1300,12 +1255,14 @@ namespace vba
         // A frame this thread is still inside sits above the current stack with its
         // trailer in place. A leftover from an earlier unwind has lost that stack.
         const std::uint64_t here = reinterpret_cast<std::uint64_t>(_AddressOfReturnAddress());
+        bool running = false;
         while (s->depth > 0)
         {
             const Frame& top = s->stack[s->depth - 1];
             // Still running only if it sits above our own stack AND its trailer is in
-            // place; a leftover from an earlier unwind fails the second test.
-            const bool running = top.sp > here && FrameStillLive(top);
+            // place; a leftover from an earlier unwind fails the second test. A frame
+            // beneath a running one is running too, so one chain is never split.
+            running = running || (top.sp > here && FrameStillLive(top));
             CloseFrame(s, now, 0, 0, "flush", running);
         }
         s->current = 0; s->currentSp = 0;

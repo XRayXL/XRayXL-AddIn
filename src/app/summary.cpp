@@ -84,6 +84,8 @@ namespace
                         size, core::modes::GetPauseOnFull() ? "PAUSE" : "DROP");
         }
         put(L"", "buffer", bmode, static_cast<double>(bytes));
+        put(L"", "format", core::modes::FormatName(core::modes::GetFormat()),
+            static_cast<double>(core::modes::GetFormat()));
 
         // THE P-CODE TABLE'S HEALTH, where a cell can read it. It is the one
         // number that says whether the types in this trace can be believed, and
@@ -147,14 +149,17 @@ namespace
         SumStr(0, L"Source"); SumStr(1, L"Module"); SumStr(2, L"Function"); SumStr(3, L"Calls");
         row = 1;
 
-        int shown = 0, matched = 0;
+        int shown = 0, matched = 0, traced = 0;
         // ONE GATE for both sources: the wildcard, the row cap, and the count
-        // of what the cap hid.
+        // of what the cap hid. The filter matches the function or the module, so
+        // "*.xll" and "[Book1.xlsm]*" both work.
         auto offer = [&](const wchar_t* src, const char* mod, const char* fn, double calls)
         {
-            wchar_t wname[kSumText];
+            ++traced;
+            wchar_t wname[kSumText], wmod[kSumText];
             core::WidenUtf8(fn, wname, kSumText);
-            if (!WildMatch(pat, wname)) return;
+            core::WidenUtf8(mod, wmod, kSumText);
+            if (!WildMatch(pat, wname) && !WildMatch(pat, wmod)) return;
             ++matched;
             if (shown < kSumRows) { put(src, mod, fn, calls); ++shown; }
         };
@@ -186,7 +191,7 @@ namespace
         {
             // Nothing is a real answer, and says so rather than returning an
             // empty grid that reads as a broken formula.
-            put(L"", "", "(nothing traced yet)", 0);
+            put(L"", "", traced ? "(nothing matches the filter)" : "(nothing traced yet)", 0);
         }
         else if (matched > shown)
         {
@@ -206,5 +211,5 @@ namespace
 
 extern "C" LPXLOPER12 __stdcall XRayXL_GetTraceSummary(LPXLOPER12 filter)
 {
-    return GuardedOper("XRayXL_GetTraceSummary FAULTED -- contained", GetTraceSummaryBody, filter);
+    return GuardedOper("XRayXL_GetTraceSummary", GetTraceSummaryBody, filter);
 }

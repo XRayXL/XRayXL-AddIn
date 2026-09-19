@@ -1,4 +1,5 @@
 #pragma once
+#include <cstddef>
 
 namespace emit
 {
@@ -10,12 +11,6 @@ namespace emit
 
 namespace csv
 {
-    // One escaped row can be large: the argument and return columns each carry
-    // tens of KB of rendered array/variant text, and RFC4180 escaping can nearly
-    // double it. The caller supplies a buffer of at least this size -- a
-    // per-thread heap block, never the stack.
-    constexpr int kFragMax = 256 * 1024;
-
     // THE HEADER LINE, CRLF-terminated. `seq` and `input` lead, both prefixes
     // added by the writer/producer rather than by Fragment. Change it and the
     // column order in rowcsv.cpp -- the one place that knows it -- and
@@ -59,9 +54,13 @@ namespace csv
         const char* trust    = "";      // exit | end | backstop | flush | async
     };
 
+    // The bytes Fragment will write for `row`, without the NUL. A field is never cut, so this
+    // is how the caller sizes its buffer.
+    std::size_t FragmentSize(const Row& row);
+
     // Escape every field, comma-join them in column order, and end with CRLF --
     // WITHOUT the seq/input prefixes, which the writer/producer prepend. `out`
-    // must be at least kFragMax bytes. Returns the number of bytes written.
-    int Fragment(const Row& row, char* out);
+    // must hold FragmentSize(row) + 1 bytes. Returns the number of bytes written.
+    std::size_t Fragment(const Row& row, char* out);
 }
 }   // namespace emit

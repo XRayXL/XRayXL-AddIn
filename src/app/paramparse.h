@@ -23,6 +23,7 @@ namespace params
     bool ParseDepth   (LPXLOPER12 v, core::modes::Depth& d);               // OFF|TOP|ALL
     bool ParseOnOff   (LPXLOPER12 v, bool& on);                      // TRUE|FALSE (native bool or text)
     bool ParseWhenFull(LPXLOPER12 v, bool& pause);                   // DROP|PAUSE
+    bool ParseFormat(LPXLOPER12 v, core::modes::Format& f);          // CSV|JSONL
 
     // BUFFERSIZE in bytes: bare or M/MB = megabytes, K/KB = kilobytes,
     // case-insensitive; a native number is megabytes. False on a bad number or

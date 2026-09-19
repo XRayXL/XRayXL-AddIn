@@ -16,7 +16,8 @@ function Clear-XRayStaleTraces([int]$ExcelPid) {
     # in this process. TraceFiles\earlier\ keeps it, and Get-XRayTraceCsv does not recurse.
     if ($ExcelPid -le 0) { return }
     $dir = Join-Path (Get-XRayRoot) 'TraceFiles'
-    $stale = @(Get-ChildItem (Join-Path $dir ("XRayXL_Trace_*_{0}.csv" -f $ExcelPid)) -ErrorAction SilentlyContinue)
+    $stale = @(foreach ($ext in 'csv', 'jsonl') {
+        Get-ChildItem (Join-Path $dir ("XRayXL_Trace_*_{0}.{1}" -f $ExcelPid, $ext)) -ErrorAction SilentlyContinue })
     if ($stale.Count -eq 0) { return }
     $earlier = Join-Path $dir 'earlier'
     New-Item -ItemType Directory -Force $earlier | Out-Null
@@ -69,6 +70,8 @@ function Set-XRaySessionDefaults($Sx) {
     # BUFFERWHENFULL is process state too. Shipped default is PAUSE; a test
     # wanting DROP sets its own after this, before arming.
     try { [void]$app.Run('XRayXL_SetTraceParam', 'BUFFERWHENFULL', 'PAUSE') } catch {}
+    # FORMAT is process state too, and every reader here but the JSONL test's reads CSV.
+    try { [void]$app.Run('XRayXL_SetTraceParam', 'FORMAT', 'CSV') } catch {}
     # OBJECTS and LOGLEVEL are process state too. Tests rely on this reset instead
     # of restoring what they changed on the way out.
     try { [void]$app.Run('XRayXL_SetTraceParam', [Type]::Missing, 'OBJECTS', $true) } catch {}
@@ -533,6 +536,10 @@ function ConvertFrom-XRayTotals([string]$Line) {
         ipEntries = [int64]$t['ipEntries']; ipStaleClosed = [int64]$t['ipStaleClosed']
         ipUnavailable = [int64]$t['ipUnavailable']
         ipIntraProc = [int64]$t['ipIntraProc']; ipLateOpen = [int64]$t['ipLateOpen']
+        returnsRead = [int64]$t['returnsRead']; returnsDeclined = [int64]$t['returnsDeclined']
+        returnsOff = [int64]$t['returnsOff']
+        byrefChanged = [int64]$t['byrefChanged']; byrefSame = [int64]$t['byrefSame']
+        byrefDeclined = [int64]$t['byrefDeclined']; doEventsChains = [int64]$t['doEventsChains']
     }
 }
 

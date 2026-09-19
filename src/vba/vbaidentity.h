@@ -9,8 +9,10 @@
 //                           -> listEntry -> ppszFnNames[j]   the name
 //
 // Every step is unverified memory, so each is guarded and validated against the structures' own
-// invariants: two constant markers, a reference count, and a back-pointer from the module entry
-// to the parent. A failed check yields no name rather than a wrong one.
+// invariants: the parent and module entry carry the same marker, in one of two known forms; in
+// the usual form the module entry points back at the parent; the two agree on the procedure
+// count; and the trailer is in the parent's procMap. A failed check yields no name rather than
+// a wrong one.
 //
 // Resolved once per procedure, when its trailer is first seen, and cached.
 #pragma once
@@ -45,6 +47,7 @@ namespace vba
         ListEntryUnreadable,
         BackPointerMismatch,  // module entry does not point back at the parent
         ProcCountInsane,
+        ProcCountMismatch,    // the parent's count is not the module entry's
         ProcMapMiss,          // our trailer is not in the parent's procMap
         NameUnreadable,
         Count_

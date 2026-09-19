@@ -2,6 +2,9 @@
 #include "ring.h"
 #include "core/log.h"
 #include "core/excel_api.h"
+#include "core/textbuf.h"
+#include "core/valueformat.h"
+#include "rowjson.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -46,6 +49,16 @@ namespace csv
         volatile LONG64  g_in   = 0;   // PRODUCER-stamped at emit: holes = drops
         // Span ids for both sources. Never reset, so a call running across a re-arm cannot reuse one.
         volatile LONG64  g_span = 0;
+        // The file's format, latched at Open for the life of the file.
+        core::modes::Format g_format = core::modes::Format::Csv;
+
+        bool Jsonl() { return g_format == core::modes::Format::Jsonl; }
+
+        // What the writer puts before a row: `seq,` for CSV, `{"seq":N,` opening a JSON object.
+        int SeqPrefix(long long seq, char* out, int cap)
+        {
+            return _snprintf_s(out, cap, _TRUNCATE, Jsonl() ? "{\"seq\":%lld," : "%lld,", seq);
+        }
 
         void WriteRaw(const char* text, DWORD len)
         {
@@ -78,22 +91,26 @@ namespace csv
             const std::wstring dir = core::EnsureAppSubdir(L"TraceFiles");
             if (dir.empty()) return L"";
             wchar_t name[96];
-            swprintf_s(name, LR"(\XRayXL_Trace_%llu_%lu.csv)",
-                       id.QuadPart, GetCurrentProcessId());
+            swprintf_s(name, LR"(\XRayXL_Trace_%llu_%lu.%s)",
+                       id.QuadPart, GetCurrentProcessId(), Jsonl() ? L"jsonl" : L"csv");
             return dir + name;
         }
 
         // The header, column order, escaping and Fragment() are rowcsv's;
         // this file is the FILE, the ring and the drain.
 
-        // Per-thread scratch for the escaped row: kFragMax is far too large for
-        // the stack, and WriteRow runs concurrently on every calc worker in ring
-        // mode. One lazy allocation per hooking thread, never per row.
-        __declspec(thread) char* t_frag = nullptr;   // freed when its thread ends (ReleaseThreadScratch)
-        char* FragBuf()
+        // The largest row: the argument and return columns at their limit, every byte a quote
+        // that escaping doubles, and room for the rest.
+        constexpr std::size_t kMaxRowBytes = 4 * core::kMaxValueBytes + 64 * 1024;
+
+        // Per-thread scratch for the escaped row, grown to the row and kept for the next.
+        // WriteRow runs concurrently on every calc worker in ring mode.
+        __declspec(thread) core::TextBuf t_frag;   // freed when its thread ends (ReleaseThreadScratch)
+        char* FragBuf(std::size_t need)
         {
-            if (!t_frag) t_frag = static_cast<char*>(malloc(kFragMax + 64));
-            return t_frag;   // may be null -- WriteRow then drops the row rather than fault
+            t_frag.limit = kMaxRowBytes;
+            t_frag.Clear();
+            return t_frag.Reserve(need);   // null -- WriteRow then drops the row rather than fault
         }
 
         // Creates the file on the first record that reaches a writer, never on the arm path, so
@@ -114,7 +131,8 @@ namespace csv
                     g_seq  = 0;
                     g_rows = 0;
                     g_file = h;                          // publish before the header write below
-                    WriteRaw(kHeader, static_cast<DWORD>(strlen(kHeader)));
+                    // JSON Lines has no header: every line names its own keys.
+                    if (!Jsonl()) WriteRaw(kHeader, static_cast<DWORD>(strlen(kHeader)));
                 }
             }
             const bool ok = (g_file != INVALID_HANDLE_VALUE);
@@ -157,19 +175,21 @@ namespace csv
         {
             g_drain.used = 0;
 
-            // static, not a 256 KB stack frame: DrainAll runs only on the one
-            // drain thread. +64 for the producer's `input,` prefix on top of a
-            // max-size fragment.
-            static char frag[kFragMax + 64];
+            // Grown to the largest record so far: DrainAll runs only on the one drain thread.
+            static core::TextBuf frag;
+            frag.limit = static_cast<std::size_t>(-1);
             int flen = 0;
-            while (g_ring.Pop(frag, flen))
+            for (int next; (next = g_ring.PendingLen()) >= 0; )
             {
+                frag.Clear();
+                char* into = frag.Reserve(static_cast<std::size_t>(next));
+                if (!into || !g_ring.Pop(into, flen)) break;
                 if (!EnsureFile()) return;   // the drain creates the file on the first record
-                char seqb[24];
-                const int sl = _snprintf_s(seqb, _TRUNCATE, "%lld,",
-                    static_cast<long long>(InterlockedIncrement64(&g_seq)));
+                char seqb[32];
+                const int sl = SeqPrefix(static_cast<long long>(InterlockedIncrement64(&g_seq)),
+                                         seqb, sizeof seqb);
                 BatchAppend(seqb, static_cast<std::size_t>(sl));
-                BatchAppend(frag, static_cast<std::size_t>(flen));
+                BatchAppend(into, static_cast<std::size_t>(flen));
                 InterlockedIncrement64(&g_rows);
             }
 
@@ -252,7 +272,7 @@ namespace csv
         }
     }
 
-    bool Open(std::size_t bufferBytes, bool pauseOnFull)
+    bool Open(std::size_t bufferBytes, bool pauseOnFull, core::modes::Format format)
     {
         if (!g_csReady) { InitializeCriticalSection(&g_cs); g_csReady = true; }
         Lock();
@@ -268,6 +288,8 @@ namespace csv
         g_seq  = 0;
         g_in   = 0;             // reset HERE (arm), before any producer stamps it
         g_path.clear();
+        g_format = format;
+        core::LatchFormat(format);      // every value in this file is spelt one way
         g_planned = BuildTracePath();   // named now, created on the first record
 
         // Logged HERE rather than at the arm sites, because the name belongs to
@@ -385,17 +407,38 @@ namespace csv
     {
         void WriteCounted(const Row& row)
         {
-        // Into the per-thread heap scratch, not the stack: kFragMax is 256 KB.
-        // A failed allocation drops the row rather than faulting the hook.
+        // Into the per-thread heap scratch, not the stack. A failed allocation drops the row
+        // rather than faulting the hook.
         //
         // The PRODUCER stamps `input` here -- consumed whether or not the
         // row reaches the ring, so a dropped row leaves a HOLE, which is how the
         // file shows where it lost data. `seq` is the writer's, and dense.
-        char* frag = FragBuf();
-        if (!frag) return;
-        const int il = _snprintf_s(frag, 24, _TRUNCATE, "%lld,",
+        const char* frag = nullptr;
+        int n = 0;
+        if (Jsonl())
+        {
+            // Built whole, so a row past kMaxRowBytes is found at the end: its `input` is
+            // then a hole, as any lost row's is.
+            t_frag.limit = kMaxRowBytes;
+            t_frag.Clear();
+            char pre[40];
+            _snprintf_s(pre, _TRUNCATE, "\"input\":%lld,",
+                        static_cast<long long>(InterlockedIncrement64(&g_in)));
+            t_frag.Append(pre);
+            json::AppendRow(row, t_frag);
+            if (t_frag.Over()) return;
+            frag = t_frag.Text();
+            n = static_cast<int>(t_frag.Len());
+        }
+        else
+        {
+        char* buf = FragBuf(24 + FragmentSize(row) + 1);
+        if (!buf) return;
+        const int il = _snprintf_s(buf, 24, _TRUNCATE, "%lld,",
             static_cast<long long>(InterlockedIncrement64(&g_in)));
-        const int n  = il + Fragment(row, frag + il);      // "input,kind,...,note\r\n"
+        n = il + static_cast<int>(Fragment(row, buf + il));
+        frag = buf;
+        }   // "input,kind,...,note\r\n"
 
         if (g_ring.Active())
         {
@@ -409,9 +452,8 @@ namespace csv
         // Close may have run since the check above; do not reopen the file.
         if (Prepared() && EnsureFile())
         {
-            char seqb[24];
-            const int sl = _snprintf_s(seqb, _TRUNCATE, "%lld,",
-                static_cast<long long>(++g_seq));
+            char seqb[32];
+            const int sl = SeqPrefix(static_cast<long long>(++g_seq), seqb, sizeof seqb);
             WriteRaw(seqb, static_cast<DWORD>(sl));
             WriteRaw(frag, static_cast<DWORD>(n));
             g_rows++;
@@ -432,8 +474,7 @@ namespace csv
 
     void ReleaseThreadScratch()
     {
-        free(t_frag);
-        t_frag = nullptr;
+        t_frag.Release();
     }
 
     void ReleaseHeldByThisThread()

@@ -68,7 +68,7 @@ int main()
         const vba::SlotSet s = vba::Derive(img);
         printf("  control: %s\n", vba::Describe(s).c_str());
         Check(s.found && s.verified, "a well-formed table verifies");
-        Check(s.raiseOk && s.endOk, "the raise and End slots verify on it");
+        Check(s.endOk, "the End slot verifies on it");
     }
 
     // ---- one exit slot holds the BoS handler ---------------------------------

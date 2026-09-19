@@ -24,8 +24,7 @@ namespace vba
         using core::RdU16;
         using core::RdU8;
         using core::RdWide;
-
-        using core::Append;
+        using core::ValueWriter;
 
         // The only BSTR reader, and strict: a wrong guess prints an unrelated allocation as a
         // value. Truncation past kBstrMaxChars is marked, beyond kBstrMaxBytes the whole thing
@@ -41,9 +40,8 @@ namespace vba
         // an exit opcode says BSTR, `cb == 0` is an empty string. When PROBING an
         // untyped slot, `cb == 0` is also what zeroed memory looks like, and is
         // refused.
-        bool DescribeBstr(std::uint64_t p, char* out, int cap, bool told)
+        bool DescribeBstr(std::uint64_t p, ValueWriter& w, bool told)
         {
-            out[0] = 0;
             if (!InRangeAndAligned(p, 2)) return false;
             std::uint32_t cb = 0;
             if (!RdU32(p - 4, cb)) return false;
@@ -53,13 +51,13 @@ namespace vba
             if (n == 0)
             {
                 if (!told) return false;          // zeroed memory looks like this
-                _snprintf_s(out, cap, _TRUNCATE, "\"\"");
+                w.String(L"", 0, false);
                 return true;
             }
 
-            wchar_t w[kBstrMaxChars + 2] = {};
+            wchar_t text[kBstrMaxChars + 2] = {};
             const int take = n < kBstrMaxChars ? n : kBstrMaxChars;
-            if (!RdWide(p, w, take)) return false;
+            if (!RdWide(p, text, take)) return false;
 
             // NUL-terminated PAST its full length -- checked at the real end,
             // which is why the byte limit and the character cap are separate.
@@ -71,15 +69,15 @@ namespace vba
             // `vbCrLf` in a message or a tab in a record.
             if (!told)
                 for (int i = 0; i < take; ++i)
-                    if (w[i] < 32 && w[i] != 9) return false;
+                    if (text[i] < 32 && text[i] != 9) return false;
 
-            return core::RenderQuoted(w, take, n > take, out, cap);
+            w.String(text, take, n > take);
+            return true;
         }
 
-        bool DescribeSafeArray(std::uint64_t psa, std::uint16_t vtHint, char* out, int cap,
-                               int depth, int maxElems, std::uint16_t* vtOut = nullptr);
-        bool DescribeVariantAt(std::uint64_t at, char* out, int cap, const char** typeOut,
-                               int depth, int maxElems);
+        bool DescribeSafeArray(std::uint64_t psa, std::uint16_t vtHint, ValueWriter& w,
+                               int depth, std::uint16_t* vtOut = nullptr);
+        bool DescribeVariantAt(std::uint64_t at, ValueWriter& w, int depth);
 
         // Nesting is bounded: each level is a real recursion on the hot-path stack and the
         // memory could be cyclic. Deeper than this reads as "[...]". The counter advances on
@@ -91,38 +89,27 @@ namespace vba
         // anything that does not work out falls back to the address.
         volatile LONG g_describeObjects = 0;
 
-        void DescribeObject(std::uint64_t ptr, char* out, int cap)
+        void DescribeObject(std::uint64_t ptr, ValueWriter& w)
         {
-            if (ptr == 0) { _snprintf_s(out, cap, _TRUNCATE, "Nothing"); return; }
+            if (ptr == 0) { w.Word("Nothing"); return; }
 
             // The address is always there: it is how one object is followed from an argument to
             // a result, which a class name cannot do.
-            if (InterlockedCompareExchange(&g_describeObjects, 0, 0) != 0)
-            {
-                // The detail is rendered to fit after "<class>@0x<16 hex>", so its
-                // own "...(k of n shown)" marker is not what gets cut.
-                char cls[128], detail[2048];
-                constexpr int kHead = 32;
-                const int detailCap = cap - kHead < static_cast<int>(sizeof(detail))
-                                    ? cap - kHead : static_cast<int>(sizeof(detail));
-                if (detailCap > 0 &&
-                    DescribeObjectDetail(ptr, cls, sizeof(cls), detail, detailCap))
-                {
-                    const bool fits = strlen(cls) + 19 + strlen(detail) < static_cast<size_t>(cap);
-                    _snprintf_s(out, cap, _TRUNCATE, "%s@0x%llX%s", cls,
-                                static_cast<unsigned long long>(ptr), fits ? detail : "");
-                    return;
-                }
-            }
-            _snprintf_s(out, cap, _TRUNCATE, "object@0x%llX", static_cast<unsigned long long>(ptr));
+            if (InterlockedCompareExchange(&g_describeObjects, 0, 0) != 0 &&
+                DescribeObjectDetail(ptr, w))
+                return;
+            w.BeginObject(nullptr, ptr, nullptr);
+            w.EndObject();
         }
 
         // A DECIMAL: a 96-bit magnitude, a scale of 0..28 and a sign byte, laid over the whole
         // VARIANT: scale at +2, sign at +3, the high 32 bits at +4, the low 64 at +8. Rendered
         // exactly, in integer arithmetic, since 28 digits is more than a double holds. A scale
         // above 28 or a sign byte other than 0 or 0x80 is refused.
-        bool DescribeDecimal(std::uint64_t at, char* out, int cap)
+        bool DescribeDecimal(std::uint64_t at, ValueWriter& w)
         {
+            char out[40];
+            constexpr int cap = static_cast<int>(sizeof(out));
             std::uint8_t scale = 0, sign = 0; std::uint32_t hi = 0; std::uint64_t lo = 0;
             if (!RdU8(at + 2, scale) || !RdU8(at + 3, sign) ||
                 !RdU32(at + 4, hi) || !RdU64(at + 8, lo)) return false;
@@ -155,48 +142,56 @@ namespace vba
                 if (i == scale && scale > 0 && j < cap - 1) out[j++] = '.';
             }
             out[j] = 0;
+            w.Number("Decimal", out);
             return true;
         }
 
-        // One element of the given VARTYPE, read from `at`. `depth` is how
-        // far inside nested arrays this element sits.
-        bool DescribeElement(std::uint16_t vt, std::uint64_t at, char* out, int cap,
-                             int depth = 0, int maxElems = kMaxRenderedElems)
+        // A number of VBA type `type`, formatted from `fmt`.
+        template <class T>
+        void PutNumber(ValueWriter& w, const char* type, const char* fmt, T v)
         {
-            out[0] = 0;
-            std::uint64_t q = 0; std::uint32_t d = 0; std::uint16_t w = 0;
+            char t[48];
+            _snprintf_s(t, _TRUNCATE, fmt, v);
+            w.Number(type, t);
+        }
+
+        // One element of the given VARTYPE, read from `at`. `depth` is how
+        // far inside nested arrays this element sits. False, having written
+        // nothing, when the bytes cannot be read.
+        bool DescribeElement(std::uint16_t vt, std::uint64_t at, ValueWriter& w, int depth = 0)
+        {
+            std::uint64_t q = 0; std::uint32_t d = 0; std::uint16_t h = 0;
             switch (vt)
             {
             case 2:  // VT_I2 -- Integer AND Boolean share it
-                if (!RdU16(at, w)) return false;
-                _snprintf_s(out, cap, _TRUNCATE, "%d", static_cast<int>(static_cast<std::int16_t>(w)));
+                if (!RdU16(at, h)) return false;
+                PutNumber(w, "Integer", "%d", static_cast<int>(static_cast<std::int16_t>(h)));
                 return true;
             case 3:  // VT_I4
                 if (!RdU32(at, d)) return false;
-                _snprintf_s(out, cap, _TRUNCATE, "%d", static_cast<int>(static_cast<std::int32_t>(d)));
+                PutNumber(w, "Long", "%d", static_cast<int>(static_cast<std::int32_t>(d)));
                 return true;
             case 4:  // VT_R4
             {
                 if (!RdU32(at, d)) return false;
                 float f = 0; memcpy(&f, &d, sizeof(f));
-                _snprintf_s(out, cap, _TRUNCATE, "%.9g", static_cast<double>(f));
+                PutNumber(w, "Single", "%.9g", static_cast<double>(f));
                 return true;
             }
             case 5:  // VT_R8
+            {
+                if (!RdU64(at, q)) return false;
+                double v = 0; memcpy(&v, &q, sizeof(v));
+                w.Double(v);
+                return true;
+            }
             case 7:  // VT_DATE -- a serial number, which is what a cell shows
             {
                 if (!RdU64(at, q)) return false;
                 double v = 0; memcpy(&v, &q, sizeof(v));
-                // NaN and infinity are values; name them.
-                if (((q >> 52) & 0x7FF) == 0x7FF)
-                {
-                    const bool neg  = (q >> 63) != 0;
-                    const bool quiet = (q & 0x000FFFFFFFFFFFFFull) != 0;
-                    _snprintf_s(out, cap, _TRUNCATE, "%s",
-                                quiet ? "NaN" : (neg ? "-Infinity" : "Infinity"));
-                    return true;
-                }
-                core::FormatDouble(v, out, cap);
+                char t[48];
+                core::FormatDouble(v, t, sizeof t);
+                w.Number("Date", t);
                 return true;
             }
             case 6:  // VT_CY -- a 64-bit integer scaled by 10,000
@@ -211,33 +206,34 @@ namespace vba
                 const std::uint64_t a =
                     neg ? (~static_cast<std::uint64_t>(c) + 1u)
                         : static_cast<std::uint64_t>(c);
-                _snprintf_s(out, cap, _TRUNCATE, "%s%llu.%04llu",
-                            neg ? "-" : "",
+                char t[48];
+                _snprintf_s(t, _TRUNCATE, "%s%llu.%04llu", neg ? "-" : "",
                             static_cast<unsigned long long>(a / 10000),
                             static_cast<unsigned long long>(a % 10000));
+                w.Number("Currency", t);
                 return true;
             }
             case 8:  // VT_BSTR
                 if (!RdU64(at, q)) return false;
-                if (q == 0) { _snprintf_s(out, cap, _TRUNCATE, "\"\""); return true; }
-                return DescribeBstr(q, out, cap, /*told=*/true);
+                if (q == 0) { w.String(L"", 0, false); return true; }
+                return DescribeBstr(q, w, /*told=*/true);
             case 11: // VT_BOOL: VARIANT_TRUE is -1. Spelt as Excel spells it, like an error value.
-                if (!RdU16(at, w)) return false;
-                _snprintf_s(out, cap, _TRUNCATE, "%s", w ? "TRUE" : "FALSE");
+                if (!RdU16(at, h)) return false;
+                w.Bool(h != 0);
                 return true;
             case 17: // VT_UI1 -- one byte, read as one byte (see RdU8)
             {
                 std::uint8_t b = 0;
                 if (!RdU8(at, b)) return false;
-                _snprintf_s(out, cap, _TRUNCATE, "%u", static_cast<unsigned>(b));
+                PutNumber(w, "Byte", "%u", static_cast<unsigned>(b));
                 return true;
             }
             case 20: // VT_I8
                 if (!RdU64(at, q)) return false;
-                _snprintf_s(out, cap, _TRUNCATE, "%lld", static_cast<long long>(static_cast<std::int64_t>(q)));
+                PutNumber(w, "LongLong", "%lld", static_cast<long long>(static_cast<std::int64_t>(q)));
                 return true;
             case 14: // VT_DECIMAL: in an array the element IS the whole DECIMAL
-                return DescribeDecimal(at, out, cap);
+                return DescribeDecimal(at, w);
             // THE FOREIGN INTEGER WIDTHS. No VBA declaration produces them, but a
             // COM property can hand one back inside a Variant, and a width is a
             // width: each is read at its size and printed as the number it is.
@@ -245,28 +241,28 @@ namespace vba
             {
                 std::uint8_t b = 0;
                 if (!RdU8(at, b)) return false;
-                _snprintf_s(out, cap, _TRUNCATE, "%d", static_cast<int>(static_cast<std::int8_t>(b)));
+                PutNumber(w, VtName(vt), "%d", static_cast<int>(static_cast<std::int8_t>(b)));
                 return true;
             }
             case 18: // VT_UI2
-                if (!RdU16(at, w)) return false;
-                _snprintf_s(out, cap, _TRUNCATE, "%u", static_cast<unsigned>(w));
+                if (!RdU16(at, h)) return false;
+                PutNumber(w, VtName(vt), "%u", static_cast<unsigned>(h));
                 return true;
             case 19: case 23: // VT_UI4, VT_UINT
                 if (!RdU32(at, d)) return false;
-                _snprintf_s(out, cap, _TRUNCATE, "%u", static_cast<unsigned>(d));
+                PutNumber(w, VtName(vt), "%u", static_cast<unsigned>(d));
                 return true;
             case 22: // VT_INT
                 if (!RdU32(at, d)) return false;
-                _snprintf_s(out, cap, _TRUNCATE, "%d", static_cast<int>(static_cast<std::int32_t>(d)));
+                PutNumber(w, VtName(vt), "%d", static_cast<int>(static_cast<std::int32_t>(d)));
                 return true;
             case 21: // VT_UI8
                 if (!RdU64(at, q)) return false;
-                _snprintf_s(out, cap, _TRUNCATE, "%llu", static_cast<unsigned long long>(q));
+                PutNumber(w, VtName(vt), "%llu", static_cast<unsigned long long>(q));
                 return true;
             case 9: case 13:  // VT_DISPATCH, VT_UNKNOWN
                 if (!RdU64(at, q)) return false;
-                DescribeObject(q, out, cap);
+                DescribeObject(q, w);
                 return true;
             case 10: // VT_ERROR: a cell error travelling in an array (Range.Value)
             {
@@ -275,121 +271,75 @@ namespace vba
                 // cell; `Error(0x7FA)` made them do the arithmetic. Unquoted, so
                 // it cannot be confused with the string "#N/A", which renders
                 // with its quotes.
-                if (const char* en = core::ExcelErrNameFromVba(d))
-                    _snprintf_s(out, cap, _TRUNCATE, "%s", en);
+                if (const char* en = core::ExcelErrNameFromVba(d)) w.Error(en);
                 else
-                    _snprintf_s(out, cap, _TRUNCATE, "Error(0x%X)", d);
+                {
+                    char t[32];
+                    _snprintf_s(t, _TRUNCATE, "Error(0x%X)", d);
+                    w.Error(t);
+                }
                 return true;
             }
             case 12: // VT_VARIANT: the element IS a VARIANT, self-typed -- recurse
-            {
-                const char* ignored = "";
-                return DescribeVariantAt(at, out, cap, &ignored, depth + 1, maxElems);
-            }
+                return DescribeVariantAt(at, w, depth + 1);
             default:
             {
                 // An element type this cannot read is named, not invented: a
                 // placeholder says "there was one here, of type N" and leaves
                 // the rest of the array intact.
-                _snprintf_s(out, cap, _TRUNCATE, "?vt%u", static_cast<unsigned>(vt));
+                char t[24];
+                _snprintf_s(t, _TRUNCATE, "?vt%u", static_cast<unsigned>(vt));
+                w.Marker(t);
                 return true;
             }
             }
         }
 
 
-        // The one array renderer, for both columns: "<Elem>[lo..hi,...]{e1,e2,...}", row by
-        // row. The last index varies fastest, though the bytes lie column-major, and rgsabound
-        // is stored right to left, so bounds are printed in declaration order. An element type
-        // that cannot be named is `?`.
+        // The one array renderer, for both columns: the element type, both bounds of every
+        // dimension in declaration order, then one brace level per dimension with the last
+        // index varying fastest. The bytes lie column-major and rgsabound is stored right to
+        // left, so each element's position is computed from its indices.
         //
         // `sa` must already have come from ReadSafeArrayHeader, which makes the bounds and the
         // element count safe to walk.
-        bool RenderSaText(const SaInfo& sa, std::uint16_t vt, char* out, int cap,
-                          int depth, int maxElems)
+        bool RenderSaText(const SaInfo& sa, std::uint16_t vt, ValueWriter& w, int depth)
         {
-            const std::uint16_t cDims      = sa.cDims;
-            const std::uint64_t total      = sa.total;
-            const std::uint64_t pvData     = sa.pvData;
-            const std::uint32_t cbElements = sa.cbElem;
-            // Built in the caller's buffer with kTail bytes held back for the closing marker,
-            // so the elements can never squeeze it out. A nested array gets whatever room its
-            // parent had left.
-            constexpr int kTail = 48;            // ",...(64 of 18446744073709551615 shown)}"
-            if (cap < kTail * 2) return false;   // no room to say anything true
-            const int body = cap - kTail;        // what elements and bounds may use
-            int len = 0;
-            const char* en = VtName(vt);
-            len = Append(out, body, len, en ? en : "?");
-            len = Append(out, body, len, "[");
-            // ALWAYS BOTH BOUNDS, because `Option Base` decides what a bare count
-            // means -- and backwards, because rgsabound is stored in reverse of
-            // VBA's declaration order.
-            for (int d = static_cast<int>(cDims) - 1; d >= 0; --d)
-            {
-                char t[48];
-                const long long lo = static_cast<long long>(sa.lBound[d]);
-                _snprintf_s(t, _TRUNCATE, "%s%lld..%lld",
-                            (d == static_cast<int>(cDims) - 1) ? "" : ",",
-                            lo, lo + static_cast<long long>(sa.cElems[d]) - 1);
-                len = Append(out, body, len, t);
-            }
-            len = Append(out, body, len, "]{");
-            // HOW MANY ELEMENTS THE CALLER WANTS, not a constant.
-            const std::uint64_t show = (maxElems > 0)
-                                     ? static_cast<std::uint64_t>(maxElems)
-                                     : static_cast<std::uint64_t>(kMaxRenderedElems);
-            std::uint64_t shown = 0;
-            // ROW BY ROW: the last declared index varies fastest. The bytes lie column-major
-            // (the first index fastest), so each element's position in memory is computed.
-            const int dims = cDims > 8 ? 8 : static_cast<int>(cDims);
-            std::uint32_t extent[8] = {};
-            std::uint64_t stride[8] = {};
-            std::uint32_t idx[8] = {};
+            const int dims = sa.cDims > 8 ? 8 : static_cast<int>(sa.cDims);
+            long long lo[8] = {}, hi[8] = {};
+            std::uint64_t extent[8] = {}, stride[8] = {};
             for (int d = 0; d < dims; ++d)
             {
-                extent[d] = sa.cElems[dims - 1 - d];               // declaration order
+                const int raw = dims - 1 - d;                     // rgsabound is reversed
+                extent[d] = sa.cElems[raw];
+                lo[d] = static_cast<long long>(sa.lBound[raw]);
+                hi[d] = lo[d] + static_cast<long long>(extent[d]) - 1;
                 stride[d] = d ? stride[d - 1] * extent[d - 1] : 1;
             }
-            for (std::uint64_t i = 0; i < total && i < show; ++i)
+            w.BeginArray(VtName(vt), dims, lo, hi);
+            core::WalkRowMajor(w, dims, extent, [&](const std::uint64_t* idx)
             {
-                // Render in place: the element is written straight into the caller's buffer, so
-                // a nested array or long string gets whatever room is left and nesting costs no
-                // per-level stack buffer. kMinElem guarantees a whole scalar fits before we
-                // start.
-                constexpr int kMinElem = 64;
-                if (body - len < kMinElem) break;
-                if (i) len = Append(out, body, len, ",");
-                char* dst = out + len;
-                const int dcap = body - len;      // room left, with the tail still reserved
                 std::uint64_t at = 0;
                 for (int d = 0; d < dims; ++d) at += idx[d] * stride[d];
-                // ONE ELEMENT THE DECODER WILL NOT VOUCH FOR IS `?`, not a refusal of the
-                // whole array: the shape and size were established from the descriptor and
-                // stay true whatever a single element turns out to hold.
-                if (!DescribeElement(vt, pvData + at * cbElements, dst, dcap, depth, maxElems))
-                    _snprintf_s(dst, dcap, _TRUNCATE, "?");
-                len += static_cast<int>(strlen(dst));
-                ++shown;
-                for (int d = dims - 1; d >= 0; --d) { if (++idx[d] < extent[d]) break; idx[d] = 0; }
-            }
-            // AGAINST WHAT WAS SHOWN, covering BOTH reasons for stopping -- the element
-            // cap and the buffer -- in the words the arguments column uses.
-            if (shown < total)
-            {
-                len = core::AppendShownMarker(out, cap, len, shown, total);
-            }
-            len = Append(out, cap, len, "}");
+                // One element the decoder will not vouch for is `?`, not a refusal of the whole
+                // array: the shape came from the descriptor and stays true.
+                const ValueWriter::Mark m = w.Save();
+                if (!DescribeElement(vt, sa.pvData + at * sa.cbElem, w, depth))
+                {
+                    w.Restore(m);
+                    w.Marker("?");
+                }
+            });
+            w.EndArray();
             return true;
         }
 
 
-        bool DescribeSafeArray(std::uint64_t psa, std::uint16_t vtHint, char* out, int cap,
-                               int depth, int maxElems, std::uint16_t* vtOut)
+        bool DescribeSafeArray(std::uint64_t psa, std::uint16_t vtHint, ValueWriter& w,
+                               int depth, std::uint16_t* vtOut)
         {
             if (vtOut) *vtOut = 0;
-            if (depth > kMaxNest) { _snprintf_s(out, cap, _TRUNCATE, "[...]"); return true; }
-            out[0] = 0;
+            if (depth > kMaxNest) { w.Marker("[...]"); return true; }
 
             // One SAFEARRAY reader for both columns (vbaoleaut.h).
             SaInfo sa{};
@@ -398,7 +348,7 @@ namespace vba
             // REPORTED BACK, so a caller that needs to NAME the element type does not
             // read the descriptor a second time.
             if (vtOut) *vtOut = vt;
-            return RenderSaText(sa, vt, out, cap, depth, maxElems);
+            return RenderSaText(sa, vt, w, depth);
         }
 
         // Is this a VARTYPE the decoder can read a value for? Consulted only at the top level
@@ -423,11 +373,54 @@ namespace vba
             }
         }
 
-        // A VARIANT at `at`: vt, then the value at +8, decoded by vt.
-        bool DescribeVariantAt(std::uint64_t at, char* out, int cap, const char** typeOut,
-                               int depth, int maxElems)
+        // The held value of the VARIANT whose tag is `vt` and whose payload is at `val`.
+        bool VariantBody(std::uint16_t vt, std::uint64_t val, std::uint64_t self, bool byref,
+                         ValueWriter& w, int depth)
         {
-            out[0] = 0;
+            if (vt & kVT_ARRAY)                   // the element type is in the low bits
+            {
+                std::uint64_t psa = 0;
+                if (!RdU64(val, psa)) return false;
+                // A null SAFEARRAY is a dynamic array never allocated: `Dim a() As Long`.
+                if (psa == 0) { w.Unallocated(VtName(static_cast<std::uint16_t>(vt & kVT_TYPEMASK))); return true; }
+                return DescribeSafeArray(psa, static_cast<std::uint16_t>(vt & kVT_TYPEMASK), w, depth);
+            }
+            switch (vt)
+            {
+            case 0:  w.Word("Empty"); return true;
+            case 1:  w.Word("Null");  return true;
+            case 10: // VT_ERROR: the SCODE, which for a UDF is a cell error
+                return DescribeElement(10, val, w, depth);
+            case 9: case 13:                       // objects
+            {
+                std::uint64_t ptr = 0;
+                if (!RdU64(val, ptr)) return false;
+                DescribeObject(ptr, w);
+                return true;
+            }
+            case 14:                               // the DECIMAL overlays the VARIANT itself
+                return DescribeDecimal(self, w);
+            case 36:                               // VT_RECORD: a user-defined Type
+            {
+                // Its layout lives behind IRecordInfo, a COM call this hook does
+                // not make, so it is its address -- the same shape the argument
+                // column gives a UDT, so one can be followed between rows.
+                //
+                // After a by-reference hop, val already is the record's address.
+                std::uint64_t rec = val;
+                if (!byref && !RdU64(val, rec)) return false;
+                w.Udt(rec);
+                return true;
+            }
+            default:
+                return DescribeElement(vt, val, w, depth);
+            }
+        }
+
+        // A VARIANT at `at`: vt, then the value at +8, decoded by vt. Written inside
+        // BeginVariant/EndVariant, and nothing at all when it fails.
+        bool DescribeVariantAt(std::uint64_t at, ValueWriter& w, int depth)
+        {
             std::uint16_t vt = 0;
             if (!RdU16(at, vt)) return false;
             std::uint64_t val  = at + 8;          // the payload
@@ -452,58 +445,13 @@ namespace vba
                     val = target + 8;
                 }
             }
+            if (!(vt & kVT_ARRAY) && depth == 0 && !ReadableVartype(vt)) return false;
 
-            if (vt & kVT_ARRAY)                   // the element type is in the low bits
-            {
-                std::uint64_t psa = 0;
-                if (!RdU64(val, psa)) return false;
-                *typeOut = "Variant";
-                return DescribeSafeArray(psa, static_cast<std::uint16_t>(vt & kVT_TYPEMASK), out, cap,
-                                         depth, maxElems);
-            }
-            if (depth == 0 && !ReadableVartype(vt)) return false;   // see ReadableVartype
-
-            *typeOut = "Variant";
-            switch (vt)
-            {
-            case 0:  _snprintf_s(out, cap, _TRUNCATE, "Empty"); return true;
-            case 1:  _snprintf_s(out, cap, _TRUNCATE, "Null");  return true;
-            case 10: // VT_ERROR: the SCODE, which for a UDF is a cell error
-            {
-                std::uint32_t sc = 0;
-                if (!RdU32(val, sc)) return false;
-                // The same spelling the XLL column uses, from one table. An SCODE outside
-                // Excel's set keeps its number: a COM error is not a cell error.
-                if (const char* en = core::ExcelErrNameFromVba(sc))
-                    _snprintf_s(out, cap, _TRUNCATE, "%s", en);
-                else
-                    _snprintf_s(out, cap, _TRUNCATE, "Error(0x%X)", sc);
-                return true;
-            }
-            case 9: case 13:                       // objects
-            {
-                std::uint64_t ptr = 0;
-                if (!RdU64(val, ptr)) return false;
-                DescribeObject(ptr, out, cap);
-                return true;
-            }
-            case 14:                               // the DECIMAL overlays the VARIANT itself
-                return DescribeDecimal(self, out, cap);
-            case 36:                               // VT_RECORD: a user-defined Type
-            {
-                // Its layout lives behind IRecordInfo, a COM call this hook does
-                // not make, so it is its address -- the same shape the argument
-                // column gives a UDT, so one can be followed between rows.
-                //
-                // After a by-reference hop, val already is the record's address.
-                std::uint64_t rec = val;
-                if (!byref && !RdU64(val, rec)) return false;
-                _snprintf_s(out, cap, _TRUNCATE, "udt@0x%llX", static_cast<unsigned long long>(rec));
-                return true;
-            }
-            default:
-                return DescribeElement(vt, val, out, cap, depth);
-            }
+            const ValueWriter::Mark m = w.Save();
+            w.BeginVariant();
+            if (!VariantBody(vt, val, self, byref, w, depth)) { w.Restore(m); return false; }
+            w.EndVariant();
+            return true;
         }
     }
 
@@ -559,60 +507,31 @@ namespace vba
     // See vbaretdecode.h. The whole array, for a caller that read the header
     // itself -- the arguments column, which follows an extra indirection to find
     // the descriptor and so cannot use DescribeSafeArray's entry point.
-    bool RenderSafeArrayValue(const SaInfo& sa, char* out, int cap, int maxElems)
+    bool RenderSafeArrayValue(const SaInfo& sa, ValueWriter& w)
     {
-        return RenderSaText(sa, EffectiveElemVt(sa), out, cap, 0, maxElems);
+        return RenderSaText(sa, EffectiveElemVt(sa), w, 0);
     }
 
     // See vbaretdecode.h. One element of a SAFEARRAY, for a caller that walked
     // the descriptor itself.
-    bool DescribeArrayElement(std::uint16_t vt, std::uint64_t at, char* out, int cap, int maxElems)
+    bool DescribeArrayElement(std::uint16_t vt, std::uint64_t at, ValueWriter& w)
     {
-        out[0] = 0;
         if (vt == 0) return false;
-        return DescribeElement(vt, at, out, cap, 0, maxElems);
+        return DescribeElement(vt, at, w, 0);
     }
 
     // See vbaretdecode.h. The ARGS column's decoder, which is this one.
-    bool DescribeVariantValue(std::uint64_t at, char* out, int cap,
-                              const char** heldType, int maxElems)
+    bool DescribeVariantValue(std::uint64_t at, ValueWriter& w)
     {
-        *heldType = "";
-        out[0] = 0;
-
-        // The held type is read BEFORE the value, from the same tag the
-        // renderer will use, so the two cannot disagree about what was found.
-        std::uint16_t vt = 0;
-        if (!RdU16(at, vt)) return false;
-
-        // An ARRAY names its own element type in the rendering
-        // (`Double[3]{...}`), so naming it again would read `Double(Double[3]
-        // {...})`. Same for the cases whose text already carries the type, and
-        // for the ones with no type worth saying.
-        if ((vt & kVT_ARRAY) == 0)
-        {
-            // Through the VT_BYREF tag: the name is the target's, which is what the value will
-            // be read as.
-            const std::uint16_t base = static_cast<std::uint16_t>(vt & ~kVT_BYREF);
-            if (VtNameWorthSaying(base)) *heldType = VtName(base);
-        }
-
-        const char* ignored = "";
-        if (!DescribeVariantAt(at, out, cap, &ignored, 0, maxElems))
-        {
-            *heldType = "";   // nothing was rendered, so nothing is named
-            out[0] = 0;
-            return false;
-        }
-        return true;
+        return DescribeVariantAt(at, w, 0);
     }
 
     // See vbaretdecode.h. The one BSTR reader, shared with the arguments
     // column. `told` defaults false there: that column reaches this only
     // when the p-code named no type, so it is probing.
-    bool DescribeBstrValue(std::uint64_t p, char* out, int cap, bool told)
+    bool DescribeBstrValue(std::uint64_t p, ValueWriter& w, bool told)
     {
-        return DescribeBstr(p, out, cap, told);
+        return DescribeBstr(p, w, told);
     }
 
     RetKind ExitReturnKind(std::uint16_t exitOp)
@@ -660,9 +579,9 @@ namespace vba
     // the STORE (DecideReturnKind), and deriving it in two places would be two
     // places to disagree.
     bool DescribeReturnKind(std::uint64_t r14, RetKind k, std::uint16_t storeOp,
-                            char* out, int cap, const char** typeOut)
+                            ValueWriter& w, const char** typeOut)
     {
-        out[0] = 0; *typeOut = "";
+        *typeOut = "";
         if (r14 == 0) return false;
 
         switch (k)
@@ -677,13 +596,16 @@ namespace vba
             // a null BSTR, and a null read as "" is the value, not a decline.
             std::uint64_t q = 0;
             if (!RdU64(r14 - 8, q)) return false;
+            if (q == 0) { *typeOut = "String"; w.String(L"", 0, false); return true; }
+            if (!DescribeBstr(q, w, /*told=*/true)) return false;
             *typeOut = "String";
-            if (q == 0) { _snprintf_s(out, cap, _TRUNCATE, "\"\""); return true; }
-            return DescribeBstr(q, out, cap, /*told=*/true);
+            return true;
         }
 
         case RetKind::Variant:
-            return DescribeVariantAt(r14 - 0x18, out, cap, typeOut, 0, kMaxRenderedElems);
+            if (!DescribeVariantAt(r14 - 0x18, w, 0)) return false;
+            *typeOut = "Variant";
+            return true;
 
         case RetKind::Object:
         {
@@ -693,7 +615,7 @@ namespace vba
             std::uint64_t q = 0;
             if (!RdU64(r14 - 8, q)) return false;
             *typeOut = "Object";
-            DescribeObject(q, out, cap);
+            DescribeObject(q, w);
             return true;
         }
 
@@ -708,7 +630,7 @@ namespace vba
             if (storeOp == 699)
             {
                 *typeOut = "LongLong";
-                _snprintf_s(out, cap, _TRUNCATE, "%lld", static_cast<long long>(static_cast<std::int64_t>(q)));
+                PutNumber(w, "LongLong", "%lld", static_cast<long long>(static_cast<std::int64_t>(q)));
                 return true;
             }
             if (storeOp == 671)
@@ -717,7 +639,9 @@ namespace vba
                 // before anything was validated. Passing 0 as the hint loses nothing: with
                 // FADF_HAVEVARTYPE set the walk re-reads q-4 itself and ignores the hint.
                 std::uint16_t vt = 0;
-                if (!DescribeSafeArray(q, 0, out, cap, 0, kMaxRenderedElems, &vt))
+                // Never allocated: no descriptor, so nothing names the element type.
+                if (q == 0) { w.Unallocated(nullptr); *typeOut = "?()"; return true; }
+                if (!DescribeSafeArray(q, 0, w, 0, &vt))
                     return false;
                 *typeOut = ArrayTypeName(vt);
                 return true;
@@ -732,12 +656,12 @@ namespace vba
             *typeOut = RetKindName(k);
             switch (k)
             {
-            case RetKind::Byte:     return DescribeElement(17, r14 - 8, out, cap);
-            case RetKind::Integer:  return DescribeElement(2,  r14 - 8, out, cap);
-            case RetKind::Long:     return DescribeElement(3,  r14 - 8, out, cap);
-            case RetKind::Single:   return DescribeElement(4,  r14 - 8, out, cap);
-            case RetKind::Double:   return DescribeElement(5,  r14 - 8, out, cap);
-            case RetKind::Currency: return DescribeElement(6,  r14 - 8, out, cap);
+            case RetKind::Byte:     return DescribeElement(17, r14 - 8, w);
+            case RetKind::Integer:  return DescribeElement(2,  r14 - 8, w);
+            case RetKind::Long:     return DescribeElement(3,  r14 - 8, w);
+            case RetKind::Single:   return DescribeElement(4,  r14 - 8, w);
+            case RetKind::Double:   return DescribeElement(5,  r14 - 8, w);
+            case RetKind::Currency: return DescribeElement(6,  r14 - 8, w);
             default: return false;
             }
         }

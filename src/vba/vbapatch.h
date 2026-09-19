@@ -1,4 +1,4 @@
-// Patches the p-code dispatch table: statement, exit, raise and End slots swapped for thunks
+// Patches the p-code dispatch table: statement, exit and End slots swapped for thunks
 // that count and jump on to the original handler.
 //
 // Nothing in the instruction stream is rewritten, so CFG, CET and unwind metadata are
@@ -27,6 +27,13 @@ namespace vba
     // Restore every original pointer; safe when never armed. The thunk page is
     // intentionally NOT freed -- see the .cpp.
     std::string DisarmCounting();
+
+    // After a contained fault: lets go of the arm/disarm gate if this thread held it, so the
+    // next disarm can run. True if it was held.
+    bool ReleaseArmGateHeldByThisThread();
+
+    // XRAYXL_DIAG instrument: faults while holding the gate (XRayXL_FaultProbe "ARMGATE").
+    void FaultWhileArmGateHeldForProbe();
 
     // What the tracer did not understand this session, at WARNING level: an opcode with no
     // known length, one reaching a parameter slot with no type (`?opNNN`), and an exit opcode

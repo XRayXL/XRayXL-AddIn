@@ -32,6 +32,8 @@
     <ClCompile Include="$(XRayRoot)src\emit\csv.cpp" />
     <ClCompile Include="$(XRayRoot)src\emit\ring.cpp" />
     <ClCompile Include="$(XRayRoot)src\emit\rowcsv.cpp" />
+    <ClCompile Include="$(XRayRoot)src\emit\rowjson.cpp" />
+    <ClCompile Include="$(XRayRoot)src\core\jsonvalue.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

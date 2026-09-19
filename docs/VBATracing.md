@@ -28,7 +28,6 @@ intercept are the ones that mark meaningful moments:
 
 - the **start of a statement** — so we can see each procedure begin and each line run;
 - the **exit** of a procedure — so we can see it end and read its return value;
-- the **raise** of an error;
 - the **End** of a VBA session.
 
 From that stream of moments we rebuild, on the side, a picture of what VBA is doing:
@@ -45,7 +44,7 @@ entry row and one exit row in the trace file.
 
         dispatch table (function pointers, one per instruction kind)
         +-----------------------------------------------------------+
-        |  ...  | start-of-statement | ... | exit | ... | raise | ...|
+        |  ...  | start-of-statement | ... | exit | ... | End | ...  |
         +--------------^-------------------------^---------^--------+
                        |                         |         |
         we swapped these few pointers to point at our stubs first;
@@ -79,8 +78,9 @@ only cost is the detour.
 
 **Which slots, and how many.** The table has about 1,700 slots. We patch a small
 set of them, grouped by role: the two that begin a statement, the ones that end a
-procedure (there are several exit forms), the one that raises an error, and the one
-that tears the session down (`End`). Everything the tracer knows is built from those
+procedure (there are several exit forms), and the one that tears the session down
+(`End`). Errors need no slot of their own: a call an error ends is the one that
+never runs its exit. Everything the tracer knows is built from those
 few moments.
 
 **A note on trust.** We do not hardcode which slot is which. At arm time the tracer
@@ -193,15 +193,16 @@ call carries an **outcome** that says how it ended, from a fixed list:
 | `unhandled` | an error left VBA through this call into a worksheet cell (the cell shows `#VALUE!`) |
 | `abandoned` | the `End` statement tore the session down; the call neither returned nor threw |
 
-**Why the outcome cannot be decided when the error is raised.** VBA fires the same
-"raise" instruction for a real error *and* for perfectly ordinary object work (a cell
-write, a `For Each`, a timer). At the moment of the raise there is no way to tell a
-genuine failure from routine housekeeping. So the tracer notes only that a raise
-happened in this call, and decides what it *meant* when the call closes:
+**Why the outcome is decided when the call closes.** An error can be raised by
+`Err.Raise` or by VBA itself, in the middle of a division, a conversion or an
+overflow, and there is no single place where every error starts. But every error
+that leaves a call ends it the same way: without its normal ending. So the tracer
+decides the outcome when the call closes:
 
-- A call that raised and then ran its normal ending resolved the matter itself —
-  routine work, or a same-procedure handler. It reads `returned`.
-- A call that raised and then unwound with no normal ending genuinely **threw**.
+- A call that ran its normal ending `returned`, even if it caught an error of its
+  own on the way (`On Error Resume Next`).
+- The innermost call that ended with no normal ending **threw**. `End`, and a
+  macro still running when you disarm, are the two exceptions, and are told apart.
 - The calls outside the thrower, still in flight, are **unwound** as the error
   passes through them — unless one of them runs again afterwards, which means it
   **caught** the error, and it reads `handled`.
@@ -266,9 +267,6 @@ is not optional and cannot be turned off.
 The mechanism above is clean; reality has corners. These are the ones the tracer
 handles deliberately, each covered by a test.
 
-- **An error on a procedure's very first line.** The raise can fire one instruction
-  before the call is officially open. The mark is held and applied to the call as
-  soon as it opens, rather than being blamed on the caller.
 - **Recursion.** Handled by identifying a *call* rather than a *procedure*, so a
   function calling itself pushes a new frame each level.
 - **Very deep nesting.** The shadow stack has a fixed size. Past it, calls are
@@ -277,13 +275,8 @@ handles deliberately, each covered by a test.
 - **The `End` statement.** `End` stops all VBA immediately, running no endings at
   all. We intercept it directly and mark every still-open call `abandoned`, because
   they neither returned nor threw.
-- **A benign object-model raise.** A cell write or `For Each` trips the raise
-  instruction with nothing wrong. Because the outcome is decided at close, such a
-  call is seen to have finished normally and reads `returned`.
-- **A same-procedure `On Error Resume Next` of a real error.** This raises and then
-  runs its ending, so it looks like the benign case and reads `returned`. This is a
-  deliberate, documented trade: distinguishing it would cost a lookup on the hot path
-  to report a non-event.
+- **A same-procedure `On Error Resume Next` of a real error.** The call caught its
+  own error and runs its normal ending, so it reads `returned`: nothing left it.
 - **An error passed an Excel object.** Passing something like a `Range` to a VBA
   method used to confuse an earlier design; the calling-cell approach is immune,
   because the method is not computing a new cell.

@@ -26,12 +26,19 @@
 # cycle cost varies by orders of magnitude between configurations.
 #   XRAY_HAMMER_ITERATIONS      the cycle count
 #   XRAY_HAMMER_BUDGET_SECONDS  the duration
+#   XRAY_HAMMER_CONTROL=1       the same cycles with no arm or disarm: the baseline the resource
+#                               samples are read against, since Excel's own growth is in them too
 $Iterations = Get-EnvInt 'XRAY_HAMMER_ITERATIONS' 1500
+$Control = ($env:XRAY_HAMMER_CONTROL -eq '1')
 # Well inside the suite's TestTimeoutSeconds (3000), so the harness never has
 # to kill the run and a result is always reported.
 $DefaultBudgetSeconds = 2400
 # Cycles between resource samples: frequent enough for a trend, rare enough to cost nothing.
 $SampleEveryArms = 100
+# Excel leaks a pagefile-backed composition surface on some recalculations, armed or not, and
+# private bytes do not show it: left alone, a long run exhausts the machine's commit and takes
+# other processes with it. Below this much free commit the run stops, and says so.
+$MinFreeCommitGB = 4
 
 try {
     $sx = Connect-TestExcel
@@ -154,10 +161,12 @@ End Sub
             [void](Set-XRayTraceParam $sx 'XLL' 'DEPTH'  $depths[$rand.Next(0, 2)])
             [void](Set-XRayTraceParam $sx 'XLL' 'ARGS'   ($rand.Next(0, 2) -eq 1))
             [void](Set-XRayTraceParam $sx 'XLL' 'RETVAL' ($rand.Next(0, 2) -eq 1))
-            $pressed = Invoke-XRayCommand $sx 'XRayXL_Arm'
-            if ($pressed -ne 'pressed') { throw "arm refused at $i : $pressed" }
+            if (-not $Control) {
+                $pressed = Invoke-XRayCommand $sx 'XRayXL_Arm'
+                if ($pressed -ne 'pressed') { throw "arm refused at $i : $pressed" }
+            }
             $app.CalculateFull()
-            [void](Invoke-XRayCommand $sx 'XRayXL_Disarm')
+            if (-not $Control) { [void](Invoke-XRayCommand $sx 'XRayXL_Disarm') }
             $done = $i
             if (Test-Path $dumpPath) { $stoppedOn = 'minidump written'; break }   # the fault we are hunting
             if (($i % $SampleEveryArms) -eq 0) {
@@ -166,8 +175,13 @@ End Sub
                     $memLast = $sample
                     $memAt = $i
                     if (-not $memFirst) { $memFirst = $memLast }
-                    Write-Output ("arms={0,5} working={1}MB private={2}MB handles={3}" -f `
-                        $i, $memLast.WorkingMB, $memLast.PrivateMB, $memLast.Handles)
+                    Write-Output ("arms={0,5} working={1}MB private={2}MB handles={3} gdi={4} user={5}" -f `
+                        $i, $memLast.WorkingMB, $memLast.PrivateMB, $memLast.Handles, $memLast.Gdi, $memLast.User)
+                }
+                $freeCommitGB = (Get-CimInstance Win32_OperatingSystem).FreeVirtualMemory / 1MB
+                if ($freeCommitGB -lt $MinFreeCommitGB) {
+                    $stoppedOn = ('system commit low ({0:N1} GB free)' -f $freeCommitGB)
+                    break
                 }
             }
             if ($sw.Elapsed.TotalSeconds -ge $BudgetSeconds) { $stoppedOn = 'time budget'; break }
@@ -210,8 +224,9 @@ End Sub
         ("private {0}->{1}MB over {2} arms ({3}MB per 1000 arms), handles {4}->{5}" -f `
             $memFirst.PrivateMB, $memLast.PrivateMB, $memAt, $perK, $memFirst.Handles, $memLast.Handles)
     } else { "no samples" }
-    $detail = ("iterations={0} completed={1} armed={2} secs={3} mtcThreads={4} seed={5} stoppedOn={6} | $memNote" -f
-               $Iterations, $done, $armed, [math]::Round($sw.Elapsed.TotalSeconds, 1), $threads, $seed, $stoppedOn)
+    $detail = ("{7}iterations={0} completed={1} armed={2} secs={3} mtcThreads={4} seed={5} stoppedOn={6} | $memNote" -f
+               $Iterations, $done, $armed, [math]::Round($sw.Elapsed.TotalSeconds, 1), $threads, $seed, $stoppedOn,
+               $(if ($Control) { 'CONTROL (never armed) ' } else { '' }))
     if ($died) { $detail += "; excel died: $died" }
     if ($execFault) { $detail += "; EXEC-FAULT CAPTURED: $execFault" }
     if ($haveDump) { $detail += "; dump: $dumpPath" }

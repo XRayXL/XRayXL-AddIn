@@ -43,8 +43,8 @@ decisions.
 | **2. Derivation** | `src/vba/vbaderive.*` — locating and verifying the dispatch table |
 | **3. XLL tracing** | `src/xll/` — `xllregistry` (enumerate), `xlltypeplan` (parse the registration), `xllhook` + `xllthunk.asm` (patch and wrap), `xlldecode` (read the values), `xlltrace` (build the row), `xllarm` (hook and unhook this source), `xllregister_watch` (add-ins loaded after arming) |
 | **4. VBA tracing** | `src/vba/` — `vbapatch` + `vbathunk.asm` (swap the slots), `vbapcode` + `vbapcode_tables.h` (the walk, and the pinned lengths it walks by), `vbatrace` (the shadow stack) + `vbareport` (its disarm report), `vbaargs`/`vbaretdecode` (read the values), `vbaidentity`/`vbaproctable`/`vbatrailer` (name the procedure) |
-| **5. Safety** | `src/core/crashlog.*`, `src/core/safemem.h`, and the SEH guards at every hook body |
-| The output | `src/emit/` — `ring` (the buffer), `rowcsv` (formatting), `csv` (the writer) |
+| **5. Safety** | `src/core/crashlog.*`, `src/core/safemem.h`, the SEH guards at every hook body, and `src/core/contained.*` (a fault contained at a command, a worksheet function or the ribbon, logged with its code and `module+offset`) |
+| The output | `src/emit/` — `ring` (the buffer), `rowcsv` and `rowjson` (a row in each format), `csv` (the file, in either); `src/core/` — `valuewriter` (the events a value is described in), `textvalue` and `jsonvalue` (their spellings), `textbuf` (the bounded buffer they write into) |
 | The UI | `src/ui/` — `ribbon` (the COM add-in that serves the ribbon buttons), `ribbonmodel` (its decisions, with no COM in them) and `ribbonart` (Disarm's picture); `optionsdlg` (the Options dialog), `softdraw`, `softtext` and `glyphs` (its anti-aliased shapes, DirectWrite text and page glyphs), `traceactions` (copy and tail the trace file); `src/core/notify` tells it when state changed elsewhere |
 | Vendored | `src/third_party/` — MinHook, and Microsoft's `xlcall.h` |
 
@@ -116,8 +116,8 @@ because `getEnabled` says what a user may press and enforces nothing. See
 [The ribbon buttons](#the-ribbon-buttons) and [The Options dialog](#the-options-dialog)
 below. `Application.Run("XRayXL_Options")` opens the dialog without the ribbon.
 
-Three settings take no `Source` — `BUFFERSIZE` (ring size in MB), `BUFFERWHENFULL`
-(`DROP`/`PAUSE`) and `LOGLEVEL` (`DEBUG`/`INFO`/`WARNING`/`ERROR`). Every
+Four settings take no `Source` — `BUFFERSIZE` (ring size in MB), `BUFFERWHENFULL`
+(`DROP`/`PAUSE`), `FORMAT` (`CSV`/`JSONL`) and `LOGLEVEL` (`DEBUG`/`INFO`/`WARNING`/`ERROR`). Every
 per-source setting defaults to on, with `DEPTH=ALL` for both sources. **The
 setters refuse while armed and refuse when the caller is a
 cell** — a trace setting changed mid-calculation, or written by a formula, would
@@ -260,10 +260,19 @@ Nothing beyond Windows is used.
   (`SetDialogDpiChangeBehavior`) and `WM_DPICHANGED` re-runs the one layout pass.
   `XRAYXL_UI_DPI`, honoured only under `XRAYXL_DIAG=1`, lays the dialog out as if
   at that DPI, so scaling can be looked at on a 96-DPI desk.
-- **The About page** shows the repository's own `LICENSE`, compiled in as a
-  resource, and a *Third Party Notices* link that opens
-  `THIRD-PARTY-NOTICES.txt` in Notepad. The link exists only if that file is
-  beside the XLL, which is where a release puts it.
+- **Tested outside Excel.** `optionsdlg_test` builds the shipping dialog and its
+  resources into a console program, opens it, and drives it from a second thread
+  through its controls: the pages, the Format drop-down, the embedded texts and
+  their reflow (`src/ui/reflow.h`), OK, Cancel and the armed lock. It stubs only
+  what the add-in's session supplies. In a test's Excel the harness's dialog
+  watchdog would dismiss the dialog before it could be driven.
+- **The About and Notices pages** show the repository's `LICENSE` and
+  `THIRD-PARTY-NOTICES.txt`, both compiled in as resources, so they cannot be
+  lost from the add-in. A release also ships both files beside the XLL, where
+  MinHook's licence asks for them. Each box's text has its hard-wrapped lines
+  rejoined as it is loaded so the box can wrap it; a rule line (`====`, `----`)
+  and a numbered clause keep their own lines, and a rule is drawn short enough
+  not to wrap.
 - **The trace file, its folder and the log file** are read-only boxes (Output and
   Advanced), each with its own right-click menu in place of the edit control's:
   *Copy Path* and *Open in File Explorer* for the folder; *Copy Path*, *Reveal in
@@ -372,7 +381,7 @@ a raw pointer; on a fault it skips the rest of that page and counts
 |---|---|
 | `found` | A table was located at all |
 | `verified` | Every structural check passed. **Arming refuses without it** |
-| `PatchSite[]` | Per slot: the slot index, the `handlerRva` it currently holds, its `role` (`bos`, `exit`, `raise`, `end`) and its exit repeat-group |
+| `PatchSite[]` | Per slot: the slot index, the `handlerRva` it currently holds, its `role` (`bos`, `exit`, `end`) and its exit repeat-group |
 
 **Sites carry RVAs, never absolute addresses.** ASLR moves the load base on every
 start, so a site records an offset into the named module and the base is added at
@@ -488,6 +497,14 @@ worker thread, which hooks each new function the same way (`xllregister_watch.cp
 `ArmLate` in `xllarm.cpp`). A registration Excel refused is not hooked, and
 disarm disables the watch before anything else. `XRAYXL_NOREGWATCH=1` before
 launching Excel turns the watch off.
+
+**An export re-registered to a different shape stops being traced.** Excel keeps one
+registration per export, so registering it again with a new type text replaces the old
+one: from then on Excel calls the function to the new shape, while the plan bound at arm
+describes the old one. The thunk would forward the wrong number of stack arguments and the
+decoder would read them wrongly, so the detour is withdrawn, the log names the export and
+both shapes, and nothing further is traced for it. Registering again under another *name*
+with the same type text changes nothing.
 
 ## Entry and exit as two records
 
@@ -714,7 +731,7 @@ registered functions:
 
 | Side | Cost of one arm |
 |---|---|
-| VBA | **~30 ms** — derive and verify the table, pin the p-code lengths, patch 29 slots |
+| VBA | **~30 ms** — derive and verify the table, pin the p-code lengths, patch 28 slots |
 | XLL | **~10 ms** for 46 hooked functions |
 
 ```
@@ -745,7 +762,7 @@ question, and trying to make one do so is what stalled this for a long while.
 
 | Mechanism | Answers | Cost / risk |
 |---|---|---|
-| **Dispatch-table patch** — BoS, 25 exit slots, raise and `End` | Which procedure is running; entry and exit edges | Fires per *statement*; patches a process-wide table |
+| **Dispatch-table patch** — BoS, 25 exit slots and `End` | Which procedure is running; entry and exit edges | Fires per *statement*; patches a process-wide table |
 | **TLS shadow stack** — keyed on the p-code trailer | Call tree, nesting depth, recursion | O(1) per event, no allocation |
 | **`xlfCaller`, from inside the hook** | The calling cell | A call into Excel, so taken per activation and never per statement |
 
@@ -938,22 +955,22 @@ path through the shadow stack; `unhandled` marks where an error left VBA into a
 worksheet cell. This is the most subtle mechanism in the tracer, so the reasoning
 is set out in full.
 
-**The chain, for an error that stays inside VBA.** The raise opcode (497) fires for
-a real `Err.Raise` and for ordinary object-model VBA alike, so nothing *at* the
-raise says whether an error is real. The frame's fate does, and is known only when
-it closes: `DecideOutcomeAtClose` (`vbatrace.cpp`) reads how the frame left. A frame
-that raised and ran no epilogue **threw**; each outer frame the error passes through
-without resuming is **unwound**; the frame that runs again after the raise
-**handled** it. So a chain reads `threw → unwound → … → handled` outwards from the
-raiser. A raise that ran its own epilogue is a benign object-model raise or a
-same-frame handler and reads `returned`. This part is exercised by
-`tests/sweep/vba/error-shows-thrower-and-catcher` and `error-from-class-and-form`.
+**The chain, for an error that stays inside VBA.** Nothing *at* the raise is
+watched: `Err.Raise` and the runtime's own errors (a division by zero, an overflow,
+a failed conversion) are raised by different code, and an error is only known by
+what it does to the frame. `DecideOutcomeAtClose` (`vbatrace.cpp`) reads how the
+frame left. Once `End` and a frame still running at disarm are set aside, only an
+error unwind leaves without the epilogue, so the innermost such frame **threw**;
+each outer frame the error passes through without resuming is **unwound**; the
+frame that runs again afterwards **handled** it. So a chain reads
+`threw → unwound → … → handled` outwards from the raiser. This part is exercised by
+`tests/sweep/vba/error-shows-thrower-and-catcher`, `error-from-class-and-form` and
+`runtime-errors-read-like-err-raise`.
 
 **The problem this section solves.** An unhandled error in a worksheet function does
 not propagate anywhere a user can see as an error — Excel turns it into `#VALUE!` in
-the cell. The demo `01_CalcChain.xlsm`, run without its helper add-ins, is the case:
-`OptionBook` in a cell fails, the cell shows `#VALUE!`, and a macro that recalculated
-the sheet carries on. The trace must say three things: the function `threw`-then-left
+the cell. `RawRatio` in the demo `04_Errors.xlsm` is the case: it fails in a cell,
+the cell shows `#VALUE!`, and a macro that recalculated the sheet would carry on. The trace must say three things: the function `threw`-then-left
 (a distinct outcome, `unhandled`), the recalculating macro `returned` (it never saw
 the error), and — separately — a function that *returns* `CVErr(xlErrValue)` reads
 `returned` with the error in `ret`, because it did return. That last distinction,
@@ -1027,9 +1044,9 @@ error runs no epilogue, so the stack-pointer backstop never closes it; the next 
 Excel calculates would nest under the dead frame. Before any new activation opens,
 `CloseFramesThatLostTheirStack` closes frames whose trailer is no longer at their
 recorded dispatch pointer (`FrameStillLive`). And disarm must not read a frame it
-closes while still running as a throw: `Application.Run` fires the raise opcode with
-no error, so a macro still executing at disarm keeps its outcome — the same
-`FrameStillLive` check tells a running frame from a leftover of an earlier unwind.
+closes while still running as a throw, though it has run no epilogue either: a macro
+still executing at disarm keeps its outcome, and the same `FrameStillLive` check
+tells a running frame from a leftover of an earlier unwind.
 
 ---
 

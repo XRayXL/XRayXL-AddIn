@@ -62,8 +62,9 @@ also resets settings); arming is the test's own explicit act either way.
 | `ring\` | The buffered output path: an ample ring loses nothing and keeps file order, `PAUSE` throttles the producer rather than dropping, and a starved ring drops but ACCOUNTS for every drop — rows written + rows dropped == frames opened + closed, with the loss reported by `XRayXL_Disarm` and locatable as holes in the `input` column, never as a row in the CSV |
 | `timeline\` | One file, one monotonic sequence, both sources, every row named and attributed to its calling cell, XLL nesting inside VBA — single-threaded, and again under forced multithreaded calculation where write order and event order genuinely diverge |
 | `integration\` | A UserForm with a timer, end to end: VBA tracing is not confined to UDFs reached from a recalc, and form event code itself appears |
+| `containment\` | A fault the add-in contains must not leave it stuck: `XRayXL_FaultProbe "ARMGATE"` (its own session, `XRAYXL_DIAG`) faults while holding the VBA arm/disarm gate, and arming and disarming must work after it |
 | `format\` | The trace-file contract itself ([docs/TraceRowModel.md](../../docs/TraceRowModel.md)): the shared reader must REFUSE a renamed or reordered column, an unknown kind, a seq inversion, a reused `input` — refusal paths the product tests never exercise |
-| `unit\` | The product's own code, with no Excel: one folder per test holding a C++ program built by `XRayXL.sln` from the shipping sources, and the `.test.ps1` that runs it and reports each check as a case — the caller decoder, the registration-string parser, the trace-parameter grammar, the value decoder, the procedure table, the p-code scan guard and slot roles, the output ring under contention, the row formatter, closing a session under writers, and the ribbon's decisions -- enablement, what each control reads and writes, and a cross-check of the shipped customUI XML against the handlers in both directions, which is what catches a dead control |
+| `unit\` | The product's own code, with no Excel: one folder per test holding a C++ program built by `XRayXL.sln` from the shipping sources, and the `.test.ps1` that runs it and reports each check as a case — the caller decoder, the registration-string parser, the trace-parameter grammar, the value decoder, the procedure table, the p-code scan guard and slot roles, the output ring under contention, the row formatter, closing a session under writers, and the ribbon's decisions -- enablement, what each control reads and writes, and a cross-check of the shipped customUI XML against the handlers in both directions, which is what catches a dead control; and the Options dialog itself, opened outside Excel and driven through its pages, the Format drop-down, the embedded licence and notices, OK, Cancel and the armed lock |
 
 Every `*.test.ps1` is one test, so the directory listing is the inventory:
 `find tests/sweep -name "*.test.ps1"` lists it, and nothing here counts it.
@@ -103,8 +104,7 @@ show a suite red for a reason that is not a defect, so check here first.
 
 `SKIP` means the machine cannot run the case at all: VBA project access is not
 trusted, this Excel will not insert an ActiveX control, this Excel will not add
-a UserForm component. Nothing about the PRODUCT skips. A raise slot that fails
-to verify, a setter that does not take effect, a trace with a dropped row in
+a UserForm component. Nothing about the PRODUCT skips. A setter that does not take effect, a trace with a dropped row in
 it — all of those fail. The one other SKIP is `xll\register-then-use` when
 Excel binds the name to the original registration: the call that file exists
 to watch never happened, though everything else it checks must still hold.

@@ -47,11 +47,19 @@ function Get-ProcSample {
     )
     $p = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
     if (-not $p) { return $null }
+    # GDI and USER objects are capped at 10,000 a process and are not in the handle count.
+    if (-not ('XRayGui' -as [type])) {
+        Add-Type -Name XRayGui -Namespace '' -MemberDefinition '[DllImport("user32.dll")] public static extern uint GetGuiResources(System.IntPtr h, uint flags);'
+    }
+    $gdi = $null; $user = $null
+    try { $gdi = [XRayGui]::GetGuiResources($p.Handle, 0); $user = [XRayGui]::GetGuiResources($p.Handle, 1) } catch {}
     [pscustomobject]@{
         At        = $At
         PrivateMB = [math]::Round($p.PrivateMemorySize64 / 1MB, 1)
         WorkingMB = [math]::Round($p.WorkingSet64 / 1MB, 1)
         Handles   = $p.HandleCount
+        Gdi       = $gdi
+        User      = $user
     }
 }
 

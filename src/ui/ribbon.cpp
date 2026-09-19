@@ -4,6 +4,7 @@
 #include "optionsdlg.h"
 
 #include "app/session.h"
+#include "core/contained.h"
 #include "core/crashlog.h"
 #include "core/excel_api.h"
 #include "core/excel_om.h"
@@ -53,42 +54,17 @@ IRibbonExtensibility : public IDispatch
 };
 
 // ---- faults: an exception escaping a COM method makes combase kill the process ----
-__declspec(thread) char t_faultLine[512];
-
 int NoteComFault(EXCEPTION_POINTERS* xp, const char* what)
 {
-    const EXCEPTION_RECORD* er = (xp && xp->ExceptionRecord) ? xp->ExceptionRecord : nullptr;
-    const void* addr = er ? er->ExceptionAddress : nullptr;
-    char mod[MAX_PATH] = "no module (private memory)";
-    HMODULE h = nullptr;
-    if (addr && GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
-                                   GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                                   reinterpret_cast<LPCWSTR>(addr), &h) && h)
-    {
-        wchar_t w[MAX_PATH] = {};
-        GetModuleFileNameW(h, w, MAX_PATH);
-        const wchar_t* leaf = wcsrchr(w, L'\\');
-        leaf = leaf ? leaf + 1 : w;
-        _snprintf_s(mod, _TRUNCATE, "%ls+0x%llX", leaf,
-                    static_cast<unsigned long long>(
-                        reinterpret_cast<const unsigned char*>(addr) -
-                        reinterpret_cast<const unsigned char*>(h)));
-    }
-    _snprintf_s(t_faultLine, _TRUNCATE,
-                "RIBBON COM METHOD FAULTED in %s: code 0x%08lX at %p (%s)"
-                " -- contained; COM would have killed the process here",
-                what, er ? er->ExceptionCode : 0UL, addr, mod);
-    return EXCEPTION_EXECUTE_HANDLER;
+    return core::contained::Note(xp, "RIBBON COM METHOD", what,
+                                 "contained; COM would have killed the process here");
 }
 
-// The handler half: writes what the filter formatted.
+// The handler half: releases what the faulting thread held, then writes what the filter formatted.
 void ReportComFault()
 {
-    // No destructor ran in that unwind, so a lock the body held is still held.
-    core::Log::ReleaseHeldByThisThread();
-    emit::csv::ReleaseHeldByThisThread();
-    core::crashlog::Note(t_faultLine);
-    core::Log::Error(t_faultLine);
+    app::ReleaseHeldByThisThread();
+    core::contained::Report();
 }
 
 // ---- small IDispatch helpers (local, so this file stays deletable in one piece) ----

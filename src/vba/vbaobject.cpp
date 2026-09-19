@@ -85,7 +85,7 @@ namespace
         bool ok = false;
         if (v.vt == VT_BSTR && v.bstrVal)
         {
-            const int n = WideCharToMultiByte(CP_ACP, 0, v.bstrVal, -1, out, cap, nullptr, nullptr);
+            const int n = WideCharToMultiByte(CP_UTF8, 0, v.bstrVal, -1, out, cap, nullptr, nullptr);
             ok = (n > 0);
         }
         VariantClear(&v);
@@ -120,7 +120,7 @@ namespace
         BSTR name = nullptr;
         if (FAILED(ti->GetDocumentation(MEMBERID_NIL, &name, nullptr, nullptr, nullptr)) || !name)
             return false;
-        const bool ok = (WideCharToMultiByte(CP_ACP, 0, name, -1, out, cap, nullptr, nullptr) > 0);
+        const bool ok = (WideCharToMultiByte(CP_UTF8, 0, name, -1, out, cap, nullptr, nullptr) > 0);
         SysFreeString(name);
         return ok;
     }
@@ -172,48 +172,32 @@ namespace
         return GetStr(r, L"Address", out, cap, a, 4);
     }
 
-    bool DescribeRange(IDispatch* r, char* out, int cap)
+    // The address, then the contents when the range is small enough to read. The address alone
+    // is a complete answer: the contents are declined rather than cut when there are too many,
+    // or when the count could not be had, because a count we do not know is not a count we may
+    // assume is small.
+    bool DescribeRange(IDispatch* r, std::uint64_t ptr, core::ValueWriter& w)
     {
         char addr[512];
         if (!RangeAddress(r, addr, sizeof(addr))) return false;
+        w.BeginObject("Range", ptr, addr);
 
         long cells = 0;
         const bool haveCount = GetLong(r, L"Count", cells);
-
-        // THE ADDRESS ALONE IS A COMPLETE ANSWER. The contents are extra, and
-        // are declined rather than truncated when there are too many -- or when
-        // the count could not be had, because a count we do not know is not a
-        // count we may assume is small.
-        if (!haveCount || cells > kMaxCellsToRead)
-        {
-            _snprintf_s(out, cap, _TRUNCATE, "(%s)", addr);
-            return true;
-        }
-
         VARIANT v;
-        if (!GetProp(r, L"Value2", v, nullptr, 0))
+        if (haveCount && cells <= kMaxCellsToRead && GetProp(r, L"Value2", v, nullptr, 0))
         {
-            _snprintf_s(out, cap, _TRUNCATE, "(%s)", addr);
-            return true;
+            if (t_hold) t_hold->var = &v;
+            // The same decoder the columns use, reading the VARIANT we hold.
+            DescribeVariantValue(reinterpret_cast<std::uint64_t>(&v), w);
+            if (t_hold) t_hold->var = nullptr;
+            VariantClear(&v);
         }
-        if (t_hold) t_hold->var = &v;
-        // The same decoder the columns use, reading the VARIANT we hold. Sized to fit after
-        // "(addr)=", so the value's own truncation marker survives.
-        char val[4096]; val[0] = 0;
-        const int room = cap - static_cast<int>(strlen(addr)) - 4;
-        const int valCap = room < static_cast<int>(sizeof(val)) ? room : static_cast<int>(sizeof(val));
-        const char* held = "";
-        const bool got = valCap >= 16 &&
-            DescribeVariantValue(reinterpret_cast<std::uint64_t>(&v), val, valCap, &held);
-        if (t_hold) t_hold->var = nullptr;
-        VariantClear(&v);
-
-        if (got && val[0]) _snprintf_s(out, cap, _TRUNCATE, "(%s)=%s", addr, val);
-        else               _snprintf_s(out, cap, _TRUNCATE, "(%s)", addr);
+        w.EndObject();
         return true;
     }
 
-    bool DescribeWorksheet(IDispatch* ws, char* out, int cap)
+    bool DescribeWorksheet(IDispatch* ws, std::uint64_t ptr, core::ValueWriter& w)
     {
         char sheet[256];
         if (!GetStr(ws, L"Name", sheet, sizeof(sheet))) return false;
@@ -228,53 +212,63 @@ namespace
         // `[Book1]Sheet1`, the shape callerref uses. Without the book it is the
         // sheet alone -- true, and less than we wanted, rather than a book name
         // invented to fill the brackets.
-        if (book[0]) _snprintf_s(out, cap, _TRUNCATE, "([%s]%s)", book, sheet);
-        else         _snprintf_s(out, cap, _TRUNCATE, "(%s)", sheet);
+        char where[600];
+        if (book[0]) _snprintf_s(where, _TRUNCATE, "[%s]%s", book, sheet);
+        else         _snprintf_s(where, _TRUNCATE, "%s", sheet);
+        w.BeginObject("Worksheet", ptr, where);
+        w.EndObject();
         return true;
     }
 
-    bool DescribeWorkbook(IDispatch* wb, char* out, int cap)
+    bool DescribeWorkbook(IDispatch* wb, std::uint64_t ptr, core::ValueWriter& w)
     {
         char book[256];
         if (!GetStr(wb, L"Name", book, sizeof(book))) return false;
-        _snprintf_s(out, cap, _TRUNCATE, "([%s])", book);
+        char where[300];
+        _snprintf_s(where, _TRUNCATE, "[%s]", book);
+        w.BeginObject("Workbook", ptr, where);
+        w.EndObject();
         return true;
     }
 
     // The whole of the work, with no object that needs unwinding, so the caller
     // can wrap it in SEH.
-    bool DescribeInner(IDispatch* d, char* cls, int clsCap, char* detail, int detailCap)
+    bool DescribeInner(IDispatch* d, std::uint64_t ptr, core::ValueWriter& w)
     {
-        cls[0] = 0; detail[0] = 0;
-
         // A class identified by QueryInterface is named by that identification. The type info
         // would say `_Worksheet`, since Excel's sheet object yields no coclass.
+        const char* known = nullptr;
         bool detailed = false;
         if (Answers(d, kIidRange))
         {
-            strncpy_s(cls, clsCap, "Range", _TRUNCATE);
-            detailed = DescribeRange(d, detail, detailCap);
+            known = "Range";
+            detailed = DescribeRange(d, ptr, w);
         }
         else if (Answers(d, kIidWorksheet))
         {
-            strncpy_s(cls, clsCap, "Worksheet", _TRUNCATE);
-            detailed = DescribeWorksheet(d, detail, detailCap);
+            known = "Worksheet";
+            detailed = DescribeWorksheet(d, ptr, w);
         }
         else if (Answers(d, kIidWorkbook))
         {
-            strncpy_s(cls, clsCap, "Workbook", _TRUNCATE);
-            detailed = DescribeWorkbook(d, detail, detailCap);
+            known = "Workbook";
+            detailed = DescribeWorkbook(d, ptr, w);
         }
-        else if (!TypeName(d, cls, clsCap) || !cls[0])
+
+        if (detailed) { InterlockedIncrement64(&g_described); return true; }
+
+        char cls[128];
+        if (known) strncpy_s(cls, known, _TRUNCATE);
+        else if (!TypeName(d, cls, sizeof(cls)) || !cls[0])
         {
             // Not one we know, and it will not say what it is. That is the whole
             // of the answer, and the caller renders the address.
             InterlockedIncrement64(&g_unknown);
             return false;
         }
-
-        if (detailed) InterlockedIncrement64(&g_described);
-        else        { detail[0] = 0; InterlockedIncrement64(&g_namedOnly); }
+        w.BeginObject(cls, ptr, nullptr);
+        w.EndObject();
+        InterlockedIncrement64(&g_namedOnly);
         return true;
     }
 }
@@ -294,11 +288,10 @@ void ResetObjectTotals()
 }
 
 
-bool DescribeObjectDetail(std::uint64_t ptr, char* cls, int clsCap,
-                          char* detail, int detailCap)
+bool DescribeObjectDetail(std::uint64_t ptr, core::ValueWriter& w)
 {
-    if (!ptr || clsCap < 8 || detailCap < 8) return false;
-    cls[0] = 0; detail[0] = 0;
+    if (!ptr) return false;
+    const core::ValueWriter::Mark mark = w.Save();
     ComHold hold;
     hold.n = 0; hold.var = nullptr;
     t_hold = &hold;
@@ -313,7 +306,7 @@ bool DescribeObjectDetail(std::uint64_t ptr, char* cls, int clsCap,
             return false;
         }
         Hold(d);
-        const bool ok = DescribeInner(d, cls, clsCap, detail, detailCap);
+        const bool ok = DescribeInner(d, ptr, w);
         Unhold(d); d->Release();
         t_hold = nullptr;
         return ok;
@@ -324,7 +317,7 @@ bool DescribeObjectDetail(std::uint64_t ptr, char* cls, int clsCap,
         t_hold = nullptr;
         // A COM call that faults costs this description and nothing else: the
         // caller renders `object@0x...`, which is what it did before any of this.
-        cls[0] = 0; detail[0] = 0;
+        w.Restore(mark);
         return false;
     }
 }

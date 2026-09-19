@@ -1,7 +1,6 @@
 # A real Err.Raise nested beneath a benign object-model raise.
 #
-# Touching the object model raises through the same opcode as Err.Raise, so a raise sets the
-# error state only provisionally, and further raises are deduped while it is up. A genuine
+# A cell write in the frame the error passes through must not disturb the chain. A genuine
 # Err.Raise in a nested frame must still be attributed:
 #
 #    P1_Outer    On Error GoTo, catches             -> handled
@@ -52,11 +51,6 @@ try {
     [void](Invoke-XRayCommand $sx 'XRayXL_Arm')
     $armLine = Wait-LogLine $paths.Log 'VBA tracing: ' $mark
     if ($armLine -notmatch 'ARMED') { Complete-Test -Fail -Detail "did not arm: $armLine" }
-    # an unverified raise slot is a product failure, not a SKIP: every outcome would read `returned`
-    if ($armLine -match 'NO ERROR ATTRIBUTION') {
-        Complete-Test -Fail -Detail ("the raise slot did not verify on this VBE7, so no outcome " +
-                                     "below can be attributed: $armLine")
-    }
 
     $app.Run($leaf + '!P1_Outer') | Out-Null
     $lossy = Stop-XRayTrace $sx

@@ -270,42 +270,33 @@ namespace vba
     const char* PcodeSuspectWarning()
     {
         static char b[1400];
+        b[0] = 0;
         const long long walks = g_walks, cleanN = g_cleanWalks;
-        if (walks <= 0) { b[0] = 0; return b; }
-        // ALWAYS SAID, suspects or not: reporting it only alongside something
-        // wrong would hide the number exactly when it is good news worth
-        // trusting.
+        if (walks <= 0) return b;
+        // Definite first: a landing on the invalid-opcode handler proves the previous length
+        // wrong, where a stop only suggests it. Both rankings are consumed here, so they are
+        // reported once per arm. Nothing blamed is no warning; the tally is logged at INFO.
+        int dSlot[8]; long dVal[8]; int sSlot[8]; long sVal[8];
+        const int nd = TopSlots(g_definiteOp, 0, 6, true, dSlot, dVal);
+        const int ns = TopSlots(g_suspectOp, 1, 8, true, sSlot, sVal);
+        if (!nd && !ns) return b;
         int j = _snprintf_s(b, _TRUNCATE,
                     "VBA p-code: %lld of %lld procedure(s) walked cleanly (offset 0 to a "
                     "clean end, no resynchronisation)", cleanN, walks);
-        // Definite first: a landing on the invalid-opcode handler proves the previous length
-        // wrong, where a stop only suggests it. Both rankings are consumed here, so they are
-        // reported once per arm.
-        int slot[8]; long val[8];
-        const int nd = TopSlots(g_definiteOp, 0, 6, true, slot, val);
         if (nd)
         {
             j += _snprintf_s(b + j, sizeof(b) - j, _TRUNCATE,
                     ". LENGTHS PROVEN WRONG (an unresynchronised walk used them and "
                     "landed on a slot that is not an instruction):");
-            j = AppendOps(b, sizeof b, j, slot, val, nd);
+            j = AppendOps(b, sizeof b, j, dSlot, dVal, nd);
         }
-        const int ns = TopSlots(g_suspectOp, 1, 8, true, slot, val);
         if (ns)
         {
             j += _snprintf_s(b + j, sizeof(b) - j, _TRUNCATE, nd
                     ? ".  ALSO SUSPECT:"
                     : ". LENGTHS THAT MAY BE WRONG (an unresynchronised walk used them "
                       "and then could not continue):");
-            j = AppendOps(b, sizeof b, j, slot, val, ns);
-        }
-        if (!nd && !ns)
-        {
-            _snprintf_s(b + j, sizeof(b) - j, _TRUNCATE,
-                        ". No length is blamed: every break followed a resynchronisation, "
-                        "so the walk was already lost and the remaining cost is opcodes "
-                        "with NO length, not wrong ones.");
-            return b;
+            j = AppendOps(b, sizeof b, j, sSlot, sVal, ns);
         }
         _snprintf_s(b + j, sizeof(b) - j, _TRUNCATE,
                     ". Bisecting settles each: the length that raises clean walks "

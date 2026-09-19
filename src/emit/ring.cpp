@@ -121,6 +121,16 @@ namespace emit
         return true;
     }
 
+    int ByteRing::PendingLen() const
+    {
+        if (m_cap == 0) return -1;
+        const LONG64 pos = m_head;
+        if (pos >= LoadAcq(const_cast<volatile LONG64*>(&m_tail))) return -1;
+        char* h = m_buf + (static_cast<std::size_t>(pos) & m_mask);
+        if (LoadAcq(reinterpret_cast<volatile LONG64*>(h)) != pos) return -1;
+        return *reinterpret_cast<volatile LONG*>(h + 8);
+    }
+
     bool ByteRing::Pop(char* out, int& len)
     {
         if (m_cap == 0) return false;

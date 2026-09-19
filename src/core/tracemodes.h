@@ -69,6 +69,14 @@ namespace modes
     bool GetPauseOnFull();
     void SetPauseOnFull(bool pause);
 
+    // THE FILE'S FORMAT: CSV, one row a line with the values as text, or JSON Lines, one object
+    // a line with every value structured and typed. A property of the file, so no Source.
+    enum class Format { Csv = 0, Jsonl = 1 };
+    Format GetFormat();
+    void   SetFormat(Format f);
+    const char*    FormatName (Format f);
+    const wchar_t* FormatNameW(Format f);
+
     // Developer diagnostics in the disarm report -- raw opcode dumps, the
     // identity struct-walk, the untyped-procedure p-code dump. Off so a
     // ordinary report stays clean; XRAYXL_DIAG=1 when investigating why a

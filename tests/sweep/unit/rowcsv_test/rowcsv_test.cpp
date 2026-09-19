@@ -1,4 +1,4 @@
-// UNIT TEST for emit::csv::Fragment / emit::csv::kHeader -- the row-to-CSV formatter,
+// UNIT TEST for emit::csv::Fragment / FragmentSize / kHeader -- the row-to-CSV formatter,
 // checked from the INSIDE, with no Excel and no file. The suites' reader-contract
 // test checks the same format from the outside (a real trace file); this pins it
 // at the source: column count, order, escaping, and the header string.
@@ -6,6 +6,7 @@
 // Built by XRayXL.sln into build\x64\Release\unit\; it needs only rowcsv.cpp.
 
 #include "rowcsv.h"
+#include "rowjson.h"
 
 #include <cstdio>
 #include <cstring>
@@ -53,10 +54,23 @@ namespace
     }
 }
 
+namespace
+{
+    // The fragment for `r`, in a buffer sized by FragmentSize, which must be exact.
+    std::vector<char> g_buf;
+    int Frag(const emit::csv::Row& r)
+    {
+        const std::size_t size = emit::csv::FragmentSize(r);
+        g_buf.assign(size + 1, 0);
+        const std::size_t n = emit::csv::Fragment(r, g_buf.data());
+        if (n != size) Check(false, "FragmentSize is exactly what Fragment writes");
+        return static_cast<int>(n);
+    }
+}
+
 int main()
 {
     using emit::csv::Row;
-    static char buf[emit::csv::kFragMax + 64];
 
     // ---- the header names the columns the fragment fills, after seq,input ----
     {
@@ -78,7 +92,7 @@ int main()
         r.caller = "cell"; r.callerref = "[B.xlsm]S1!A1"; r.argcount = "2";
         r.args = "1 2"; r.ret = "3"; r.rettype = "Q"; r.outcome = "returned";
         r.ticks = "604"; r.trust = "exit";
-        const int n = emit::csv::Fragment(r, buf);
+        const int n = Frag(r); const char* buf = g_buf.data();
         Check(n >= 2 && buf[n - 2] == '\r' && buf[n - 1] == '\n', "fragment ends CRLF");
         auto f = Fields(buf, n);
         Check(f.size() == 20, "fragment has 20 fields");
@@ -99,7 +113,7 @@ int main()
         r.kind = "entry"; r.source = "VBA";
         r.args = "a,b,\"c\",line";           // comma + embedded quotes
         r.trust = "x\r\ny";                    // the LAST column, so a stray newline would also break the row count
-        const int n = emit::csv::Fragment(r, buf);
+        const int n = Frag(r); const char* buf = g_buf.data();
         auto f = Fields(buf, n);
         Check(f.size() == 20, "escaped row still has 20 fields");
         Check(f[14] == "a,b,\"c\",line", "comma+quote field round-trips through the reader");
@@ -115,7 +129,7 @@ int main()
         std::string longArgs(60, 'a');
         longArgs += "\r\nsecond line";
         Row r; r.kind = "entry"; r.source = "VBA"; r.args = longArgs.c_str(); r.trust = "exit";
-        const int n = emit::csv::Fragment(r, buf);
+        const int n = Frag(r); const char* buf = g_buf.data();
         auto f = Fields(buf, n);
         Check(f.size() == 20, "a long field with a newline still has 20 fields");
         Check(f.size() == 20 && f[14].find('\r') == std::string::npos && f[14].find('\n') == std::string::npos,
@@ -124,48 +138,52 @@ int main()
         Check(crlf == 1, "the fragment holds exactly one CRLF, its own terminator");
     }
 
-    // ---- a big field is bounded by kFragMax, not overrun ---------------------
+    // ---- a big field is written whole, never cut -----------------------------
     {
-        std::string big(emit::csv::kFragMax * 2, 'x');   // far larger than the buffer
+        std::string big(1 << 20, 'x');
         Row r; r.kind = "entry"; r.source = "XLL"; r.args = big.c_str();
-        const int n = emit::csv::Fragment(r, buf);
-        Check(n <= emit::csv::kFragMax, "oversized row is truncated within kFragMax, never overruns");
-        Check(n >= 2 && buf[n - 2] == '\r' && buf[n - 1] == '\n', "truncated row still ends CRLF");
-        // Truncating a value must never drop a column.
-        auto fb = Fields(buf, n);
-        Check(fb.size() == 20, "an oversized row still has 20 fields");
-        Check(fb.size() == 20 && fb[0] == "entry" && fb[1] == "XLL",
-              "an oversized row keeps its leading columns");
-    }
-
-    // ---- a huge value in the LAST column -------------------------------------
-    {
-        std::string big(emit::csv::kFragMax * 2, 'y');
-        Row r; r.kind = "exit"; r.source = "VBA"; r.trust = big.c_str();
-        const int n = emit::csv::Fragment(r, buf);
-        Check(n <= emit::csv::kFragMax, "a huge last column stays within kFragMax");
-        auto f = Fields(buf, n);
-        Check(f.size() == 20, "a huge last column still leaves 20 fields");
-    }
-
-    // ---- a huge value mid-row must not cost the columns after it -------------
-    {
-        std::string big(emit::csv::kFragMax * 2, 'z');
-        Row r; r.kind = "exit"; r.source = "VBA"; r.args = big.c_str();
         r.ret = "42"; r.rettype = "Long"; r.outcome = "returned"; r.ticks = "604"; r.trust = "exit";
-        const int n = emit::csv::Fragment(r, buf);
+        const int n = Frag(r); const char* buf = g_buf.data();
         auto f = Fields(buf, n);
+        Check(f.size() == 20 && f[14] == big, "a 1 MB field is written whole");
         Check(f.size() == 20 && f[15] == "42" && f[16] == "Long" && f[17] == "returned" &&
               f[18] == "604" && f[19] == "exit",
-              "a huge args value keeps ret, rettype, outcome, ticks and trust");
-        Check(f.size() == 20 && f[14].size() >= 3 && f[14].compare(f[14].size() - 3, 3, "...") == 0,
-              "the cut args value ends with ... to say so");
+              "a big args value keeps ret, rettype, outcome, ticks and trust");
+    }
+
+    // ---- escaping is counted: a field of quotes doubles and still fits exactly
+    {
+        std::string quotes(1000, '"');
+        Row r; r.kind = "exit"; r.source = "VBA"; r.trust = quotes.c_str();
+        const int n = Frag(r); const char* buf = g_buf.data();
+        auto f = Fields(buf, n);
+        Check(f.size() == 20 && f[19] == quotes, "a last column of quotes round-trips whole");
+    }
+
+    // ---- JSON Lines: the same row as one object, after the writer's prefixes ----
+    {
+        Row r;
+        r.kind = "exit"; r.source = "VBA"; r.span = "5"; r.parent = "0"; r.depth = "1";
+        r.thread = "7"; r.qpc = "99"; r.module = "Mod\"1"; r.function = "F";
+        r.ret = "{\"t\":\"Long\",\"v\":5}"; r.rettype = "Long"; r.outcome = "returned";
+        r.ticks = "604"; r.trust = "exit";
+        core::TextBuf out;
+        out.Append("{\"seq\":1,\"input\":1,");
+        emit::json::AppendRow(r, out);
+        printf("JSON %.*s\n", static_cast<int>(out.Len() - 2), out.Text());
+        Check(std::string(out.Text()) ==
+              "{\"seq\":1,\"input\":1,\"kind\":\"exit\",\"source\":\"VBA\",\"span\":5,\"parent\":0,"
+              "\"depth\":1,\"thread\":7,\"qpc\":99,\"module\":\"Mod\\\"1\",\"function\":\"F\","
+              "\"ret\":{\"t\":\"Long\",\"v\":5},\"rettype\":\"Long\",\"outcome\":\"returned\","
+              "\"ticks\":604,\"trust\":\"exit\"}\r\n",
+              "a JSON row: integers as numbers, ret as JSON, empty fields omitted, one line");
+        out.Release();
     }
 
     // ---- empty row: all fields empty, still 20 of them -----------------------
     {
         Row r;
-        const int n = emit::csv::Fragment(r, buf);
+        const int n = Frag(r); const char* buf = g_buf.data();
         auto f = Fields(buf, n);
         Check(f.size() == 20, "an all-empty row is 20 empty fields");
         bool allEmpty = true; for (auto& s : f) if (!s.empty()) allEmpty = false;

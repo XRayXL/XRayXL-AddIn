@@ -474,7 +474,7 @@ End Sub
             @{ fn='W_16316'; args='a1="WILD" a7=Missing' }
             @{ fn='W_16317'; args='a2="WILD"' }
             @{ fn='W_18883'; args='a2=Nothing' }
-            @{ fn='W_1953'; args='a2="WILD" a3=Variant[0..1]{7,8}' }
+            @{ fn='W_1953'; args='a2="WILD" a3=Variant[0..1]{Integer(7),Integer(8)}' }
             @{ fn='W_1953'; args='a2="WILD"' }
             @{ fn='W_20062'; args='a2=Nothing a5=287454020' }
             @{ fn='W_21984'; args='a3=43832 a4=287454020' }

@@ -43,6 +43,8 @@
 #define IDC_ADV_SEC1       1408
 #define IDC_ADV_RULE1      1409
 #define IDC_OUT_TAIL       1411
+#define IDC_OUT_FMTLBL     1412
+#define IDC_OUT_FMT        1413
 
 // Logging
 #define IDC_ADV_HDR        1500
@@ -56,8 +58,13 @@
 
 #define IDC_ABT_HDR        1600
 #define IDC_ABT_OWNER      1602
-#define IDC_ABT_NOTICES    1604
 #define IDC_ABT_LICLBL     1605
 #define IDC_ABT_LICENSE    1606
 
+// Notices
+#define IDC_NOT_HDR        1700
+#define IDC_NOT_TEXT       1701
+
+// The texts both pages show, compiled in from the repository's own files.
 #define IDR_LICENSE        300
+#define IDR_NOTICES        301

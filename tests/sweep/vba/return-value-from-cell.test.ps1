@@ -321,14 +321,14 @@ End Function
         Check "$($d.Fn)-returns-at-depth" $ok ("ret='{0}' rettype='{1}' expected {2}" -f $x.ret, $x.rettype, $d.Want)
     }
 
-    # ---- VARIANTS ------------------------------------------------------------
+    # ---- VARIANTS: the held value, a number other than Double named ------------
     foreach ($v in @(
         @{ Fn='R_Variant';      Want='1234.5'      }
         @{ Fn='R_VariantStr';   Want='"VARSTR"'    }
-        @{ Fn='R_VariantLong';  Want='777'         }
+        @{ Fn='R_VariantLong';  Want='Long(777)'   }
         @{ Fn='R_VariantEmpty'; Want='Empty'       }
-        @{ Fn='R_VariantDec';   Want='12345.678901234567890123456' }
-        @{ Fn='R_VariantDecNeg';Want='-42'         }
+        @{ Fn='R_VariantDec';   Want='Decimal(12345.678901234567890123456)' }
+        @{ Fn='R_VariantDecNeg';Want='Decimal(-42)' }
         @{ Fn='R_ArrVar';       Want='Double[0..2]{1234.5,2,3}' }
     )) {
         $x = Get-Return $v.Fn
@@ -338,10 +338,10 @@ End Function
 
     # ---- VARIANT ARRAYS OF VARIANTS, nested arrays, Range.Value ---------------
     foreach ($v in @(
-        @{ Fn='R_ArrMixed';  Want='Variant[0..3]{1234.5,"two",3,TRUE}'   }
-        @{ Fn='R_ArrNested'; Want='Variant[0..1]{Variant[0..1]{1234.5,2},3}' }
-        @{ Fn='R_ArrDec';    Want='Variant[0..1]{1.5,-2.25}' }
-        @{ Fn='R_RangeVal';  Want='Variant[1..2,1..2]{10,"x",20,TRUE}'      }   # row by row: R1,S1,R2,S2
+        @{ Fn='R_ArrMixed';  Want='Variant[0..3]{1234.5,"two",Long(3),TRUE}'   }
+        @{ Fn='R_ArrNested'; Want='Variant[0..1]{Variant[0..1]{1234.5,Integer(2)},Integer(3)}' }
+        @{ Fn='R_ArrDec';    Want='Variant[0..1]{Decimal(1.5),Decimal(-2.25)}' }
+        @{ Fn='R_RangeVal';  Want='Variant[1..2,1..2]{{10,"x"},{20,TRUE}}' }   # a level per row: {R1,S1},{R2,S2}
     )) {
         $x = Get-Return $v.Fn
         if (-not $x) { Check "$($v.Fn)-has-exit-row" $false 'no paired exit row'; continue }
@@ -381,7 +381,7 @@ End Function
         @{ Fn='R_ArrDbl'; Want='Double[0..2]{1234.5,2,3}';         Type='Double()' }
         @{ Fn='R_ArrLng'; Want='Long[1..3]{1234,5,6}';             Type='Long()'   }
         @{ Fn='R_ArrStr'; Want='String[0..1]{"XRAYRET","TWO"}';   Type='String()' }
-        @{ Fn='R_Arr2D';  Want='Double[0..1,0..1]{1234.5,2,3,4}';     Type='Double()' }   # row by row
+        @{ Fn='R_Arr2D';  Want='Double[0..1,0..1]{{1234.5,2},{3,4}}'; Type='Double()' }   # a level per row
         @{ Fn='R_ArrBig'; Want='Long[0..9]{100,101,102,103,104,105,106,107,108,109}'; Type='Long()'   }
     )) {
         $x = Get-Return $a.Fn

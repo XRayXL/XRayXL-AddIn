@@ -137,7 +137,7 @@ dist/
   LICENSE                  GPL-3.0
   THIRD-PARTY-NOTICES.txt
   MANIFEST.txt             version, tag, commit and SHA256 of every file here
-  demo/                    two demo add-ins + four macro-enabled workbooks
+  demo/                    two demo add-ins + nine macro-enabled workbooks
 ```
 
 Point Excel at `dist\XRayXL64.xll`: either add it permanently through
@@ -154,11 +154,12 @@ registered command, so nothing needs the ribbon — see
 and carries on working; [Before you run it](#before-you-run-it) explains when
 that happens.
 
-[**`dist/demo/`**](docs/DemoWalkthrough.md) is a playground — a VBA→XLL calc chain, event
-handlers, an error-handling chain, and a form/timer/recursion/class mix, each
-with one-click **Arm** and **Disarm** buttons. Load the two demo add-ins with
-File → Open, open a workbook, press Arm, run something, press Disarm, and read
-the trace. [`docs/DemoWalkthrough.md`](docs/DemoWalkthrough.md) is the walkthrough.
+[**`dist/demo/`**](docs/DemoWalkthrough.md) is a guided tour in nine workbooks: a first
+trace, argument values, callers, errors, a real VBA yield-curve model, classes and
+objects, the call tree, threads, and an option book built from XLL functions. Load the
+two demo add-ins with File → Open, open a workbook, press **Arm** on the ribbon, do
+what the sheet says, press **Disarm**, and read the trace.
+[`docs/DemoWalkthrough.md`](docs/DemoWalkthrough.md) is the walkthrough.
 
 `dist/` is written only by `tools\release.ps1`, and only after a full test
 sweep passes, so it holds what a release shipped rather than whatever was last
@@ -290,7 +291,7 @@ inventory of what each suite defends.
 
 | Document | What it covers |
 |---|---|
-| [docs/DemoWalkthrough.md](./docs/DemoWalkthrough.md) | A hands-on playground — demo add-ins and workbooks with one-click Arm/Disarm |
+| [docs/DemoWalkthrough.md](./docs/DemoWalkthrough.md) | A guided tour — demo add-ins and nine workbooks, each showing one part of the trace |
 | [docs/TraceOptions.md](./docs/TraceOptions.md) | Every capture setting, what it costs, and the add-in's log |
 | [docs/Implementation.md](./docs/Implementation.md) | How it works — the vehicle, what is derived, and the two tracers |
 | [docs/VBATracing.md](./docs/VBATracing.md) | A layered walkthrough of VBA tracing — what is patched, the shadow stack, return values and error outcomes, for a general programmer |

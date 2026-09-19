@@ -46,7 +46,7 @@ $built   = Join-Path $Root 'build\x64\Release'
 # writes it, so it is always modified by the time anyone could look.
 # Uncompiled files count too: LICENSE and README ship, and the .sln decides what builds.
 $srcPaths = @('src', 'StretchXL', 'tests', 'tools',
-              'docs', 'version.props', 'LICENSE', 'README.md', 'XRayXL.sln')
+              'docs', 'version.props', 'LICENSE', 'THIRD-PARTY-NOTICES.txt', 'README.md', 'XRayXL.sln')
 function Test-TreeDirty { [bool](& git -C $Root status --porcelain -- @srcPaths) }
 
 # ---------------------------------------------------------------------------
@@ -216,10 +216,12 @@ Copy-Item $productXll $stage -Force
 Copy-Item (Join-Path $built 'DemoFinance\DemoFinance64.xll')     $stageDemo -Force
 Copy-Item (Join-Path $built 'DemoBehaviors\DemoBehaviors64.xll') $stageDemo -Force
 Copy-Item (Join-Path $Root 'LICENSE')          $stage -Force
+Copy-Item (Join-Path $Root 'THIRD-PARTY-NOTICES.txt') $stage -Force
 Copy-Item (Join-Path $Root 'docs\DemoWalkthrough.md') (Join-Path $stageDemo 'README.md') -Force
 
 # LF before hashing: git stores these LF, so a CRLF copy would fail its own manifest
-foreach ($textFile in @((Join-Path $stage 'LICENSE'), (Join-Path $stageDemo 'README.md'))) {
+foreach ($textFile in @((Join-Path $stage 'LICENSE'), (Join-Path $stage 'THIRD-PARTY-NOTICES.txt'),
+                         (Join-Path $stageDemo 'README.md'))) {
     $raw = [System.IO.File]::ReadAllText($textFile)
     if ($raw.Contains("`r`n")) {
         [System.IO.File]::WriteAllText($textFile, ($raw -replace "`r`n", "`n"),
@@ -229,31 +231,14 @@ foreach ($textFile in @((Join-Path $stage 'LICENSE'), (Join-Path $stageDemo 'REA
 }
 
 # MinHook's BSD-2-Clause requires its notice to travel with BINARY
-# redistributions, not only source. dist\ is a binary redistribution.
-$notices = @()
-$notices += "THIRD-PARTY NOTICES for XRayXL $version"
-$notices += ("=" * 60)
-$notices += ""
-$notices += "XRayXL itself is licensed under the GNU GPL v3 -- see LICENSE."
-$notices += "It includes the following components under their own terms."
-$notices += ""
-$notices += ("-" * 60)
-$notices += "MinHook -- the inline hooking library"
-$notices += ("-" * 60)
-$notices += ""
-$notices += (Get-Content (Join-Path $Root 'src\third_party\minhook\LICENSE.txt') -Raw).TrimEnd()
-$notices += ""
-$notices += ("-" * 60)
-$notices += "xlcall.h -- the Excel C API header"
-$notices += ("-" * 60)
-$notices += ""
-$notices += "From Microsoft's Excel XLL SDK, used under Microsoft's SDK terms."
-$notices += "The header and its provenance note are in src\third_party\xlcall.h."
-# LF, so the hashed bytes match the committed ones
-[System.IO.File]::WriteAllText(
-    (Join-Path $stage 'THIRD-PARTY-NOTICES.txt'),
-    (($notices -join "`n") + "`n"),
-    (New-Object System.Text.UTF8Encoding($false)))
+# redistributions, not only source. dist\ is a binary redistribution. The notices
+# are the committed THIRD-PARTY-NOTICES.txt, which the XLL also embeds for its
+# Notices page; a vendored licence that has moved on without it stops the release.
+$noticesText = [System.IO.File]::ReadAllText((Join-Path $Root 'THIRD-PARTY-NOTICES.txt')) -replace "`r`n", "`n"
+$minhookText = ([System.IO.File]::ReadAllText((Join-Path $Root 'src\third_party\minhook\LICENSE.txt')) -replace "`r`n", "`n").TrimStart([char]0xFEFF).TrimEnd()
+if (-not $noticesText.Contains($minhookText)) {
+    throw "THIRD-PARTY-NOTICES.txt no longer carries src\third_party\minhook\LICENSE.txt verbatim -- update it, then rebuild"
+}
 
 # ---------------------------------------------------------------------------
 # 6. MANIFEST.txt -- what this dist IS. Without it a committed binary is a file

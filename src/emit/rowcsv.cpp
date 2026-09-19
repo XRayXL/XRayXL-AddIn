@@ -19,7 +19,6 @@ namespace csv
     namespace
     {
         constexpr int kColumns = 20;    // fragment fields, after the seq/input prefixes
-        constexpr int kColumnFloor = 512;   // bytes every later column keeps
         void InOrder(const Row& r, const char* (&f)[kColumns])
         {
             f[0]  = r.kind;     f[1]  = r.source;   f[2]  = r.span;     f[3]  = r.parent;
@@ -30,56 +29,61 @@ namespace csv
             f[19] = r.trust;
         }
 
-        // Minimal RFC4180 escaping. Values come out of an add-in's memory and
-        // can contain anything, so this is not optional. A value that does not
-        // fit ends with "...", so a cut reads as one.
-        int Escape(const char* src, char* dst, int dstSize)
+        bool NeedsQuote(const char* src)
         {
-            bool needQuote = false;
             for (const char* p = src; *p; p++)
-                if (*p == ',' || *p == '"' || *p == '\n' || *p == '\r') { needQuote = true; break; }
+                if (*p == ',' || *p == '"' || *p == '\n' || *p == '\r') return true;
+            return false;
+        }
 
-            // What the value itself may use: less the NUL, the quotes, and a cut's "...".
-            const int body = dstSize - 1 - (needQuote ? 2 : 0) - 3;
-            if (body < 0) { if (dstSize > 0) dst[0] = 0; return 0; }
+        std::size_t EscapedSize(const char* src)
+        {
+            std::size_t n = NeedsQuote(src) ? 2 : 0;
+            for (const char* p = src; *p; p++) n += (*p == '"') ? 2 : 1;
+            return n;
+        }
 
-            int n = 0, used = 0;
-            if (needQuote) dst[n++] = '"';
-            const char* p = src;
-            for (; *p; p++)
+        // Minimal RFC4180 escaping. Values come out of an add-in's memory and
+        // can contain anything, so this is not optional. `dst` holds EscapedSize(src).
+        std::size_t Escape(const char* src, char* dst)
+        {
+            const bool quote = NeedsQuote(src);
+            std::size_t n = 0;
+            if (quote) dst[n++] = '"';
+            for (const char* p = src; *p; p++)
             {
-                const int w = (*p == '"') ? 2 : 1;
-                if (used + w > body) break;
-                if (*p == '"')                       { dst[n++] = '"'; dst[n++] = '"'; }
+                if (*p == '"')                     { dst[n++] = '"'; dst[n++] = '"'; }
                 else if (*p == '\r' || *p == '\n') dst[n++] = ' ';
-                else                                 dst[n++] = *p;
-                used += w;
+                else                               dst[n++] = *p;
             }
-            if (*p) { dst[n++] = '.'; dst[n++] = '.'; dst[n++] = '.'; }
-            if (needQuote) dst[n++] = '"';
-            dst[n] = 0;
+            if (quote) dst[n++] = '"';
             return n;
         }
     }
 
-    int Fragment(const Row& row, char* out)
+    std::size_t FragmentSize(const Row& row)
     {
         const char* fields[kColumns];
         InOrder(row, fields);
-        int n = 0;
+        std::size_t n = kColumns - 1 + 2;     // the commas, then CRLF
+        for (int i = 0; i < kColumns; i++) n += EscapedSize(fields[i] ? fields[i] : "");
+        return n;
+    }
+
+    std::size_t Fragment(const Row& row, char* out)
+    {
+        const char* fields[kColumns];
+        InOrder(row, fields);
+        std::size_t n = 0;
         // Always emit every column: the reader rejects a short row.
         for (int i = 0; i < kColumns; i++)
         {
             if (i) out[n++] = ',';
-            // Every later column keeps a comma and kColumnFloor bytes, so one huge
-            // value cannot empty the rest; then CRLF and the NUL.
-            const int reserve = (kColumns - i - 1) * (1 + kColumnFloor) + 4;
-            const int room    = kFragMax - n - reserve;
-            if (room > 1)
-                n += Escape(fields[i] ? fields[i] : "", out + n, room);
+            n += Escape(fields[i] ? fields[i] : "", out + n);
         }
         out[n++] = '\r';
         out[n++] = '\n';
+        out[n] = 0;
         return n;
     }
 }

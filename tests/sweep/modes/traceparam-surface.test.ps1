@@ -96,6 +96,22 @@ try {
     $e = Set-XRayTraceParam $sx 'XLL' 'ARGS' 'PERHAPS'
     Check 'bad-bool-refused' ($e -match '#Err') $e
 
+    # With no Source the recording-wide settings are names too, so the refusal lists all eight.
+    $e = Set-XRayTraceParam $sx $null 'NOSUCH' 'ALL'
+    Check 'no-source-refusal-names-all-eight' (($e -match 'BUFFERSIZE') -and ($e -match 'BUFFERWHENFULL') -and ($e -match 'FORMAT') -and ($e -match 'LOGLEVEL') -and ($e -match 'OBJECTS')) $e
+
+    # A getter refusal arrives whole, not cut at the grid's cell width.
+    $e = [string](Get-XRayTraceParam $sx 'NOPE' 'DEPTH')
+    Check 'getter-refusal-is-whole' ($e -eq '#Err - Source must be XLL or VBA, or omit for both') $e
+    $e = [string](Get-XRayTraceParam $sx 'XLL' 'NOSUCH')
+    Check 'getter-name-refusal-is-whole' ($e -eq '#Err - Name must be DEPTH, ARGS, RETVAL or OBJECTS') $e
+
+    # DROP leaves one hole per dropped row, and the echo says so.
+    $full = [string](Get-XRayTraceParam $sx $null 'BUFFERWHENFULL')
+    $e = Set-XRayTraceParam $sx $null 'BUFFERWHENFULL' 'DROP'
+    Check 'drop-echo-says-each-row-leaves-a-hole' ($e -match 'each leaving a hole in the input column') $e
+    [void](Set-XRayTraceParam $sx $null 'BUFFERWHENFULL' $full)
+
     $after = [string](Get-XRayTraceParam $sx 'XLL' 'DEPTH')
     Check 'refusals-changed-nothing' ($after -eq $before) "was '$before', now '$after'"
 

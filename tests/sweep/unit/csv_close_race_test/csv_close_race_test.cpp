@@ -78,18 +78,18 @@ int main()
 
     for (int c = 0; c < kCycles; ++c)
     {
-        emit::csv::Open(16 * 1024, true);
+        emit::csv::Open(16 * 1024, true, core::modes::Format::Csv);
         Sleep(1);
         emit::csv::Close();
     }
 
     // A synchronous session after a dropping ring reports no drops: the counts survive Close
     // for the summary and must not reach the next session's Disarm result.
-    emit::csv::Open(16 * 1024, false);
+    emit::csv::Open(16 * 1024, false, core::modes::Format::Csv);
     for (int i = 0; i < 5000 && emit::csv::RingDrops() == 0; ++i) Sleep(1);
     const long long ringDrops = emit::csv::RingDrops();
     emit::csv::Close();
-    emit::csv::Open(0, false);
+    emit::csv::Open(0, false, core::modes::Format::Csv);
     const long long syncDrops = emit::csv::RingDrops();
     emit::csv::Close();
 

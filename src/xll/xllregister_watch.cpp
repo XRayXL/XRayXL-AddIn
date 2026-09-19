@@ -177,6 +177,12 @@ namespace xll
                 std::lock_guard<std::mutex> lock(g_mutex);
                 g_pending.clear();
             }
+            // The disarm line reports this session's counts, as every other counter does.
+            InterlockedExchange64(&g_calls, 0);
+            InterlockedExchange64(&g_registers, 0);
+            InterlockedExchange64(&g_hooked, 0);
+            InterlockedExchange64(&g_faults, 0);
+            InterlockedExchange64(&g_declinedCut, 0);
 
             // CREATED ONCE AND NEVER REMOVED. A thread still inside the detour calls
             // through g_original, so its trampoline has to outlive every disarm.

@@ -6,10 +6,10 @@ reference for those settings and for the add-in's own log. What the resulting
 rows *mean* is [TraceRowModel.md](./TraceRowModel.md).
 
 The **XRayXL group** on the Developer tab is a front end to exactly these calls —
-three buttons, **Arm**, **Disarm** and **Options**, the last a dialog with four pages: Capture (a section
-per source, each a Depth drop-down and check boxes), Output (the trace folder
-and file), Advanced (the output buffer and the log level), and About (the version and
-the licence). It holds no settings of its own, so the two can never
+three buttons, **Arm**, **Disarm** and **Options**, the last a dialog with five pages: Capture (a section
+per source, each a Depth drop-down and check boxes), Output (the format
+drop-down, the trace folder and file), Advanced (the output buffer and the log level),
+About (the version and the licence), and Notices (the third-party notices). It holds no settings of its own, so the two can never
 disagree: press OK and `XRayXL_GetTraceParam` reports what you chose; change
 something from a macro and the dialog shows it the next time it opens. Cancel
 changes nothing. `Application.Run "XRayXL_Options"` opens the same dialog.
@@ -55,6 +55,7 @@ These take no `Source`.
 |---|---|---|---|
 | `BUFFERSIZE` | MB, e.g. `64` | `64` | Size of the ring buffer between the calculation thread and the writer; `0` writes every row synchronously |
 | `BUFFERWHENFULL` | `PAUSE` / `DROP` | `PAUSE` | What a full ring does — make the calculation wait until it is half empty, or drop rows |
+| `FORMAT` | `CSV` / `JSONL` | `CSV` | The trace file's format: CSV, with values as text, or JSON Lines, one object a line with every value structured and typed (see [the row model](TraceRowModel.md#json-lines)). Also **Options › Output › Format** |
 | `LOGLEVEL` | `DEBUG`/`INFO`/`WARNING`/`ERROR` | `INFO` | The log's level (see [The log](#the-log)) |
 
 The ring keeps file I/O off the calculation thread, so tracing disturbs the
@@ -74,8 +75,11 @@ timings as little as possible. The defaults suit most sessions.
   everything up to the crash is already on disk.
 
 `BUFFERSIZE` accepts a unit — bare or `M`/`MB` is megabytes, `K`/`KB`
-kilobytes. A ring below 16 KB or above 240 MB is refused. A row that cannot fit in the ring at
-all — rows can reach 256 KB — is dropped and counted, even under `PAUSE`.
+kilobytes. A ring below 16 KB or above 240 MB is refused. A row goes through the ring like any
+other and waits or drops by `BUFFERWHENFULL`; one larger than the whole ring can never fit, so
+it is dropped and counted even under `PAUSE`, since waiting for it would stall the calculation
+for good. A value is at most 4 MB — an array past that is written as its shape alone — so with
+the default ring only a deliberately small `BUFFERSIZE` meets this.
 
 ## Arming loads VBA if it is not already loaded
 
@@ -113,6 +117,11 @@ Both getters are volatile, so they can live in cells and keep up as you go:
 =XRayXL_GetTraceParam()            ' every setting, both sources
 =XRayXL_GetTraceSummary("*.xll")   ' Source | Module | Function | Calls
 ```
+
+The summary's filter is a wildcard (`*` and `?`, any case) matched against the function
+and the module, so `"*.xll"` picks out the add-ins and `"[Book1.xlsm]*"` one workbook.
+When nothing matches it says `(nothing matches the filter)`; before anything is traced
+it says `(nothing traced yet)`.
 
 ## The log
 

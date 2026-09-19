@@ -5,8 +5,7 @@
 # on and must not read `handled`, though the shadow stack holds it beneath the function.
 #
 # A function that returns an error value returned. A macro still running when disarm closes it
-# has not thrown just because the raise opcode fired in it: object-model calls such as
-# Application.Run fire it with no error.
+# has run no epilogue, but it has not thrown.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

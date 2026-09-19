@@ -3,40 +3,15 @@
 #include <cstring>
 
 // WHAT BOTH COLUMNS AGREE ON. The XLL and VBA rows share one trace file, so a
-// number and a capped array must read the same whichever source wrote them.
+// number must read the same whichever source wrote it.
 namespace core
 {
-    // A cap on rendered array elements, so a multi-million element array cannot spin. The real
-    // limit is the output buffer, and the true count is always in the header.
-    constexpr int kMaxRenderedElems = 1 << 20;
-
     // %.15g: fifteen digits round-trip every value a double holds exactly;
     // %.17g adds only noise digits. Two renderings of one number that disagree
     // are worse than either.
     inline void FormatDouble(double d, char* out, int cap)
     {
         _snprintf_s(out, cap, _TRUNCATE, "%.15g", d);
-    }
-
-    // Appends `s` at `len`, clipping at `cap`. Returns the new length.
-    inline int Append(char* buf, int cap, int len, const char* s)
-    {
-        if (len < 0 || len >= cap - 1) return len;
-        const int n = static_cast<int>(strlen(s));
-        const int room = cap - 1 - len;
-        const int take = n < room ? n : room;
-        memcpy(buf + len, s, static_cast<size_t>(take));
-        buf[len + take] = 0;
-        return len + take;
-    }
-
-    // The marker for a list cut short, in the same words for both columns.
-    inline int AppendShownMarker(char* buf, int cap, int len,
-                                 unsigned long long shown, unsigned long long total)
-    {
-        char m[64];
-        _snprintf_s(m, sizeof(m), _TRUNCATE, ",...(%llu of %llu shown)", shown, total);
-        return Append(buf, cap, len, m);
     }
 
     // "1 MB" or "512 KB": whole megabytes when the size divides evenly.

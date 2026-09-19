@@ -8,6 +8,7 @@
 #include "core/tracemodes.h"
 #include "emit/csv.h"
 #include "core/render.h"
+#include "core/textvalue.h"
 
 #include <sstream>
 
@@ -32,6 +33,7 @@ namespace app
         }
 
         core::Log::Note(vba::ArmCounting());
+        core::ResetValuesRefused();
         xll::ArmReport r = xll::Arm();
         // Armed state is mirrored by the ribbon, which may not be what asked.
         core::NotifyStateChanged();
@@ -61,6 +63,18 @@ namespace app
             core::Log::Note(r.str());
         }
 
+        // An array over the value limit keeps its shape and loses its contents; the file shows
+        // it only as a header with no braces, so it is counted here too.
+        if (const long long refused = core::ValuesRefused())
+        {
+            char size[32];
+            core::FormatBytes(core::kMaxValueBytes, size, sizeof(size));
+            std::ostringstream v;
+            v << "values: " << refused << " array(s) over the " << size
+              << " value limit written as their shape only, with no contents";
+            core::Log::Note(v.str());
+        }
+
         // VBA first and unconditionally: it can be armed on a session where the
         // XLL side armed nothing, and its p-code diagnostics come from the same
         // counters at their own log levels.
@@ -74,4 +88,13 @@ namespace app
     }
 
     bool IsArmed() { return xll::IsArmed() || vba::IsVbaArmed(); }
+
+    void ReleaseHeldByThisThread()
+    {
+        core::Log::ReleaseHeldByThisThread();
+        emit::csv::ReleaseHeldByThisThread();
+        if (vba::ReleaseArmGateHeldByThisThread())
+            core::Log::Warning("VBA tracing: an arm or disarm faulted part-way; its gate is "
+                               "released so XRayXL_Disarm can be run again to restore the table");
+    }
 }

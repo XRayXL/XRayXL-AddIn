@@ -2,12 +2,14 @@
 #include <windows.h>
 #include <string>
 #include <cstddef>
-#include "rowcsv.h"     // csv::Row and the CSV formatter (Fragment, kHeader, kFragMax)
+#include "rowcsv.h"     // csv::Row and the CSV formatter (Fragment, kHeader)
+#include "core/tracemodes.h"
 
 namespace emit
 {
 
-// The trace file, in one of two modes chosen by the buffer size.
+// The trace file: CSV or JSON Lines, chosen at Open, and written in one of two modes chosen by
+// the buffer size.
 //
 // Size 0 is synchronous: written inside the hook under a lock, so even a __fastfail leaves the
 // trace complete up to the fault. It serialises every calc worker, so it is for crash-hunting
@@ -25,8 +27,9 @@ namespace csv
     // only the last close tears down. The first opener's settings win.
     //
     // `bufferBytes` 0 is synchronous; N rounds down to a power of two, reported by
-    // RingCapacityBytes(). False only if a new file could not be created.
-    bool Open(std::size_t bufferBytes, bool pauseOnFull);
+    // RingCapacityBytes(). `format` is latched for the file, values included. False only if a
+    // new file could not be created.
+    bool Open(std::size_t bufferBytes, bool pauseOnFull, core::modes::Format format);
     void Close();
     bool IsOpen();      // armed, not "the file exists" -- creation is lazy
 
