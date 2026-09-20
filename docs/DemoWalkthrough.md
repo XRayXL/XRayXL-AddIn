@@ -41,6 +41,11 @@ point the tracer at.
 
 The **XRayXL** group on the Developer tab has three buttons:
 
+![The XRayXL group at the far right of Excel's Developer tab, with Arm, Disarm and
+Options buttons](images/ribbon.png)
+
+*`Disarm` is greyed until a recording is running.*
+
 | Button | What it does |
 |---|---|
 | **Arm** | Starts a recording. Every XLL function and VBA procedure that runs from now on writes rows to a new trace file |
@@ -145,6 +150,10 @@ The full list is in [the row model](TraceRowModel.md).
 ### The Options dialog
 
 Open **Options** from the ribbon:
+
+![The XRayXL Options dialog on its Capture page: XLL add-in functions and VBA
+procedures each with a depth dropdown set to All calls, tickboxes for capturing
+argument and return values, and for VBA a tickbox for describing objects](images/options-capture.png)
 
 | Page | What is on it |
 |---|---|
@@ -575,9 +584,19 @@ What to notice:
 ---
 ## More
 
-- **Driving XRayXL from VBA.** The ribbon buttons are also registered commands:
-  `Application.Run "XRayXL_Arm"`, `Application.Run "XRayXL_Disarm"`, and
-  `Application.Run "XRayXL_SetTraceParam", "FORMAT", "JSONL"` for any setting. See
+- **Tracing one part of your code.** The buttons are how you will normally arm and
+  disarm. Reach for the commands instead when the thing you want to trace is buried
+  inside a longer run and pressing a button cannot catch it — wrap that part and
+  nothing else:
+
+  ```vba
+  Application.Run "XRayXL_Arm"
+  RepriceTheBook                    ' the only thing in the trace
+  Application.Run "XRayXL_Disarm"
+  ```
+
+  Every button is a registered command, so the same goes for the settings:
+  `Application.Run "XRayXL_SetTraceParam", "FORMAT", "JSONL"`. See
   [Trace options](TraceOptions.md).
 - **The log.** `%TEMP%\XRayXL\Logs\XRayXL_<pid>.log` records each arm and disarm, the
   trace file's name, and totals. **Options ▸ Advanced** names it.

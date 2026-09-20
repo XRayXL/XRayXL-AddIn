@@ -149,8 +149,8 @@ buttons: **Arm**, **Disarm** and **Options** — the last opens a dialog holding
 capture settings. Two things to know: Excel hides the Developer tab by default
 (File → Options → Customize Ribbon, tick *Developer*), and the buttons appear once
 a workbook is open, not on Excel's start screen. Each is also a
-registered command, so nothing needs the ribbon — see
-[Trace something](#trace-something). If the buttons cannot be loaded, XRayXL says so
+registered command, so a macro — or an Excel that refuses the ribbon — can drive
+it without the buttons; see [Trace something](#trace-something). If the buttons cannot be loaded, XRayXL says so
 and carries on working; [Before you run it](#before-you-run-it) explains when
 that happens.
 
@@ -194,18 +194,22 @@ XLL is one for as long as the connect takes, then deletes its own registration
 ### Trace something
 
 Press **Arm** in the XRayXL group on the Developer tab, recalculate or run your
-macros, then press **Disarm**. Or, from VBA or any automation client, with no window and no focus:
+macros, then press **Disarm**. That is the whole of it, and it is how you will
+normally use XRayXL.
+
+Reach past the buttons when the code you care about is buried inside a longer
+run and a button press cannot catch it. Every button is also a registered
+command, so a macro can arm around that part and nothing else — no window, no
+focus:
 
 ```vba
-Application.Run "XRayXL_Arm"          ' start recording
-
-Application.Calculate                 ' ...or press F9
-
-Application.Run "XRayXL_Disarm"       ' stop, flush, close
+Application.Run "XRayXL_Arm"
+RepriceTheBook                        ' the only thing in the trace
+Application.Run "XRayXL_Disarm"
 ```
 
-The two are the same thing: the buttons call these commands. Arm from a macro
-and the ribbon follows it; change a setting in **Options** and
+The buttons and the commands are the same thing underneath: arm from a macro and
+the ribbon follows it; change a setting in **Options** and
 `XRayXL_GetTraceParam` reports it. While armed the capture settings are greyed —
 they are read once, at arm, so they are refused until you disarm.
 

@@ -219,6 +219,14 @@ Copy-Item (Join-Path $Root 'LICENSE')          $stage -Force
 Copy-Item (Join-Path $Root 'THIRD-PARTY-NOTICES.txt') $stage -Force
 Copy-Item (Join-Path $Root 'docs\DemoWalkthrough.md') (Join-Path $stageDemo 'README.md') -Force
 
+# The walkthrough shows the ribbon and the Options dialog, and ships as demo\README.md,
+# so its images have to travel with it at the same relative path or the links break.
+$stageImages = Join-Path $stageDemo 'images'
+New-Item -ItemType Directory -Force $stageImages | Out-Null
+$docImages = @(Get-ChildItem (Join-Path $Root 'docs\images\*.png') -ErrorAction SilentlyContinue)
+if (-not $docImages) { throw "no images in docs\images\ -- demo\README.md references them" }
+$docImages | Copy-Item -Destination $stageImages -Force
+
 # LF before hashing: git stores these LF, so a CRLF copy would fail its own manifest
 foreach ($textFile in @((Join-Path $stage 'LICENSE'), (Join-Path $stage 'THIRD-PARTY-NOTICES.txt'),
                          (Join-Path $stageDemo 'README.md'))) {
