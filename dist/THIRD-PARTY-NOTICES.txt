@@ -1,4 +1,4 @@
-THIRD-PARTY NOTICES for XRayXL 0.1.0
+THIRD-PARTY NOTICES for XRayXL
 ============================================================
 
 XRayXL itself is licensed under the GNU GPL v3 -- see LICENSE.
