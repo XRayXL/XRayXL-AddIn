@@ -8,8 +8,8 @@
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
-    <ProjectGuid>{4D1C9E00-0001-4A00-9000-00000000D00C}</ProjectGuid>
-    <RootNamespace>optionsdlg_test</RootNamespace>
+    <ProjectGuid>{4D1C9E00-0001-4A00-9000-00000000D00D}</ProjectGuid>
+    <RootNamespace>diagnosticsdlg_test</RootNamespace>
     <Keyword>Win32Proj</Keyword>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
@@ -23,25 +23,28 @@
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <Import Project="..\UnitTest.props" />
   <ItemDefinitionGroup>
-    <!-- The dialog template and the licence and notices it shows, from the product's own file. -->
+    <!-- The dialog templates, from the product's own resource file. -->
     <ResourceCompile>
       <AdditionalIncludeDirectories>$(XRayRoot)src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ResourceCompile>
+    <Link>
+      <AdditionalDependencies>version.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="optionsdlg_test.cpp" />
-    <!-- The shipping dialog and everything it draws with, so what passes is the code that
-         ships. The test stubs only what the add-in's session would supply. -->
-    <ClCompile Include="$(XRayRoot)src\ui\optionsdlg.cpp" />
+    <ClCompile Include="diagnosticsdlg_test.cpp" />
+    <!-- The shipping dialog, the list and the tables, so what passes is the code that ships. -->
+    <ClCompile Include="$(XRayRoot)src\ui\diagnosticsdlg.cpp" />
     <ClCompile Include="$(XRayRoot)src\ui\dlgexcelstyle.cpp" />
-    <ClCompile Include="$(XRayRoot)src\ui\ribbonmodel.cpp" />
+    <ClCompile Include="$(XRayRoot)src\ui\gridlist.cpp" />
     <ClCompile Include="$(XRayRoot)src\ui\softdraw.cpp" />
     <ClCompile Include="$(XRayRoot)src\ui\softtext.cpp" />
     <ClCompile Include="$(XRayRoot)src\ui\glyphs.cpp" />
     <ClCompile Include="$(XRayRoot)src\ui\traceactions.cpp" />
+    <ClCompile Include="$(XRayRoot)src\diag\snapshot.cpp" />
+    <ClCompile Include="$(XRayRoot)src\diag\tableout.cpp" />
     <ClCompile Include="$(XRayRoot)src\core\tracemodes.cpp" />
     <ClCompile Include="$(XRayRoot)src\core\notify.cpp" />
-    <ClCompile Include="$(XRayRoot)src\app\paramparse.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="$(XRayRoot)src\XRayXL.rc" />

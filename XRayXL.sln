@@ -36,6 +36,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "ribbonmodel_test", "tests\s
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "optionsdlg_test", "tests\sweep\unit\optionsdlg_test\optionsdlg_test.vcxproj", "{4D1C9E00-0001-4A00-9000-00000000D00C}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "diagnosticsdlg_test", "tests\sweep\unit\diagnosticsdlg_test\diagnosticsdlg_test.vcxproj", "{4D1C9E00-0001-4A00-9000-00000000D00D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -106,6 +108,10 @@ Global
 		{4D1C9E00-0001-4A00-9000-00000000D00C}.Debug|x64.Build.0 = Release|x64
 		{4D1C9E00-0001-4A00-9000-00000000D00C}.Release|x64.ActiveCfg = Release|x64
 		{4D1C9E00-0001-4A00-9000-00000000D00C}.Release|x64.Build.0 = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D00D}.Debug|x64.ActiveCfg = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D00D}.Debug|x64.Build.0 = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D00D}.Release|x64.ActiveCfg = Release|x64
+		{4D1C9E00-0001-4A00-9000-00000000D00D}.Release|x64.Build.0 = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -123,5 +129,6 @@ Global
 		{4D1C9E00-0001-4A00-9000-00000000D00A} = {4D1C9E00-0001-4A00-9000-00000000D000}
 		{4D1C9E00-0001-4A00-9000-00000000D00B} = {4D1C9E00-0001-4A00-9000-00000000D000}
 		{4D1C9E00-0001-4A00-9000-00000000D00C} = {4D1C9E00-0001-4A00-9000-00000000D000}
+		{4D1C9E00-0001-4A00-9000-00000000D00D} = {4D1C9E00-0001-4A00-9000-00000000D000}
 	EndGlobalSection
 EndGlobal

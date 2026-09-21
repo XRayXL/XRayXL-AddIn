@@ -15,7 +15,8 @@ namespace model
     enum Callback
     {
         CbUnknown = 0,
-        CbOnLoad = 1, CbOnArm, CbOnDisarm, CbGetEnabled, CbOnOptions, CbLoadImage
+        CbOnLoad = 1, CbOnArm, CbOnDisarm, CbGetEnabled, CbOnOptions, CbOnDiagnostics,
+        CbLoadImage
     };
     Callback CallbackForName(const wchar_t* name);   // case-insensitive, as Office asks
 

@@ -20,6 +20,24 @@ namespace text
 
     bool Draw(HDC dc, const RECT& rc, const wchar_t* s, Face face, COLORREF colour,
               unsigned flags, int dpi, float dx = 0.0f);   // dx: a sub-pixel nudge
+
+    // Many pieces of text sharing one bind and one flush, which Draw does per call. Every GDI
+    // stroke belongs before the batch opens: what it draws reaches the DC only on Close.
+    class Batch
+    {
+    public:
+        Batch(HDC dc, const RECT& area);
+        ~Batch();
+        bool Ok() const { return m_ok; }
+
+        // `rc` and `clip` are in the same coordinates as `area`.
+        bool Put(const RECT& rc, const RECT& clip, const wchar_t* s, Face face,
+                 COLORREF colour, unsigned flags, int dpi);
+
+    private:
+        RECT m_area{};
+        bool m_ok = false;
+    };
     bool Measure(const wchar_t* s, Face face, unsigned flags, int dpi, SIZE& out);
 
     void Release();

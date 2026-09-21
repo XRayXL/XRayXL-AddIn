@@ -2,6 +2,7 @@
 #include "ribbonmodel.h"
 #include "ribbonart.h"
 #include "optionsdlg.h"
+#include "diagnosticsdlg.h"
 
 #include "app/session.h"
 #include "core/contained.h"
@@ -275,7 +276,8 @@ void OnStateChanged()
 enum : DISPID {
     DISPID_ONLOAD     = M::CbOnLoad,     DISPID_ONARM     = M::CbOnArm,
     DISPID_ONDISARM   = M::CbOnDisarm,   DISPID_GETENABLED = M::CbGetEnabled,
-    DISPID_ONOPTIONS  = M::CbOnOptions,  DISPID_LOADIMAGE = M::CbLoadImage
+    DISPID_ONOPTIONS  = M::CbOnOptions,  DISPID_LOADIMAGE = M::CbLoadImage,
+    DISPID_ONDIAGNOSTICS = M::CbOnDiagnostics
 };
 
 // The XML is model::kCustomUi -- see the note above.
@@ -511,6 +513,11 @@ private:
         case DISPID_ONOPTIONS:
             ui::options::Show(MainWindow());
             InvalidateNow();        // Arm and Disarm follow whatever it changed
+            return S_OK;
+
+        case DISPID_ONDIAGNOSTICS:
+            core::Log::Note("ribbon: Diagnostics pressed");
+            ui::diagnostics::Show(MainWindow());
             return S_OK;
 
         case DISPID_ONDISARM:

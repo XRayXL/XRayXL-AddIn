@@ -18,7 +18,6 @@ EXPORTS
 ; and no COM object of ours. The ribbon presses these; it does not replace them.
     XRayXL_Arm
     XRayXL_Disarm
-    XRayXL_Options
     XRayXL_SetTraceParam
     XRayXL_GetTraceParam
     XRayXL_GetTraceSummary

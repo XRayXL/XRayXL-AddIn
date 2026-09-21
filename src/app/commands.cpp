@@ -12,7 +12,6 @@
 #include "core/crashlog.h"
 #include "core/excel_api.h"
 #include "core/log.h"
-#include "ui/optionsdlg.h"
 #include "vba/vbapatch.h"
 #include "emit/csv.h"
 #include "xlcall.h"
@@ -78,13 +77,6 @@ extern "C" int __stdcall XRayXL_Disarm(void)
 {
     core::Log::Note("command: XRayXL_Disarm");
     return RunGuarded("XRayXL_Disarm", DisarmReturningDrops, -1);
-}
-
-// ---- XRayXL_Options: the Options dialog as a command, so a macro or a test can open it ----
-extern "C" int __stdcall XRayXL_Options(void)
-{
-    core::Log::Note("command: XRayXL_Options");
-    return RunGuarded("XRayXL_Options", [] { ui::options::Show(nullptr); return 1; }, 0);
 }
 
 // ---- what the worksheet-callable exports share (exports.h) ----------------
@@ -216,8 +208,6 @@ namespace app
         if (dll.empty()) { core::crashlog::Note("commands: no module path; NOTHING REGISTERED"); return; }
         const bool a = Register(dll, L"XRayXL_Arm",    L"XRayXL_Arm",    Reg::Command);
         const bool d = Register(dll, L"XRayXL_Disarm", L"XRayXL_Disarm", Reg::Command);
-        const bool op = Register(dll, L"XRayXL_Options", L"XRayXL_Options", Reg::Command);
-        (void)op;
         // Source, Name, Value -- three XLOPER12 arguments and an echo.
         const bool sp = Register(dll, L"XRayXL_SetTraceParam", L"XRayXL_SetTraceParam", Reg::Function, L"QQQQ", L"Source,Name,Value");
         // VOLATILE (the trailing !) throughout below: each of these changes

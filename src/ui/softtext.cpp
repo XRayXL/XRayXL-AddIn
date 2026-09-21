@@ -20,7 +20,61 @@ namespace
     IDWriteTextFormat*   g_fmt[3] = {};
     int                  g_fmtDpi = 0;
 
+    constexpr int kBrushes = 4;
+    ID2D1SolidColorBrush* g_brush[kBrushes] = {};
+    COLORREF              g_brushInk[kBrushes] = {};
+    int                   g_brushNext = 0;
+
     template <class T> void Drop(T*& p) { if (p) { p->Release(); p = nullptr; } }
+
+    void DropBrushes()
+    {
+        for (auto& b : g_brush) Drop(b);
+        for (auto& c : g_brushInk) c = 0;
+        g_brushNext = 0;
+    }
+
+    void DropTarget() { DropBrushes(); Drop(g_rt); }
+
+    // A grid asks for two colours and a dialog for four; anything past that recycles.
+    ID2D1SolidColorBrush* BrushFor(COLORREF colour)
+    {
+        if (!g_rt) return nullptr;
+        for (int i = 0; i < kBrushes; ++i)
+            if (g_brush[i] && g_brushInk[i] == colour) return g_brush[i];
+        const D2D1_COLOR_F c = D2D1::ColorF(GetRValue(colour) / 255.0f, GetGValue(colour) / 255.0f,
+                                            GetBValue(colour) / 255.0f);
+        ID2D1SolidColorBrush* made = nullptr;
+        if (FAILED(g_rt->CreateSolidColorBrush(c, &made))) return nullptr;
+        const int at = g_brushNext;
+        g_brushNext = (g_brushNext + 1) % kBrushes;
+        Drop(g_brush[at]);
+        g_brush[at] = made;
+        g_brushInk[at] = colour;
+        return made;
+    }
+
+    // The render target, made once and kept. Software at 96: the rects handed in are pixels.
+    bool EnsureTarget()
+    {
+        if (g_rt) return true;
+        const D2D1_RENDER_TARGET_PROPERTIES props = D2D1::RenderTargetProperties(
+            D2D1_RENDER_TARGET_TYPE_SOFTWARE,
+            D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE), 96.0f, 96.0f);
+        if (FAILED(g_d2d->CreateDCRenderTarget(&props, &g_rt))) { g_rt = nullptr; return false; }
+        g_rt->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
+        // hinted, as Office's text is: the default mode smears every stem over two columns
+        IDWriteRenderingParams* def = nullptr;
+        IDWriteRenderingParams* hinted = nullptr;
+        if (SUCCEEDED(g_dw->CreateRenderingParams(&def)) && def &&
+            SUCCEEDED(g_dw->CreateCustomRenderingParams(def->GetGamma(), def->GetEnhancedContrast(),
+                          def->GetClearTypeLevel(), def->GetPixelGeometry(),
+                          DWRITE_RENDERING_MODE_GDI_CLASSIC, &hinted)) && hinted)
+            g_rt->SetTextRenderingParams(hinted);
+        if (hinted) hinted->Release();
+        if (def) def->Release();
+        return true;
+    }
 
     bool Ensure()
     {
@@ -98,25 +152,7 @@ bool Ready() { return Ensure(); }
 bool Draw(HDC dc, const RECT& rc, const wchar_t* s, Face face, COLORREF colour, unsigned flags, int dpi, float dx)
 {
     if (!s || !Ensure() || rc.right <= rc.left || rc.bottom <= rc.top) return false;
-    if (!g_rt)
-    {
-        // Software, at 96: the rectangles handed in are already device pixels.
-        const D2D1_RENDER_TARGET_PROPERTIES props = D2D1::RenderTargetProperties(
-            D2D1_RENDER_TARGET_TYPE_SOFTWARE,
-            D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE), 96.0f, 96.0f);
-        if (FAILED(g_d2d->CreateDCRenderTarget(&props, &g_rt))) { g_rt = nullptr; return false; }
-        g_rt->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
-        // hinted, as Office's text is: the default mode smears every stem over two columns
-        IDWriteRenderingParams* def = nullptr;
-        IDWriteRenderingParams* hinted = nullptr;
-        if (SUCCEEDED(g_dw->CreateRenderingParams(&def)) && def &&
-            SUCCEEDED(g_dw->CreateCustomRenderingParams(def->GetGamma(), def->GetEnhancedContrast(),
-                          def->GetClearTypeLevel(), def->GetPixelGeometry(),
-                          DWRITE_RENDERING_MODE_GDI_CLASSIC, &hinted)) && hinted)
-            g_rt->SetTextRenderingParams(hinted);
-        if (hinted) hinted->Release();
-        if (def) def->Release();
-    }
+    if (!EnsureTarget()) return false;
     IDWriteTextLayout* lay = Layout(s, face, flags, dpi, static_cast<float>(rc.right - rc.left),
                                     static_cast<float>(rc.bottom - rc.top));
     if (!lay) return false;
@@ -126,19 +162,55 @@ bool Draw(HDC dc, const RECT& rc, const wchar_t* s, Face face, COLORREF colour, 
     {
         g_rt->BeginDraw();
         g_rt->SetTransform(D2D1::Matrix3x2F::Identity());
-        ID2D1SolidColorBrush* ink = nullptr;
-        const D2D1_COLOR_F c = D2D1::ColorF(GetRValue(colour) / 255.0f, GetGValue(colour) / 255.0f,
-                                            GetBValue(colour) / 255.0f);
-        if (SUCCEEDED(g_rt->CreateSolidColorBrush(c, &ink)))
+        if (ID2D1SolidColorBrush* ink = BrushFor(colour))
         {
             g_rt->DrawTextLayout(D2D1::Point2F(dx, 0.0f), lay, ink);
-            ink->Release();
             ok = true;
         }
-        if (FAILED(g_rt->EndDraw())) { Drop(g_rt); ok = false; }
+        if (FAILED(g_rt->EndDraw())) { DropTarget(); ok = false; }
     }
     lay->Release();
     return ok;
+}
+
+Batch::Batch(HDC dc, const RECT& area)
+    : m_area(area)
+{
+    if (!Ensure() || !EnsureTarget()) return;
+    if (FAILED(g_rt->BindDC(dc, &area))) return;
+    g_rt->BeginDraw();
+    g_rt->SetTransform(D2D1::Matrix3x2F::Identity());
+    m_ok = true;
+}
+
+Batch::~Batch()
+{
+    if (!m_ok || !g_rt) return;
+    if (FAILED(g_rt->EndDraw())) DropTarget();
+}
+
+bool Batch::Put(const RECT& rc, const RECT& clip, const wchar_t* s, Face face,
+                COLORREF colour, unsigned flags, int dpi)
+{
+    if (!m_ok || !g_rt || !s || rc.right <= rc.left || rc.bottom <= rc.top) return false;
+    if (clip.right <= clip.left || clip.bottom <= clip.top) return false;
+    IDWriteTextLayout* lay = Layout(s, face, flags, dpi, static_cast<float>(rc.right - rc.left),
+                                    static_cast<float>(rc.bottom - rc.top));
+    if (!lay) return false;
+
+    ID2D1SolidColorBrush* ink = BrushFor(colour);
+    if (ink)
+    {
+        const D2D1_RECT_F box = D2D1::RectF(
+            static_cast<float>(clip.left   - m_area.left), static_cast<float>(clip.top    - m_area.top),
+            static_cast<float>(clip.right  - m_area.left), static_cast<float>(clip.bottom - m_area.top));
+        g_rt->PushAxisAlignedClip(box, D2D1_ANTIALIAS_MODE_ALIASED);
+        g_rt->DrawTextLayout(D2D1::Point2F(static_cast<float>(rc.left - m_area.left),
+                                           static_cast<float>(rc.top  - m_area.top)), lay, ink);
+        g_rt->PopAxisAlignedClip();
+    }
+    lay->Release();
+    return ink != nullptr;
 }
 
 bool Measure(const wchar_t* s, Face face, unsigned flags, int dpi, SIZE& out)
@@ -157,7 +229,7 @@ bool Measure(const wchar_t* s, Face face, unsigned flags, int dpi, SIZE& out)
 
 void Release()
 {
-    Drop(g_rt);
+    DropTarget();
     for (auto& f : g_fmt) Drop(f);
     g_fmtDpi = 0;
     Drop(g_dw);

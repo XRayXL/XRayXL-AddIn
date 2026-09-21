@@ -114,7 +114,14 @@ command surface's own — the settings are greyed while armed because the setter
 refuse while armed. What the ribbon greys is still checked again in the handler,
 because `getEnabled` says what a user may press and enforces nothing. See
 [The ribbon buttons](#the-ribbon-buttons) and [The Options dialog](#the-options-dialog)
-below. `Application.Run("XRayXL_Options")` opens the dialog without the ribbon.
+below. **Neither dialog has a command behind it**: a window needs a window to own it, and the
+ribbon button is the only thing that has one. Everything the Options dialog sets is settable from
+a macro through the functions above, which is the surface a script should drive.
+
+**Diagnostics reads, and sets nothing.** It has no command surface behind it
+because there is no state to set: each page is a snapshot taken when the page is
+opened, from `CreateToolhelp32Snapshot`, `GetEnvironmentStringsW` and the
+process counters. It is enabled armed or not for the same reason.
 
 Four settings take no `Source` — `BUFFERSIZE` (ring size in MB), `BUFFERWHENFULL`
 (`DROP`/`PAUSE`), `FORMAT` (`CSV`/`JSONL`) and `LOGLEVEL` (`DEBUG`/`INFO`/`WARNING`/`ERROR`). Every

@@ -60,6 +60,7 @@ int main()
         L"Delete", L"Refresh", L"ClearAll", L"CancelRequest", L"DeclineInvitation",
         L"PauseTimer", L"HighImportance", L"AnimationCustom", L"SaveAll",
         L"FileSaveAsExcelXlsx", L"TraceError", L"ApplicationOptionsDialog",
+        L"FileDocumentInspect",
     };
     for (const std::wstring& img : AttrValues(xml, L"imageMso"))
     {
@@ -70,7 +71,8 @@ int main()
               "an id Office does not know degrades the button to small text, silently");
     }
 
-    for (const std::wstring& id : { std::wstring(L"btnArm"), std::wstring(L"btnDisarm"), std::wstring(L"btnOptions") })
+    for (const std::wstring& id : { std::wstring(L"btnArm"), std::wstring(L"btnDisarm"),
+                                    std::wstring(L"btnOptions"), std::wstring(L"btnDiagnostics") })
     {
         const size_t at = xml.find(L"id='" + id + L"'");
         const size_t end = xml.find(L"/>", at);
@@ -88,14 +90,16 @@ int main()
           "the button lives on Excel's Developer tab, not a tab of our own");
     Check("no-tab-of-our-own", xml.find(L"<tab id='") == std::wstring::npos,
           "a tab with an id of ours would be a second home for the same thing");
-    // Three items, in the order a person reads them.
+    // Four items, in the order a person reads them.
     const size_t pArm = xml.find(L"id='btnArm'");
     const size_t pDis = xml.find(L"id='btnDisarm'");
     const size_t pOpt = xml.find(L"id='btnOptions'");
-    Check("menu-has-arm-disarm-options",
+    const size_t pDiag = xml.find(L"id='btnDiagnostics'");
+    Check("menu-has-arm-disarm-options-diagnostics",
           pArm != std::wstring::npos && pDis != std::wstring::npos &&
-          pOpt != std::wstring::npos && pArm < pDis && pDis < pOpt,
-          "Arm, Disarm, Options -- in that order");
+          pOpt != std::wstring::npos && pDiag != std::wstring::npos &&
+          pArm < pDis && pDis < pOpt && pOpt < pDiag,
+          "Arm, Disarm, Options, Diagnostics -- in that order");
 
     Check("xml-declares-onload", xml.find(L"onLoad='OnRibbonLoad'") != std::wstring::npos,
           "without onLoad there is no IRibbonUI, so nothing can ever be invalidated");
@@ -140,11 +144,11 @@ int main()
               "in the XML but no handler knows it -- the control would do nothing");
     }
     // a bare count: a new control must be given a handler
-    Check("xml-has-every-control", controls.size() == 3,
-          "expected 3: Arm, Disarm and Options");
+    Check("xml-has-every-control", controls.size() == 4,
+          "expected 4: Arm, Disarm, Options and Diagnostics");
 
     // ...and every handled control must be in the XML
-    const wchar_t* kExpected[] = { L"btnArm", L"btnDisarm", L"btnOptions" };
+    const wchar_t* kExpected[] = { L"btnArm", L"btnDisarm", L"btnOptions", L"btnDiagnostics" };
     for (const wchar_t* id : kExpected)
     {
         bool inXml = false;
@@ -160,10 +164,12 @@ int main()
     Check("armed-arm-disabled",        !M::EnabledFor(L"btnArm", true));
     Check("armed-disarm-enabled",       M::EnabledFor(L"btnDisarm", true));
 
-    // Options is always live: the dialog greys what cannot be changed
+    // Options is always live: the dialog greys what cannot be changed.
+    // Diagnostics is always live too: it reads, and changes nothing.
     for (int a = 0; a < 2; ++a)
     {
         Check("options-is-always-live", M::EnabledFor(L"btnOptions", a != 0));
+        Check("diagnostics-is-always-live", M::EnabledFor(L"btnDiagnostics", a != 0));
     }
     // the settings carry the setters' rule: refused while armed
     for (const std::wstring& id : { std::wstring(L"cbXllArgs"), std::wstring(L"cbVbaObj"),

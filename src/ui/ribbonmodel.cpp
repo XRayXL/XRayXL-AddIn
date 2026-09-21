@@ -37,7 +37,7 @@ namespace
     bool Is(const wchar_t* id, const wchar_t* what) { return id && wcscmp(id, what) == 0; }
 }
 
-// Three large buttons on the Developer tab; a wrong built-in id drops the lot.
+// Four large buttons on the Developer tab; a wrong built-in id drops the lot.
 const wchar_t* const kCustomUi =
 L"<customUI xmlns='http://schemas.microsoft.com/office/2009/07/customui' onLoad='OnRibbonLoad' loadImage='OnLoadImage'>"
  L"<ribbon><tabs>"
@@ -56,6 +56,11 @@ L"<customUI xmlns='http://schemas.microsoft.com/office/2009/07/customui' onLoad=
            L" screentip='What to record, and where it goes'"
            L" supertip='Everything XRayXL_SetTraceParam can set. Settings are read at the "
            L"next arm, so they cannot be changed while armed.'/>"
+    L"<button id='btnDiagnostics' label='Diagnostics' size='large' getEnabled='GetEnabled' onAction='OnDiagnostics'"
+           L" imageMso='FileDocumentInspect'"
+           L" screentip='What is loaded into this Excel'"
+           L" supertip='Loaded modules and their versions, the environment, and what the "
+           L"process is using. Read-only, and exportable as CSV or JSON.'/>"
    L"</group>"
   L"</tab>"
  L"</tabs></ribbon></customUI>";
@@ -68,6 +73,7 @@ Callback CallbackForName(const wchar_t* name)
     if (_wcsicmp(name, L"OnDisarm") == 0)             return CbOnDisarm;
     if (_wcsicmp(name, L"GetEnabled") == 0)           return CbGetEnabled;
     if (_wcsicmp(name, L"OnOptions") == 0)           return CbOnOptions;
+    if (_wcsicmp(name, L"OnDiagnostics") == 0)      return CbOnDiagnostics;
     if (_wcsicmp(name, L"OnLoadImage") == 0)          return CbLoadImage;
     return CbUnknown;
 }
@@ -85,6 +91,7 @@ bool KnownControl(const wchar_t* id)
 {
     Source ignored = Source::Xll;
     return Is(id, L"btnArm") || Is(id, L"btnDisarm") || Is(id, L"btnOptions")
+        || Is(id, L"btnDiagnostics")
         || IsToggle(id) || IsDepthControl(id, ignored);
 }
 
@@ -94,6 +101,7 @@ bool EnabledFor(const wchar_t* id, bool armed)
     if (Is(id, L"btnDisarm")) return  armed;
     // always reachable: the dialog greys what cannot be changed, which explains itself
     if (Is(id, L"btnOptions")) return true;
+    if (Is(id, L"btnDiagnostics")) return true;      // read-only, so armed changes nothing
     return !armed;              // every setting, refused while armed
 }
 

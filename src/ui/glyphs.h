@@ -8,7 +8,7 @@ namespace ui
 {
 namespace glyph
 {
-    enum class Kind { Capture, Output, Advanced, About, Notices };
+    enum class Kind { Capture, Output, Advanced, About, Notices, Modules, Environment, Process };
 
     // Draws `kind` in the square at the top-left of `box`; `paper` is the colour behind it.
     void Draw(HDC dc, const RECT& box, Kind kind, int linePx, COLORREF ink, COLORREF paper);

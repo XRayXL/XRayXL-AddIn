@@ -120,6 +120,11 @@
     <ClCompile Include="ui\glyphs.cpp" />
     <ClCompile Include="ui\traceactions.cpp" />
     <ClCompile Include="ui\optionsdlg.cpp" />
+    <ClCompile Include="ui\diagnosticsdlg.cpp" />
+    <ClCompile Include="ui\dlgexcelstyle.cpp" />
+    <ClCompile Include="ui\gridlist.cpp" />
+    <ClCompile Include="diag\snapshot.cpp" />
+    <ClCompile Include="diag\tableout.cpp" />
     <ClCompile Include="ui\softdraw.cpp" />
     <ClCompile Include="ui\softtext.cpp" />
     <ClCompile Include="xll\xlltypeplan.cpp" />
@@ -184,6 +189,12 @@
     <ClInclude Include="ui\ribbonmodel.h" />
     <ClInclude Include="ui\ribbonart.h" />
     <ClInclude Include="ui\glyphs.h" />
+    <ClInclude Include="ui\diagnosticsdlg.h" />
+    <ClInclude Include="ui\diagres.h" />
+    <ClInclude Include="ui\dlgexcelstyle.h" />
+    <ClInclude Include="ui\gridlist.h" />
+    <ClInclude Include="diag\snapshot.h" />
+    <ClInclude Include="diag\tableout.h" />
     <ClInclude Include="core\caller.h" />
     <ClInclude Include="core\render.h" />
     <ClInclude Include="core\textbuf.h" />

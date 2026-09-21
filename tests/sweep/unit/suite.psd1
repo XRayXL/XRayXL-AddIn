@@ -10,6 +10,8 @@
     RequireNotOlderThan = @{
         '..\..\..\build\x64\Release\unit\callerdecode.exe' = @('..\..\..\src', 'callerdecode')
         '..\..\..\build\x64\Release\unit\csv_close_race_test.exe' = @('..\..\..\src', 'csv_close_race_test')
+        '..\..\..\build\x64\Release\unit\diagnosticsdlg_test.exe' = @('..\..\..\src', 'diagnosticsdlg_test')
+        '..\..\..\build\x64\Release\unit\optionsdlg_test.exe' = @('..\..\..\src', 'optionsdlg_test')
         '..\..\..\build\x64\Release\unit\decode_test.exe' = @('..\..\..\src', 'decode_test')
         '..\..\..\build\x64\Release\unit\paramparse_test.exe' = @('..\..\..\src', 'paramparse_test')
         '..\..\..\build\x64\Release\unit\pcode_scan_guard_test.exe' = @('..\..\..\src', 'pcode_scan_guard_test')

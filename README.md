@@ -37,7 +37,9 @@ Two tracers, one output.
 
 **What it does not trace.** Excel's own built-in functions — `SUM`, `XLOOKUP`
 and the rest — are deliberately out: XRayXL follows add-in and VBA code, not
-the calculation engine's internals. COM and RTD add-ins are not traced either.
+the calculation engine's internals. COM and RTD add-ins are not traced either,
+nor are JavaScript custom functions from Office Add-ins, which run in their own
+runtime rather than as XLL exports or VBA p-code.
 Everything else a calculation runs through is: XLL functions from any add-in,
 VBA procedures, nested and recursive calls, and VBA outside the calculation
 engine entirely — macros, buttons and event handlers — because the interpreter
@@ -124,7 +126,6 @@ traced at all.
 
 Details of the Trace File in [docs/TraceRowModel.md](./docs/TraceRowModel.md).
 
-
 ## Getting started
 
 **No build required.** `dist/` is committed, so the
@@ -144,9 +145,10 @@ Point Excel at `dist\XRayXL64.xll`: either add it permanently through
 File → Options → Add-ins → Manage: Excel Add-ins, or drag the `.xll` onto an
 open Excel window to load it for that session only.
 
-An **XRayXL** group appears at the far right of the **Developer** tab, with three
-buttons: **Arm**, **Disarm** and **Options** — the last opens a dialog holding the
-capture settings. Two things to know: Excel hides the Developer tab by default
+An **XRayXL** group appears at the far right of the **Developer** tab, with four
+buttons: **Arm**, **Disarm**, **Options** — which opens a dialog holding the
+capture settings — and **Diagnostics**, which shows what is loaded into the
+Excel process. Two things to know: Excel hides the Developer tab by default
 (File → Options → Customize Ribbon, tick *Developer*), and the buttons appear once
 a workbook is open, not on Excel's start screen. Each is also a
 registered command, so a macro — or an Excel that refuses the ribbon — can drive
@@ -226,6 +228,37 @@ off the calculation thread.
 Everything is on by default and the defaults suit most sessions.
 **[docs/TraceOptions.md](./docs/TraceOptions.md)** is the reference — every
 setting, what it costs, when it can be changed, and how to read the log.
+
+## Diagnostics: what is actually loaded
+
+When a workbook behaves on one machine and not on another, the difference is
+usually not in the workbook. **Diagnostics** on the ribbon opens a read-only
+window onto the Excel process itself, in three pages:
+
+- **Modules** — every module mapped into the process, with its version,
+  date modified, size and full path. This is the list to diff between a machine
+  where the sheet works and one where it does not.
+- **Environment** — the environment block the process was started with.
+- **Process** — working set, private bytes, handles, GDI and USER objects and
+  their peaks, threads, CPU time, and what the machine and Windows build are.
+
+Every page has a search box that filters on any column, and columns that sort
+when you click a heading and resize when you drag between two. Rows are picked
+one at a time, with Ctrl to add one, Shift to take a range, or Ctrl+A for all of
+them, and **right-clicking the list** offers:
+
+| | |
+|---|---|
+| **Select All** | every row the search has left |
+| **Reveal in File Explorer** | opens the folder with that module's file selected; needs exactly one row |
+| **Copy** | the selected rows to the clipboard, tab separated, ready to paste into a sheet |
+| **Export to CSV** | the selected rows as a file in `%TEMP%\XRayXL\Diagnostics\`, revealed in Explorer |
+
+The window is resizable, and everything but the search box and the list is out
+of the way: the list runs to the bottom of the dialog.
+
+It reads and changes nothing, so it opens whether or not tracing is armed. It is a window, so
+the ribbon button is the way to it -- unlike Arm and Disarm, there is no command behind it.
 
 ## Before you run it
 

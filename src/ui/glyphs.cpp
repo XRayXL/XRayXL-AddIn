@@ -69,6 +69,35 @@ void Draw(HDC dc, const RECT& box, Kind kind, int line, COLORREF ink, COLORREF p
         stroke(8, 15, 20, 15, line);
         stroke(8, 19, 16, 19, line);
         break;
+    case Kind::Modules:                     // three stacked blocks, as a loaded module list
+        for (int i = 0; i < 3; ++i)
+        {
+            const int y = 2 + i * 9;
+            ring(2, y, 26, y + 7, 2);
+            stroke(5, y + 3, 9, y + 3, line);
+            stroke(12, y + 3, 22, y + 3, line);
+        }
+        break;
+    case Kind::Environment:                 // a name and its value, twice, with an = between
+        stroke(2, 8, 9, 8, line);
+        stroke(12, 6, 18, 6, line);  stroke(12, 10, 18, 10, line);
+        stroke(21, 8, 26, 8, line);
+        stroke(2, 20, 9, 20, line);
+        stroke(12, 18, 18, 18, line); stroke(12, 22, 18, 22, line);
+        stroke(21, 20, 26, 20, line);
+        break;
+    case Kind::Process:                     // a chip: a square with legs on every side
+        ring(7, 7, 21, 21, 2);
+        ring(11, 11, 17, 17, 1);
+        for (int i = 0; i < 3; ++i)
+        {
+            const int at = 10 + i * 4;
+            stroke(at, 2, at, 7, line);
+            stroke(at, 21, at, 26, line);
+            stroke(2, at, 7, at, line);
+            stroke(21, at, 26, at, line);
+        }
+        break;
     }
 }
 }
