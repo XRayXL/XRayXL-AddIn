@@ -5,6 +5,9 @@
 // opcode on every VBE7 build; see vbaderive.h.
 namespace vba
 {
+    // BosStub: a statement not yet compiled. A procedure that has never been compiled is a run of
+    // these, not p-code, until it runs.
+    constexpr std::uint32_t kSlot_BosStub                = 0x1348 / 8;   // 617
     // GoSub `Return`: jumps back to its GoSub, in the middle of a procedure.
     constexpr std::uint32_t kSlot_GoSubReturn            = 0x1360 / 8;   // 620
     // ZeroRetVal and ZeroRetValVar (their PDB names): clear a String/Object or a

@@ -1,6 +1,8 @@
 #include "vbapcode.h"
 #include "core/clock.h"
 #include "vbatrailer.h"
+#include "vbaidentity.h"
+#include "vbaslots.h"
 #include "vbapcode_tables.h"
 #include <windows.h>
 #include <cstdio>
@@ -96,12 +98,10 @@ namespace vba
         //
         // DIAG only, bounded, deduplicated by trailer. Claimed lock-free on the hot path and
         // written at disarm, never from a traced thread.
-        constexpr int kCorpusProcs = 512;
-        // 2048, not 256: a procedure over the cap is DROPPED, not truncated, and
-        // at 256 that dropped five of six drivers written to emit the VCall and
-        // ImpAdCall families -- so the corpus could never contain the very
-        // opcodes it was collected to measure. DIAG-only memory: 512 x 2 KB.
-        constexpr int kCorpusBytes = 2048;
+        constexpr int kCorpusProcs = 4096;
+        // A procedure over the cap is DROPPED, not truncated, so the cap must hold what real
+        // libraries write. Allocated only when DIAG turns the corpus on: 4096 x 8 KB.
+        constexpr int kCorpusBytes = 8192;
         struct CorpusProc
         {
             std::uint64_t trailer  = 0;
@@ -109,7 +109,7 @@ namespace vba
             std::uint16_t n        = 0;                 // bytes actually kept
             std::uint8_t  raw[kCorpusBytes] = {};
         };
-        CorpusProc    g_corpus[kCorpusProcs];
+        CorpusProc*   g_corpus        = nullptr;
         volatile LONG g_corpusN       = 0;
         volatile LONG g_corpusSeen    = 0;   // distinct procedures offered
         volatile LONG g_corpusDropped = 0;   // ...and lost to the cap or the size
@@ -358,7 +358,7 @@ namespace vba
         InterlockedExchange(&g_corpusN, 0);
         InterlockedExchange(&g_corpusSeen, 0);
         InterlockedExchange(&g_corpusDropped, 0);
-        for (int i = 0; i < kCorpusProcs; ++i) g_corpus[i].trailer = 0;
+        if (g_corpus) for (int i = 0; i < kCorpusProcs; ++i) g_corpus[i].trailer = 0;
     }
 
     // Does this handler ever compute an address from R14? R14 is the VBA frame base and
@@ -474,7 +474,14 @@ namespace vba
     const PcodeLengths* ArmedLengths() { return g_haveArmed ? &g_armed : nullptr; }
     void SetArmedLengths(const PcodeLengths& l) { g_armed = l; g_haveArmed = l.ok; }
     void ClearArmedLengths() { g_haveArmed = false; }
-    void SetPcodeDiagnostics(bool on) { g_dumpResync = on; g_corpusOn = on; }
+    void SetPcodeDiagnostics(bool on)
+    {
+        g_dumpResync = on;
+        if (on && !g_corpus)
+            g_corpus = static_cast<CorpusProc*>(VirtualAlloc(nullptr, sizeof(CorpusProc) * kCorpusProcs,
+                                                             MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
+        g_corpusOn = on && g_corpus != nullptr;
+    }
 
     namespace
     {
@@ -861,13 +868,38 @@ namespace vba
     // does not flatter the table.
     std::string WritePcodeCorpus(const std::wstring& path)
     {
-        char msg[256];
+        char msg[400];
         const LONG n = InterlockedCompareExchange(&g_corpusN, 0, 0);
-        const LONG kept = (n < kCorpusProcs) ? n : kCorpusProcs;
+        LONG kept = (n < kCorpusProcs) ? n : kCorpusProcs;
         if (!g_corpusOn)
             return "VBA p-code corpus: not collected (set XRAYXL_DIAG=1 before starting Excel)";
         if (kept <= 0)
             return "VBA p-code corpus: nothing walked, nothing written";
+
+        // Every procedure of every module something ran in, run or not: its p-code is compiled
+        // and sits before its trailer like any other. Here, at disarm, never from a hook.
+        const LONG before = kept;
+        long uncompiled = 0;
+        {
+            static std::uint64_t seen[kCorpusProcs];
+            for (LONG i = 0; i < kept; ++i) seen[i] = g_corpus[i].trailer;
+            static std::uint64_t sib[4096];
+            for (LONG i = 0; i < kept; ++i)
+            {
+                const int m = ModuleTrailers(seen[i], sib, 4096);
+                for (int j = 0; j < m; ++j)
+                {
+                    std::uint16_t size = 0, first = 0;
+                    if (!sib[j] || !RdU16(sib[j] + kTrl_procSize, size) || !size) continue;
+                    // not compiled yet: a BosStub placeholder per statement, not p-code
+                    if (RdU16(sib[j] - size, first) && first == kSlot_BosStub) { ++uncompiled; continue; }
+                    CorpusOffer(sib[j], sib[j] - size, size);
+                }
+            }
+        }
+        const LONG after = InterlockedCompareExchange(&g_corpusN, 0, 0);
+        const LONG harvested = (after < kCorpusProcs ? after : kCorpusProcs) - before;
+        kept = (after < kCorpusProcs) ? after : kCorpusProcs;
 
         FILE* f = nullptr;
         if (_wfopen_s(&f, path.c_str(), L"a") != 0 || !f)
@@ -896,9 +928,10 @@ namespace vba
         }
         fclose(f);
         _snprintf_s(msg, sizeof msg, _TRUNCATE,
-                    "VBA p-code corpus: %d procedure(s) written (%ld offered, %ld dropped "
-                    "as too large or over the cap)",
-                    written, InterlockedCompareExchange(&g_corpusSeen, 0, 0),
+                    "VBA p-code corpus: %d procedure(s) written, %ld of them never run but "
+                    "compiled in the same modules, %ld not compiled and skipped (%ld offered, "
+                    "%ld dropped as too large or over the cap)",
+                    written, harvested, uncompiled, InterlockedCompareExchange(&g_corpusSeen, 0, 0),
                     InterlockedCompareExchange(&g_corpusDropped, 0, 0));
         return msg;
     }

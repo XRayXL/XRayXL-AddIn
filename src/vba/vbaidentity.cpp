@@ -237,6 +237,38 @@ namespace vba
 
     const char* IdentityDebug() { return g_debug; }
 
+    int ModuleTrailers(std::uint64_t trailer, std::uint64_t* out, int cap)
+    {
+        if (!trailer || !out || cap <= 0 || !InRangeAndAligned(trailer, 4)) return 0;
+        std::uint64_t parent = 0, m1 = 0, m2 = 1, listEntry = 0, procMap = 0, ceMarker = 0, ceParent = 0;
+        std::uint16_t nProcs = 0;
+        std::uint32_t nNames = 0;
+        if (!RdU64(trailer + kRtmi_pParent, parent) || !InRangeAndAligned(parent, 8)) return 0;
+        if (!RdU64(parent + kPar_marker, m1) || !RdU64(parent + kPar_marker2, m2)) return 0;
+        if ((m1 != kMarker && m1 != kMarkerFromDisk) || m2 != 0) return 0;
+        if (!RdU64(parent + kPar_pListEntry, listEntry) || !RdU64(parent + kPar_procMap, procMap) ||
+            !RdU16(parent + kPar_nProcs, nProcs) || !InRangeAndAligned(listEntry, 8) ||
+            !InRangeAndAligned(procMap, 8))
+            return 0;
+        if (!RdU64(listEntry + kCe_marker, ceMarker) || !RdU64(listEntry + kCe_pParent, ceParent) ||
+            !RdU32(listEntry + kCe_nNumProcs, nNames))
+            return 0;
+        if (ceMarker != m1 || (m1 == kMarker && ceParent != parent)) return 0;
+        if (nProcs == 0 || nProcs > kMaxProcs || nNames != nProcs) return 0;
+
+        // the trailer we came from must be one of them, or this is not its module
+        int n = 0;
+        bool member = false;
+        for (std::uint32_t i = 0; i < nProcs && n < cap; ++i)
+        {
+            std::uint64_t e = 0;
+            if (!RdU64(procMap + i * 8ull, e)) break;
+            if (e == trailer) member = true;
+            out[n++] = e;
+        }
+        return member ? n : 0;
+    }
+
     // The same walk as Resolve, minus the requirement that a NAME come out of
     // it. Diagnostics need the addresses even when the name step fails, and a
     // walk that gives up early would hide exactly the structure being looked

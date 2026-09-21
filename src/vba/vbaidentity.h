@@ -60,6 +60,10 @@ namespace vba
     // Resolve, or return false and leave `out` empty. Never throws.
     bool Resolve(std::uint64_t trailer, Identity& out);
 
+    // Every trailer in the module that owns `trailer`, run or not, after the same checks as
+    // Resolve; null entries are kept. Counts no declines. Returns how many were written.
+    int ModuleTrailers(std::uint64_t trailer, std::uint64_t* out, int cap);
+
     // A one-shot hex dump of the first chain that failed to check out, so a
     // wrong offset can be READ rather than guessed at.
     const char* IdentityDebug();

@@ -7,7 +7,8 @@
 // PAGE_NOACCESS -- the shape Decline::ImageUnreadable exists for. The control
 // image has a readable handler, `mov rax,[r14+8]; ret`, which must be framed.
 //
-// Built by XRayXL.sln into build\x64\Release\unit\; the log is stubbed below.
+// Built by XRayXL.sln into build\x64\Release\unit\; the log and the corpus's module walk are
+// stubbed below.
 
 #include "vbapcode.h"
 
@@ -18,6 +19,7 @@
 #include <vector>
 
 namespace core { namespace Log { void Warning(const std::string&) {} } }
+namespace vba { int ModuleTrailers(std::uint64_t, std::uint64_t*, int) { return 0; } }   // the corpus is not tested here
 
 namespace
 {
