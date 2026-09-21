@@ -136,13 +136,14 @@ no longer describe the run it is attached to. (`LOGLEVEL` is the exception to
 | Export | Does |
 |---|---|
 | `xlAutoOpen` | Register the commands and trace-parameter functions. Open the log. Start the ribbon, last. |
-| `xlAutoClose` | Disarm, bring the ribbon down, close the log. |
+| `xlAutoRemove` | Note that the Add-ins dialog is removing the add-in, so the `xlAutoClose` that follows tears down. |
+| `xlAutoClose` | Disarm and bring the ribbon down — but only when the add-in is being removed or the ribbon is not connected. Otherwise nothing: see *Shutting it down*. |
 | `xlAutoFree12` | Free `XLOPER12`s we allocated. |
 | `xlAddInManagerInfo12` | Name in the add-in manager. |
 | `DllGetClassObject` | The ribbon add-in's class object — this CLSID only. |
 | `DllCanUnloadNow` | Always `S_FALSE`. |
 
-**That is the whole export surface** — the four lifecycle exports, the two COM
+**That is the whole export surface** — the five lifecycle exports, the two COM
 exports the ribbon needs, and the registered commands and functions above.
 
 ## Arming asks Excel for VBA
@@ -220,12 +221,21 @@ exists, and the notification costs an atomic read when nobody has subscribed.
 into the caller: `combase` catches it and **terminates the process**, with our
 frames already gone, so the report names `combase` and nothing else. Every entry
 point here that does real work runs under a filter that records the faulting
-address and the module that owns it first. Teardown happens on whichever of
-`OnBeginShutdown`, `OnDisconnection` or `xlAutoClose` arrives first, is written
-to run twice, and waits for nothing. `OnDisconnection` also disarms, because
-`xlAutoClose` is measured *not* to run for an XLL loaded by
-`Application.RegisterXLL` from automation — which would otherwise reach process
-exit with detours still on other people's functions.
+address and the module that owns it first.
+
+**Excel calls `xlAutoClose` before its Save prompt**, so a user who then presses
+Cancel keeps a session the add-in has already been told is over. The COM
+callbacks come later: `OnBeginShutdown` and `OnDisconnection` (RemoveMode 0)
+arrive only once the exit is certain, and before the process goes. So
+`xlAutoClose` does nothing while the ribbon is connected, and the ribbon's
+teardown disarms. `xlAutoClose` still tears down itself in the two cases where
+no callback will follow: the add-in is being removed from the Add-ins dialog
+(`xlAutoRemove` arrives first, and the COM add-in stays connected), or the
+ribbon never connected. Teardown is written to run twice and waits for nothing.
+
+Tracing must be off before the process exits: hooks left on other modules'
+functions would run into our code after its statics are gone, and a `PAUSE`
+ring would wait for a drain thread that has already been killed.
 
 The add-in object is never published as `COMAddIn.Object`. An earlier version
 did, could not clear it at disconnection, and so left Excel holding a reference

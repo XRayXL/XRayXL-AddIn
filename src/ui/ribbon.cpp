@@ -388,7 +388,7 @@ public:
     }
 
     // ---- IDTExtensibility2: AddInInst is kept for teardown; Application never is ----
-    HRESULT STDMETHODCALLTYPE OnConnection(IDispatch*, int, IDispatch* AddInInst, SAFEARRAY**) override
+    HRESULT STDMETHODCALLTYPE OnConnection(IDispatch*, int mode, IDispatch* AddInInst, SAFEARRAY**) override
     {
         // OnConnection fires more than once: release what is held before taking the new pointer.
         if (AddInInst != g_addInInst)
@@ -397,20 +397,23 @@ public:
             if (AddInInst)   AddInInst->AddRef();
             g_addInInst = AddInInst;
         }
-        core::Log::Debug(AddInInst ? "ribbon: OnConnection -- add-in object kept for teardown"
-                                   : "ribbon: OnConnection -- no add-in object offered");
+        char line[96];
+        _snprintf_s(line, _TRUNCATE, "ribbon: OnConnection (ConnectMode %d)%s", mode,
+                    AddInInst ? "" : " -- no add-in object offered");
+        core::Log::Note(line);
         return S_OK;
     }
-    HRESULT STDMETHODCALLTYPE OnDisconnection(int, SAFEARRAY**) override
+    // RemoveMode 0 is Excel exiting, after any Cancel; 1 is a disconnect asked for.
+    HRESULT STDMETHODCALLTYPE OnDisconnection(int mode, SAFEARRAY**) override
     {
-        __try { return TeardownImpl("ribbon: OnDisconnection"); }
+        __try { return TeardownImpl("ribbon: OnDisconnection", mode); }
         __except (NoteComFault(GetExceptionInformation(), "OnDisconnection")) { ReportComFault(); return S_OK; }
     }
     HRESULT STDMETHODCALLTYPE OnAddInsUpdate(SAFEARRAY**) override { return S_OK; }
     HRESULT STDMETHODCALLTYPE OnStartupComplete(SAFEARRAY**) override { return S_OK; }
     HRESULT STDMETHODCALLTYPE OnBeginShutdown(SAFEARRAY**) override
     {
-        __try { return TeardownImpl("ribbon: OnBeginShutdown"); }
+        __try { return TeardownImpl("ribbon: OnBeginShutdown", -1); }
         __except (NoteComFault(GetExceptionInformation(), "OnBeginShutdown")) { ReportComFault(); return S_OK; }
     }
 
@@ -540,10 +543,17 @@ private:
         }
     }
 
-    // Both shutdown callbacks land here, so it runs twice safely. It also disarms.
-    HRESULT TeardownImpl(const char* which)
+    // Both shutdown callbacks land here, so it runs twice safely. It also disarms: Excel
+    // calls them only once the exit can no longer be cancelled, unlike xlAutoClose.
+    HRESULT TeardownImpl(const char* which, int mode)
     {
         core::crashlog::Note(which);
+        char line[128];
+        char mode_[32] = "";
+        if (mode >= 0) _snprintf_s(mode_, _TRUNCATE, " (RemoveMode %d)", mode);
+        _snprintf_s(line, _TRUNCATE, "%s%s%s", which, mode_,
+                    g_stopping.load() ? "" : " -- tearing down");
+        core::Log::Note(line);
         core::SubscribeStateChanged(nullptr);
         ReleaseRibbonUis();
         if (g_addInInst) { IDispatch* a = g_addInInst; g_addInInst = nullptr; a->Release(); }
@@ -959,7 +969,10 @@ namespace ribbon
         _snprintf_s(line, _TRUNCATE, "ribbon: stopped; %ld add-in object(s) still alive",
                     g_objects.load());
         core::crashlog::Note(line);
+        core::Log::Note(line);
     }
+
+    bool Connected() { return g_connected.load() && !g_stopping.load(); }
 
     HRESULT GetClassObject(REFCLSID rclsid, REFIID riid, void** ppv)
     {

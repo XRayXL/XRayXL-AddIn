@@ -12,6 +12,10 @@ namespace ribbon
     // Idempotent, and waits for nothing.
     void Stop();
 
+    // True while Excel holds the add-in, whose OnDisconnection then reports Excel's exit
+    // after the user can no longer cancel it.
+    bool Connected();
+
     // From the exported DllGetClassObject; this add-in's CLSID only.
     HRESULT GetClassObject(REFCLSID rclsid, REFIID riid, void** ppv);
 }

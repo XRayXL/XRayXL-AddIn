@@ -5,6 +5,7 @@
 EXPORTS
     xlAutoOpen
     xlAutoClose
+    xlAutoRemove
     xlAutoFree12
     xlAddInManagerInfo12
 

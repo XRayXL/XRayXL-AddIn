@@ -32,6 +32,9 @@ namespace
 
     bool g_modulePinned = false;
 
+    // Set by xlAutoRemove: the add-in dialog is removing us, and no COM callback will follow.
+    volatile LONG g_removing = 0;
+
     // The process id, because that is what a person can match against Task
     // Manager.
     std::wstring SessionSuffix()
@@ -160,10 +163,30 @@ extern "C" int __stdcall xlAutoOpen()
     return 1;
 }
 
+extern "C" int __stdcall xlAutoRemove()
+{
+    InterlockedExchange(&g_removing, 1);
+  try {
+    core::Log::Note("xlAutoRemove: the add-in is being removed; xlAutoClose will tear down");
+  } catch (...) { core::crashlog::Note("xlAutoRemove: exception contained"); }
+    return 1;
+}
+
 extern "C" int __stdcall xlAutoClose()
 {
   try {
     core::crashlog::Note("xlAutoClose: entered");
+
+    // Excel calls this before its Save prompt, so the user may still Cancel. When the
+    // ribbon is connected, its OnDisconnection tears down once the exit is certain.
+    const bool removing = InterlockedExchange(&g_removing, 0) != 0;
+    if (!removing && ui::ribbon::Connected())
+    {
+        core::Log::Note("xlAutoClose: Excel may still cancel; teardown waits for OnDisconnection");
+        return 1;
+    }
+    core::Log::Note(removing ? "xlAutoClose: add-in removed -- disarming and stopping the ribbon"
+                             : "xlAutoClose: no ribbon to report the exit -- disarming now");
 
     // Unhook FIRST: a detour left behind after the module goes points at
     // unmapped code the next time Excel calls that add-in function, which is a
