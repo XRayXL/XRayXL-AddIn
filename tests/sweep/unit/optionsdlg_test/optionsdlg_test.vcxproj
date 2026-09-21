@@ -42,6 +42,7 @@
     <ClCompile Include="$(XRayRoot)src\core\tracemodes.cpp" />
     <ClCompile Include="$(XRayRoot)src\core\notify.cpp" />
     <ClCompile Include="$(XRayRoot)src\app\paramparse.cpp" />
+    <ClCompile Include="$(XRayRoot)src\app\settings.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="$(XRayRoot)src\XRayXL.rc" />

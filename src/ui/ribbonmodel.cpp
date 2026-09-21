@@ -111,18 +111,26 @@ void BufferText(wchar_t* out, int cap)
     app::params::FormatBufferW(core::modes::GetBufferBytes(), out, cap);
 }
 
-bool SetBufferText(const wchar_t* text)
+bool ParseBufferBox(const wchar_t* text, std::size_t& bytes)
 {
     if (!text) return false;
     wchar_t up[24];
     int i = 0;
     for (; text[i] && i < 23; ++i) up[i] = static_cast<wchar_t>(towupper(text[i]));
     up[i] = 0;
-    unsigned long long bytes = 0;
-    if (!app::params::ParseBufferText(up, bytes)) return false;
+    unsigned long long b = 0;
+    if (!app::params::ParseBufferText(up, b)) return false;
     // the command surface's floor: 0 is synchronous, the smallest ring 16KB, nothing between
-    if (bytes != 0 && bytes < app::params::kBufMinRing) return false;
-    core::modes::SetBufferBytes(static_cast<std::size_t>(bytes));
+    if (b != 0 && b < app::params::kBufMinRing) return false;
+    bytes = static_cast<std::size_t>(b);
+    return true;
+}
+
+bool SetBufferText(const wchar_t* text)
+{
+    std::size_t bytes = 0;
+    if (!ParseBufferBox(text, bytes)) return false;
+    core::modes::SetBufferBytes(bytes);
     return true;
 }
 

@@ -7,6 +7,7 @@
 #include "ui/optionsdlg.h"
 #include "ui/optionsres.h"
 #include "ui/reflow.h"
+#include "app/settings.h"
 #include "core/tracemodes.h"
 #include "core/log.h"
 
@@ -19,6 +20,7 @@
 // ---- what the add-in's session would supply -------------------------------------------------
 
 static bool g_armed = false;
+static std::vector<std::string> g_notes;     // what the dialog logged
 
 namespace app
 {
@@ -35,6 +37,11 @@ namespace core
         std::wstring Path() { return L"C:\\stub\\XRayXL.log"; }
         void  SetLevel(Level lvl) { g_level = lvl; }
         Level GetLevel() { return g_level; }
+        const char* LevelName(Level lvl)
+        {
+            const char* const names[] = { "DEBUG", "INFO", "WARNING", "ERROR" };
+            return names[static_cast<int>(lvl)];
+        }
         bool  LevelFromText(const char* text, Level& out)
         {
             const char* const names[] = { "DEBUG", "INFO", "WARNING", "ERROR" };
@@ -47,7 +54,7 @@ namespace core
         void Info(const std::string&) {}
         void Warning(const std::string& m) { std::printf("  (log) warning: %s\n", m.c_str()); }
         void Error(const std::string& m) { std::printf("  (log) error: %s\n", m.c_str()); }
-        void Note(const std::string&) {}
+        void Note(const std::string& m) { g_notes.push_back(m); }
     }
 }
 
@@ -112,6 +119,21 @@ static std::wstring ComboItem(HWND dlg, int id, int i)
 
 static void Press(HWND dlg, int id) { SendMessageW(dlg, WM_COMMAND, MAKEWPARAM(id, BN_CLICKED), 0); }
 
+// A drop-down choice the way a user makes one: the selection, then the notification.
+static void Choose(HWND dlg, int id, int index)
+{
+    SendDlgItemMessageW(dlg, id, CB_SETCURSEL, static_cast<WPARAM>(index), 0);
+    SendMessageW(dlg, WM_COMMAND, MAKEWPARAM(id, CBN_SELCHANGE), reinterpret_cast<LPARAM>(GetDlgItem(dlg, id)));
+}
+
+static std::wstring Wide(const std::string& s) { return std::wstring(s.begin(), s.end()); }
+
+static bool Logged(const char* needle)
+{
+    for (const std::string& n : g_notes) if (n.find(needle) != std::string::npos) return true;
+    return false;
+}
+
 // One opening of the dialog: `drive` runs on a second thread against the dialog while this
 // thread sits in its modal loop, and must close it. Returns what Show returned.
 template <class Drive>
@@ -141,6 +163,24 @@ static size_t LongestRun(const std::wstring& s, wchar_t c)
     return best;
 }
 
+static void SettingsCases()
+{
+    std::printf("-- settings list and changes\n");
+    using app::settings::Snapshot;
+    const Snapshot a = { { "XLL ARGS", "TRUE" }, { "FORMAT", "CSV" }, { "LOGLEVEL", "INFO" } };
+    const Snapshot b = { { "XLL ARGS", "FALSE" }, { "FORMAT", "CSV" }, { "LOGLEVEL", "DEBUG" } };
+    Check(app::settings::List(a) == "XLL ARGS=TRUE, FORMAT=CSV, LOGLEVEL=INFO", "a snapshot lists as NAME=VALUE",
+          Wide(app::settings::List(a)));
+    Check(app::settings::Changes(a, b) == "XLL ARGS TRUE -> FALSE; LOGLEVEL INFO -> DEBUG",
+          "changes name only what differs, old to new", Wide(app::settings::Changes(a, b)));
+    Check(app::settings::Changes(a, a).empty(), "no change is an empty string");
+
+    const std::string all = app::settings::List(app::settings::Take());
+    for (const char* name : { "XLL DEPTH=", "XLL ARGS=", "XLL RETVAL=", "VBA DEPTH=", "VBA ARGS=", "VBA RETVAL=",
+                              "VBA OBJECTS=", "BUFFERSIZE=", "BUFFERWHENFULL=", "FORMAT=", "LOGLEVEL=" })
+        Check(all.find(name) != std::string::npos, (std::string("the live list has ") + name).c_str(), Wide(all));
+}
+
 static void ReflowCases()
 {
     std::printf("-- reflow\n");
@@ -161,11 +201,12 @@ static void ReflowCases()
 int main()
 {
     ReflowCases();
+    SettingsCases();
 
     core::modes::SetFormat(core::modes::Format::Csv);
 
-    // ---- disarmed: every page, the format moved to Output, OK applies it --------------------
-    const bool applied = Session("disarmed: pages, texts, format, OK", [](HWND dlg)
+    // ---- disarmed: every page, the format moved to Output, Apply applies it ------------------
+    const bool applied = Session("disarmed: pages, texts, format, Apply", [](HWND dlg)
     {
         HWND list = GetDlgItem(dlg, IDC_CATEGORIES);
         std::wstring names;
@@ -215,36 +256,75 @@ int main()
         Check(!Visible(dlg, IDC_ABT_LICENSE), "the licence box is not on the Notices page");
         Check(!Visible(dlg, IDC_ARMEDNOTE), "Notices shows no armed note");
 
+        Check(TextOf(dlg, IDOK) == L"Apply", "the button is called Apply", TextOf(dlg, IDOK));
+        Check(!Enabled(dlg, IDOK), "Apply is greyed while nothing differs");
+        Press(dlg, IDOK);
+        Check(IsWindowVisible(dlg) != FALSE, "pressing Apply with nothing to apply leaves the dialog open");
+
         ShowPage(dlg, L"Output");
-        SendDlgItemMessageW(dlg, IDC_OUT_FMT, CB_SETCURSEL, 1, 0);
+        Choose(dlg, IDC_OUT_FMT, 1);
+        Check(Enabled(dlg, IDOK), "choosing JSON Lines lights Apply");
+        Choose(dlg, IDC_OUT_FMT, 0);
+        Check(!Enabled(dlg, IDOK), "choosing CSV again greys it");
+
+        ShowPage(dlg, L"Advanced");
+        wchar_t buf[32] = {};
+        GetDlgItemTextW(dlg, IDC_ADV_BUF, buf, 32);
+        std::wstring same;                              // "64MB" as "64 mb"
+        for (const wchar_t* p = buf; *p; ++p)
+        {
+            if (*p >= L'A' && *p <= L'Z' && (p == buf || !(p[-1] >= L'A' && p[-1] <= L'Z'))) same += L' ';
+            same += static_cast<wchar_t>(towlower(*p));
+        }
+        SetDlgItemTextW(dlg, IDC_ADV_BUF, same.c_str());
+        Check(!Enabled(dlg, IDOK), "the same buffer size written differently is no change", buf);
+        SetDlgItemTextW(dlg, IDC_ADV_BUF, L"lots");
+        Check(Enabled(dlg, IDOK), "a buffer size that does not parse lights Apply, so Apply can say why");
+        SetDlgItemTextW(dlg, IDC_ADV_BUF, buf);
+        Check(!Enabled(dlg, IDOK), "putting the size back greys it");
+
+        ShowPage(dlg, L"Output");
+        Choose(dlg, IDC_OUT_FMT, 1);
+        g_notes.clear();
         Press(dlg, IDOK);
     });
-    Check(applied, "OK reports the settings applied");
-    Check(core::modes::GetFormat() == core::modes::Format::Jsonl, "OK applied JSON Lines");
+    Check(applied, "Apply reports the settings applied");
+    Check(core::modes::GetFormat() == core::modes::Format::Jsonl, "Apply applied JSON Lines");
+    Check(Logged("options: applied -- FORMAT CSV -> JSONL"), "the log says what Apply changed, and nothing else",
+          g_notes.empty() ? L"" : Wide(g_notes.back()));
 
     // ---- Cancel changes nothing -------------------------------------------------------------
     const bool cancelled = !Session("disarmed: Cancel", [](HWND dlg)
     {
         ShowPage(dlg, L"Output");
         Check(SendDlgItemMessageW(dlg, IDC_OUT_FMT, CB_GETCURSEL, 0, 0) == 1, "Format reopens on JSON Lines");
-        SendDlgItemMessageW(dlg, IDC_OUT_FMT, CB_SETCURSEL, 0, 0);
+        Choose(dlg, IDC_OUT_FMT, 0);
         Press(dlg, IDCANCEL);
     });
     Check(cancelled, "Cancel reports nothing applied");
     Check(core::modes::GetFormat() == core::modes::Format::Jsonl, "Cancel left the format as it was");
 
-    // ---- armed: the format is locked, and OK cannot change it -------------------------------
+    // ---- armed: the format is locked, and only the log level can light Apply ----------------
     g_armed = true;
+    g_notes.clear();
     Session("armed: the format is locked", [](HWND dlg)
     {
+        Check(Logged("options: opened while armed -- XLL DEPTH="), "opening is logged with every setting",
+              g_notes.empty() ? L"" : Wide(g_notes.front()));
         ShowPage(dlg, L"Output");
         Check(!Enabled(dlg, IDC_OUT_FMT), "Format is greyed while armed");
         Check(Visible(dlg, IDC_ARMEDNOTE) && Contains(TextOf(dlg, IDC_ARMEDNOTE), L"armed"),
               "Output says why", TextOf(dlg, IDC_ARMEDNOTE));
-        SendDlgItemMessageW(dlg, IDC_OUT_FMT, CB_SETCURSEL, 0, 0);
+        Choose(dlg, IDC_OUT_FMT, 0);
+        Check(!Enabled(dlg, IDOK), "a locked setting cannot light Apply");
+        ShowPage(dlg, L"Advanced");
+        Choose(dlg, IDC_ADV_LVL, 0);
+        Check(Enabled(dlg, IDOK), "the log level can");
         Press(dlg, IDOK);
     });
-    Check(core::modes::GetFormat() == core::modes::Format::Jsonl, "OK while armed did not change the format");
+    Check(core::modes::GetFormat() == core::modes::Format::Jsonl, "Apply while armed did not change the format");
+    Check(core::Log::GetLevel() == core::Log::Level::Debug, "Apply while armed changed the log level");
+    Check(Logged("options: applied -- LOGLEVEL INFO -> DEBUG"), "and the log says only that");
     g_armed = false;
 
     std::printf("\n%s\n", g_fail == 0 ? "ALL PASS" : "FAILED");

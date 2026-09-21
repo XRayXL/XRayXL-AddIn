@@ -6,6 +6,7 @@
 #include "core/crashlog.h"
 #include "core/log.h"
 #include "app/session.h"
+#include "app/settings.h"
 #include "core/text.h"
 #include "emit/csv.h"
 #include "ui/ribbon.h"
@@ -155,6 +156,7 @@ extern "C" int __stdcall xlAutoOpen()
     // (src/app/commands.cpp).
     app::RegisterCommands();
     core::Log::Note("loaded: XLL commands registered.");
+    core::Log::Note("settings at start -- " + app::settings::List(app::settings::Take()));
 
     // last, so a ribbon that cannot load costs the session its buttons and nothing else
     ui::ribbon::Start();

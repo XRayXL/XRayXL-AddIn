@@ -41,6 +41,7 @@ namespace model
     // The ring size in SetTraceParam's words: "64MB", "512KB", "0".
     void BufferText(wchar_t* out, int cap);
     bool SetBufferText(const wchar_t* text);
+    bool ParseBufferBox(const wchar_t* text, std::size_t& bytes);   // false: not a valid size
 }
 }
 }

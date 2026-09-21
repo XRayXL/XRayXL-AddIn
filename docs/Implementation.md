@@ -39,7 +39,7 @@ decisions.
 
 | Part | Files |
 |---|---|
-| **1. The vehicle** | `src/dllmain.cpp`, `src/XRayXL.def`; `src/app/` — `session` (arm and disarm both sources), `commands` (the `XRayXL_*` exports and their guards), `traceparam` (Set/Get), `summary` (the trace summary), `paramparse`/`xlgrid` (their arguments and answers); `src/core/` — logging, the crash log, the Excel API wrappers, trace modes, and what both tracers share: `caller` (the calling cell), `render`, `text`, `clock`, `safemem` |
+| **1. The vehicle** | `src/dllmain.cpp`, `src/XRayXL.def`; `src/app/` — `session` (arm and disarm both sources), `commands` (the `XRayXL_*` exports and their guards), `traceparam` (Set/Get), `summary` (the trace summary), `settings` (every setting at once, for the log), `paramparse`/`xlgrid` (their arguments and answers); `src/core/` — logging, the crash log, the Excel API wrappers, trace modes, and what both tracers share: `caller` (the calling cell), `render`, `text`, `clock`, `safemem` |
 | **2. Derivation** | `src/vba/vbaderive.*` — locating and verifying the dispatch table |
 | **3. XLL tracing** | `src/xll/` — `xllregistry` (enumerate), `xlltypeplan` (parse the registration), `xllhook` + `xllthunk.asm` (patch and wrap), `xlldecode` (read the values), `xlltrace` (build the row), `xllarm` (hook and unhook this source), `xllregister_watch` (add-ins loaded after arming) |
 | **4. VBA tracing** | `src/vba/` — `vbapatch` + `vbathunk.asm` (swap the slots), `vbapcode` + `vbapcode_tables.h` (the walk, and the pinned lengths it walks by), `vbatrace` (the shadow stack) + `vbareport` (its disarm report), `vbaargs`/`vbaretdecode` (read the values), `vbaidentity`/`vbaproctable`/`vbatrailer` (name the procedure) |
@@ -252,8 +252,15 @@ colour, radius, size and spacing in the source is a value measured off Excel's.
 Nothing beyond Windows is used.
 
 - **It edits a draft.** The settings are read once when it opens and written once
-  on OK, through `ribbonmodel`'s accessors; Cancel changes nothing. While armed
-  the capture settings are greyed, by the same rule the setters apply.
+  on Apply, through `ribbonmodel`'s accessors; Cancel changes nothing. Apply is
+  enabled only while the draft differs from the live settings, compared by
+  meaning (a buffer size that does not parse counts as different, so Apply is
+  what explains it). While armed the capture settings are greyed, by the same
+  rule the setters apply, and only the log level can enable Apply.
+- **It logs.** Opening writes every setting to the log, and Apply writes what it
+  actually changed, old value to new, read from the live settings before and
+  after — so a change the setters refused is never logged as made. The same
+  list (`src/app/settings`) is written once at start.
 - **Shapes** are `src/ui/softdraw.{h,cpp}`: anti-aliased rounded rectangles and
   strokes rendered from signed distance, because GDI's are aliased. A heavy edge
   is drawn as Office draws it — two thin rings, not one band.
@@ -280,7 +287,7 @@ Nothing beyond Windows is used.
 - **Tested outside Excel.** `optionsdlg_test` builds the shipping dialog and its
   resources into a console program, opens it, and drives it from a second thread
   through its controls: the pages, the Format drop-down, the embedded texts and
-  their reflow (`src/ui/reflow.h`), OK, Cancel and the armed lock. It stubs only
+  their reflow (`src/ui/reflow.h`), Apply, Cancel and the armed lock. It stubs only
   what the add-in's session supplies. In a test's Excel the harness's dialog
   watchdog would dismiss the dialog before it could be driven.
 - **The About and Notices pages** show the repository's `LICENSE` and

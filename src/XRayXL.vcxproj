@@ -144,6 +144,7 @@
     <ClCompile Include="emit\rowcsv.cpp" />
     <ClCompile Include="emit\rowjson.cpp" />
     <ClCompile Include="app\paramparse.cpp" />
+    <ClCompile Include="app\settings.cpp" />
     <ClCompile Include="vba\vbaproctable.cpp" />
     <ClCompile Include="vba\vbaderive.cpp" />
     <ClCompile Include="vba\vbapatch.cpp" />
@@ -210,6 +211,7 @@
     <ClInclude Include="app\session.h" />
     <ClInclude Include="app\exports.h" />
     <ClInclude Include="app\paramparse.h" />
+    <ClInclude Include="app\settings.h" />
     <ClInclude Include="app\xlgrid.h" />
     <ClInclude Include="core\crashlog.h" />
     <ClInclude Include="core\log.h" />

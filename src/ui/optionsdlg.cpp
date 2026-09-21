@@ -9,6 +9,7 @@
 #include <algorithm>
 
 #include "app/session.h"
+#include "app/settings.h"
 #include "core/log.h"
 #include "core/tracemodes.h"
 #include "core/excel_api.h"
@@ -76,7 +77,7 @@ namespace
         return false;
     }
 
-    // ---- the settings, as a draft: read on open, written on OK -------------------
+    // ---- the settings, as a draft: read on open, written on Apply ----------------
 
     struct Draft
     {
@@ -128,15 +129,55 @@ namespace
         d.logLevel = static_cast<int>(SendDlgItemMessageW(dlg, IDC_ADV_LVL, CB_GETCURSEL, 0, 0));
     }
 
-    // False keeps the dialog open: the buffer size is the one field that can be wrong.
+    // Whether Apply would change anything. A buffer size that does not parse counts as a change,
+    // so Apply is what says why it is wrong.
+    bool Differs(const Draft& d, const Draft& cur)
+    {
+        if (d.logLevel != cur.logLevel) return true;
+        if (cur.armed) return false;        // the setters refuse everything else while armed
+        std::size_t bytes = 0;
+        if (!M::ParseBufferBox(d.buffer, bytes) || bytes != core::modes::GetBufferBytes()) return true;
+        return d.xllDepth != cur.xllDepth || d.vbaDepth != cur.vbaDepth ||
+               d.xllArgs != cur.xllArgs || d.xllRet != cur.xllRet ||
+               d.vbaArgs != cur.vbaArgs || d.vbaRet != cur.vbaRet || d.vbaObj != cur.vbaObj ||
+               d.pauseOnFull != cur.pauseOnFull || d.format != cur.format;
+    }
+
+    // The dialog's values over the live settings, so the comparison is always with what is current.
+    void Pending(HWND dlg, Draft& d, Draft& cur)
+    {
+        ReadCurrent(cur);
+        d = cur;
+        Collect(dlg, d);
+    }
+
+    void UpdateApply(HWND dlg)
+    {
+        Draft d, cur;
+        Pending(dlg, d, cur);
+        EnableWindow(GetDlgItem(dlg, IDOK), Differs(d, cur) ? TRUE : FALSE);
+    }
+
+    // False keeps the dialog open, with nothing applied: the buffer size is the one field that can
+    // be wrong, so it is checked first.
     bool Apply(const Draft& d, HWND dlg)
     {
+        std::size_t bytes = 0;
+        if (!d.armed && !M::ParseBufferBox(d.buffer, bytes))
+        {
+            MessageBoxW(dlg,
+                L"The buffer size was not understood.\r\n\r\n"
+                L"Use a number with an optional unit: 64MB, 512KB, or 0 for "
+                L"synchronous. The smallest ring is 16KB and the largest 240MB.",
+                L"XRayXL Options", MB_OK | MB_ICONINFORMATION);
+            return false;
+        }
         if (d.logLevel >= 0 && d.logLevel < kLevelCount)
         {
             core::Log::Level lvl;
             if (core::Log::LevelFromText(kLevelNames[d.logLevel], lvl)) core::Log::SetLevel(lvl);
         }
-        if (app::IsArmed()) return true;    // the setters refuse everything else while armed
+        if (d.armed) return true;           // the setters refuse everything else while armed
 
         M::SetDepthIndex(L"ddXllDepth", d.xllDepth);
         M::SetDepthIndex(L"ddVbaDepth", d.vbaDepth);
@@ -149,14 +190,8 @@ namespace
         if (d.format == static_cast<int>(core::modes::Format::Csv) ||
             d.format == static_cast<int>(core::modes::Format::Jsonl))
             core::modes::SetFormat(static_cast<core::modes::Format>(d.format));
-        if (M::SetBufferText(d.buffer)) return true;
-
-        MessageBoxW(dlg,
-            L"The buffer size was not understood.\r\n\r\n"
-            L"Use a number with an optional unit: 64MB, 512KB, or 0 for "
-            L"synchronous. The smallest ring is 16KB and the largest 240MB.",
-            L"XRayXL Options", MB_OK | MB_ICONINFORMATION);
-        return false;
+        core::modes::SetBufferBytes(bytes);
+        return true;
     }
 
     int g_page = 0;                 // the page showing, for the glyph
@@ -490,6 +525,7 @@ namespace
 
             ApplyArmedState(dlg, s_draft.armed);
             ShowPage(dlg, 0);
+            UpdateApply(dlg);
             return TRUE;
         }
 
@@ -565,9 +601,12 @@ namespace
                 excelstyle::SetDropping(HIWORD(wp) == CBN_DROPDOWN);
                 return TRUE;
             }
+            if (In(kComboIds, id) && HIWORD(wp) == CBN_SELCHANGE) { UpdateApply(dlg); return TRUE; }
+            if (id == IDC_ADV_BUF && HIWORD(wp) == EN_CHANGE)    { UpdateApply(dlg); return TRUE; }
             if (HIWORD(wp) == BN_CLICKED && In(kCheckIds, id))
             {
                 SetChecked(dlg, id, !IsChecked(dlg, id));   // an owner-drawn box has no state of its own
+                UpdateApply(dlg);
                 return TRUE;
             }
             if (id == IDC_OUT_TAIL)
@@ -579,9 +618,15 @@ namespace
             }
             if (id == IDOK)
             {
-                Draft d = s_draft;
-                Collect(dlg, d);
-                if (Apply(d, dlg)) EndDialog(dlg, IDOK);
+                // Enter reaches here with Apply greyed, so the check is made again.
+                Draft d, cur;
+                Pending(dlg, d, cur);
+                if (!Differs(d, cur)) return TRUE;
+                const app::settings::Snapshot before = app::settings::Take();
+                if (!Apply(d, dlg)) return TRUE;
+                const std::string changed = app::settings::Changes(before, app::settings::Take());
+                core::Log::Note("options: applied -- " + (changed.empty() ? std::string("nothing changed") : changed));
+                EndDialog(dlg, IDOK);
                 return TRUE;
             }
             if (id == IDCANCEL) { EndDialog(dlg, IDCANCEL); return TRUE; }
@@ -613,6 +658,8 @@ bool Show(void* ownerHwnd)
         return false;
     }
 
+    core::Log::Note(std::string("options: opened") + (app::IsArmed() ? " while armed" : "") +
+                    " -- " + app::settings::List(app::settings::Take()));
     const excelstyle::DpiScope perMonitor;
     const INT_PTR r = DialogBoxParamW(excelstyle::Self(), MAKEINTRESOURCEW(IDD_XRAY_OPTIONS), owner, Proc, 0);
 
@@ -623,7 +670,7 @@ bool Show(void* ownerHwnd)
         core::Log::Warning(line);
         return false;
     }
-    core::Log::Note(r == IDOK ? "options: applied" : "options: cancelled");
+    if (r != IDOK) core::Log::Note("options: cancelled");
     return r == IDOK;
 }
 }

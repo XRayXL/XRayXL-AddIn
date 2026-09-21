@@ -10,7 +10,7 @@ The **XRayXL group** on the Developer tab is a front end to exactly these calls 
 per source, each a Depth drop-down and check boxes), Output (the format
 drop-down, the trace folder and file), Advanced (the output buffer and the log level),
 About (the version and the licence), and Notices (the third-party notices). It holds no settings of its own, so the two can never
-disagree: press OK and `XRayXL_GetTraceParam` reports what you chose; change
+disagree: press Apply and `XRayXL_GetTraceParam` reports what you chose; change
 something from a macro and the dialog shows it the next time it opens. Cancel
 changes nothing. The dialog is reached from the ribbon button; the settings themselves are
 reachable from a macro through the functions below, which is what a script should drive.
