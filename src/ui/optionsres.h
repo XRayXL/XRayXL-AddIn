@@ -42,6 +42,7 @@
 #define IDC_ADV_FULL       1407
 #define IDC_ADV_SEC1       1408
 #define IDC_ADV_RULE1      1409
+#define IDC_ADV_BRK        1410
 #define IDC_OUT_TAIL       1411
 #define IDC_OUT_FMTLBL     1412
 #define IDC_OUT_FMT        1413

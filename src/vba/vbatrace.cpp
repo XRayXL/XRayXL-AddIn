@@ -106,6 +106,8 @@ namespace vba
             // A chain reads threw -> unwound -> unwound -> handled from the throwing
             // frame outwards: where was it thrown, and who caught it.
             std::uint8_t  outcome;
+            // How often this activation stopped at a breakpoint in the editor.
+            std::uint32_t breaks;
 
             // EXCEL STARTED THIS FRAME as a worksheet-function activation, so an error
             // leaving it becomes a cell's #VALUE! rather than a VBA caller's error.
@@ -328,6 +330,13 @@ namespace vba
             row.outcome = (std::strcmp(kind, "exit") == 0) ? OutcomeName(f.outcome) : "";
             row.ret = retText;  row.rettype = retType;
             row.ticks = ticksb;  row.trust = trustText;
+            // The breakpoint count belongs with the duration it explains, so the exit row alone.
+            char breaksb[16] = {};
+            if (emit::csv::HasBreaksColumn() && std::strcmp(kind, "exit") == 0)
+            {
+                _snprintf_s(breaksb, _TRUNCATE, "%u", f.breaks);
+                row.breaks = breaksb;
+            }
             emit::csv::WriteRow(row);
         }
 
@@ -513,9 +522,15 @@ namespace vba
         // procedures (vbaretdecode.h); class and form Functions all leave through 1664, so the
         // instruction that wrote the result is asked instead.
         //
-        // The offset identifies a Variant, not the opcode: a Variant result lives at [R14-0x18]
-        // and is stored through different opcodes depending on what it holds. Two known stores
-        // of different types cannot both be the result, so the type is then refused.
+        // A Variant result lives at [R14-0x18], stored by one of four opcodes depending on what
+        // it holds. Elsewhere [R14-0x18] is an ordinary local, so only those four count: a load
+        // from a temporary there once cancelled a class Function's Long. Two known stores of
+        // different types cannot both be the result, so the type is then refused.
+        bool IsVariantResultStore(std::uint16_t op)
+        {
+            return op == 694 || op == 707 || op == 702 || op == 703;   // FStVar, FStVarCopy, FStVarAd[Func]
+        }
+
         RetKind DecideReturnKind(std::uint64_t trailer, std::uint16_t exitOp, std::uint16_t& storeOp)
         {
             storeOp = 0;
@@ -529,19 +544,26 @@ namespace vba
 
             if (kind == RetKind::Unknown)
             {
+                // 671 only pushes the result slot's address: it is an array assignment when
+                // nothing else writes the slot, and otherwise the function passing or updating
+                // its own result (`F = F & x`), so a concrete store outranks it.
                 RetKind fromStore = RetKind::Unknown;
                 std::uint16_t fromOp = 0;
-                bool conflict = false;
+                bool conflict = false, addressOnly = false;
                 for (int i = 0; i < n; ++i)
                 {
-                    const RetKind k2 = (offs[i] == -0x18) ? RetKind::Variant
-                                                          : StoreReturnKind(ops[i]);
+                    if (offs[i] == -8 && ops[i] == 671) { addressOnly = true; continue; }
+                    const RetKind k2 = (offs[i] == -0x18)
+                                     ? (IsVariantResultStore(ops[i]) ? RetKind::Variant : RetKind::Unknown)
+                                     : StoreReturnKind(ops[i]);
                     if (k2 == RetKind::Unknown) continue;   // not a store we know
                     if (fromStore == RetKind::Unknown) { fromStore = k2; fromOp = ops[i]; }
                     else if (fromStore != k2) conflict = true;
                 }
                 if (!conflict && fromStore != RetKind::Unknown)
                 { kind = fromStore; storeOp = fromOp; }
+                else if (!conflict && addressOnly)
+                { kind = RetKind::LongLongOrArray; storeOp = 671; }
             }
 
             // Slot 634 serves both a LongLong and every typed array; the store
@@ -638,10 +660,11 @@ namespace vba
 
         // Closes the frame on top. `r14` is the frame base of the activation that is ending,
         // and comes only from the exit-opcode path: on the other close paths R14 belongs to a
-        // different activation. `exitOp` is the typed exit that names the return kind, or 0.
+        // different activation. `exitOp` is the typed exit that names the return kind, or 0;
+        // `exitOperand` is its operand where DescribeReturnKind needs one.
         void CloseFrame(ThreadState* s, std::uint64_t nowTicks, std::uint64_t r14 = 0,
-                        std::uint16_t exitOp = 0, const char* closedBy = "backstop",
-                        bool stillRunning = false)
+                        std::uint16_t exitOp = 0, std::int32_t exitOperand = 0,
+                        const char* closedBy = "backstop", bool stillRunning = false)
         {
             if (s->depth <= 0) return;
             Frame& f = s->stack[s->depth - 1];
@@ -683,7 +706,7 @@ namespace vba
             if (readable && InterlockedCompareExchange(&g_capRet, 0, 0) != 0)
             {
                 core::WithValueWriter(retText, [&](core::ValueWriter& w)
-                { haveRet = DescribeReturnKind(r14, kind, storeOp, w, &retType); });
+                { haveRet = DescribeReturnKind(r14, kind, storeOp, exitOperand, w, &retType); });
                 haveRet = haveRet && !retText.Over();
             }
             // The "after" for the entry's "before": see ReadByRefChanges. Reuses
@@ -767,6 +790,7 @@ namespace vba
         }
 
         void OnStatementBody(std::uint64_t dispatchSp, std::uint64_t savedRegs);
+        void OnBreakpointBody(std::uint64_t dispatchSp, std::uint64_t savedRegs);
         void OnExitBody(std::uint64_t dispatchSp, std::uint64_t savedRegs);
         void OnEndBody();
     }
@@ -800,6 +824,11 @@ namespace vba
     extern "C" void XRayVbaOnStatement(std::uint64_t dispatchSp, std::uint64_t savedRegs)
     {
         RunHook(OnStatementBody, dispatchSp, savedRegs);
+    }
+
+    extern "C" void XRayVbaOnBreakpoint(std::uint64_t dispatchSp, std::uint64_t savedRegs)
+    {
+        RunHook(OnBreakpointBody, dispatchSp, savedRegs);
     }
 
     extern "C" void XRayVbaOnExit(std::uint64_t dispatchSp, std::uint64_t savedRegs)
@@ -1038,6 +1067,7 @@ namespace vba
         f.parent       = parent;
         f.shownDepth   = shownDepth;
         f.outcome      = kOutReturned;
+        f.breaks       = 0;
         f.hasByRef     = false;
         f.argsHash     = 0;
         f.argsShapeOnly = false;
@@ -1147,6 +1177,18 @@ namespace vba
         s->currentSp = dispatchSp;
     }
 
+    // A breakpointed statement is a statement first: it opens or continues its frame exactly as
+    // BoS would, since the editor is about to stop on it and BoS's handler never runs. The stop
+    // is then charged to the frame the statement belongs to.
+    void OnBreakpointBody(std::uint64_t dispatchSp, std::uint64_t savedRegs)
+    {
+        OnStatementBody(dispatchSp, savedRegs);
+        Bump(g_totals.breakpointStops);
+        ThreadState* s = State();
+        if (s && s->depth > 0 && s->stack[s->depth - 1].sp == dispatchSp)
+            ++s->stack[s->depth - 1].breaks;
+    }
+
     // THE EXIT OPCODE CLOSES ITS OWN FRAME -- the one signal that fires exactly
     // once per activation. The stack pointer stays the BACKSTOP for frames
     // abandoned without an exit, since an error unwind and `End` fire none at
@@ -1189,7 +1231,10 @@ namespace vba
         const Frame& top = s->stack[s->depth - 1];
         if (top.trailer == trailer && top.sp == dispatchSp)
         {
-            CloseFrame(s, Now(), r14, exitOp, "exit");
+            std::int32_t exitOperand = 0;
+            if (ExitReturnKind(exitOp) == RetKind::RecordInFrame && !ExitOperand(savedRegs, exitOperand))
+                exitOperand = 0;   // refused downstream
+            CloseFrame(s, Now(), r14, exitOp, exitOperand, "exit");
             // Forget the fast-path cache, or the NEXT activation of the same
             // procedure at the same rsp matches it and never opens a frame.
             s->current   = 0;
@@ -1215,7 +1260,7 @@ namespace vba
             while (s->depth > 0)
             {
                 s->stack[s->depth - 1].outcome = kOutAbandoned;
-                CloseFrame(s, now, 0, 0, "end");
+                CloseFrame(s, now, 0, 0, 0, "end");
             }
             // The chain is gone, so nothing about it may survive to be matched
             // against the next one -- including the fast path's (trailer, sp) and
@@ -1263,7 +1308,7 @@ namespace vba
             // place; a leftover from an earlier unwind fails the second test. A frame
             // beneath a running one is running too, so one chain is never split.
             running = running || (top.sp > here && FrameStillLive(top));
-            CloseFrame(s, now, 0, 0, "flush", running);
+            CloseFrame(s, now, 0, 0, 0, "flush", running);
         }
         s->current = 0; s->currentSp = 0;
     }

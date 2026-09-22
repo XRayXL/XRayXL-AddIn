@@ -107,6 +107,33 @@ int main()
         Check(f[18] == "604" && f[19] == "exit", "ticks and trust are the last two columns");
     }
 
+    // ---- the optional breaks column: absent unless the file has it -----------
+    {
+        const std::string h = emit::csv::kHeader, hb = emit::csv::kHeaderBreaks;
+        Check(hb == h.substr(0, h.size() - 2) + ",breaks\r\n", "the breaks header is the header plus one last column");
+
+        Row r;
+        r.kind = "exit"; r.source = "VBA"; r.ticks = "9"; r.trust = "exit"; r.breaks = "2";
+        const std::size_t plainSize = emit::csv::FragmentSize(r);
+        g_buf.assign(plainSize + 1, 0);
+        const int n = static_cast<int>(emit::csv::Fragment(r, g_buf.data()));
+        auto f = Fields(g_buf.data(), n);
+        Check(f.size() == 20 && f[19] == "exit", "without the column a row is unchanged, whatever it carries");
+
+        const std::size_t size = emit::csv::FragmentSize(r, true);
+        g_buf.assign(size + 1, 0);
+        const int nb = static_cast<int>(emit::csv::Fragment(r, g_buf.data(), true));
+        Check(static_cast<std::size_t>(nb) == size, "FragmentSize with the column is exactly what Fragment writes");
+        auto fb = Fields(g_buf.data(), nb);
+        Check(fb.size() == 21 && fb[19] == "exit" && fb[20] == "2", "with it, breaks is one more field, last");
+
+        Row x; x.kind = "entry"; x.source = "XLL";
+        const std::size_t xs = emit::csv::FragmentSize(x, true);
+        g_buf.assign(xs + 1, 0);
+        auto fx = Fields(g_buf.data(), static_cast<int>(emit::csv::Fragment(x, g_buf.data(), true)));
+        Check(fx.size() == 21 && fx[20].empty(), "a row that has no count still has the field, empty");
+    }
+
     // ---- escaping: a field with commas/quotes/newlines round-trips -----------
     {
         Row r;

@@ -15,6 +15,9 @@ namespace vba
         // Slot indices, not addresses: byte offsets divided by 8, because the slot is the
         // portable unit.
         constexpr std::uint32_t kBosSlot[2] = { 0x1338 / 8, 0x3368 / 8 };   // 615, 1645
+        // The same statement with a breakpoint set on it: the editor rewrites the opcode in
+        // place, so the operand and the length are a BoS's.
+        constexpr std::uint32_t kBosBpSlot[2] = { 0x1340 / 8, 0x3370 / 8 }; // 616, 1646
 
         constexpr std::uint32_t kExitSlot[] = {
             0x2088/8, 0x2070/8, 0x2078/8, 0x2080/8, 0x2090/8,
@@ -88,6 +91,7 @@ namespace vba
     bool IsBosSlot(std::uint32_t slot)
     {
         for (std::uint32_t s : kBosSlot) if (s == slot) return true;
+        for (std::uint32_t s : kBosBpSlot) if (s == slot) return true;
         return false;
     }
 
@@ -311,6 +315,39 @@ namespace vba
         }
     }
 
+    namespace
+    {
+        // The BoS pair's breakpoint twins: both slots hold one handler that nothing else holds,
+        // neither BoS's nor the invalid one.
+        void VerifyBosBpPair(const Image& img, SlotSet& s)
+        {
+            std::uint64_t a = 0, b = 0;
+            if (kBosBpSlot[1] >= s.slots) return;
+            if (!ReadSlot(img, s.tableRva, kBosBpSlot[0], a) || !ReadSlot(img, s.tableRva, kBosBpSlot[1], b)) return;
+            if (a == 0 || a != b) return;
+            const std::uint32_t rva = static_cast<std::uint32_t>(a - img.Base());
+            if (rva == s.bosHandlerRva || rva == s.invalidHandlerRva) return;
+            int sharers = 0;
+            for (std::uint32_t i = 0; i < s.slots; ++i)
+            {
+                std::uint64_t v = 0;
+                if (ReadSlot(img, s.tableRva, i, v) && v == a) ++sharers;
+            }
+            if (sharers != 2) return;
+
+            s.bosBpOk = true;
+            s.bosBpHandlerRva = rva;
+            for (std::uint32_t slot : kBosBpSlot)
+            {
+                PatchSite site;
+                site.slot       = slot;
+                site.handlerRva = rva;
+                site.role       = "bosbp";
+                s.sites.push_back(site);
+            }
+        }
+    }
+
     SlotSet Derive(const Image& img)
     {
         SlotSet s;
@@ -372,8 +409,9 @@ namespace vba
             if (std::strcmp(site.role, "exit") == 0 && site.handlerRva == s.bosHandlerRva)
             { Note(s, Decline::ExitSharesBosHandler); ok = false; break; }
 
-        // 5. the singleton slot -- a feature, not the product, so not in `ok`
+        // 5. the singleton slot and the breakpoint pair -- features, not the product, so not in `ok`
         VerifySingletonSlot(img, s, kEndSlot, "end", s.endOk);
+        VerifyBosBpPair(img, s);
 
         s.verified = ok;
         std::ostringstream o;
@@ -398,6 +436,10 @@ namespace vba
               << "  distinct=" << s.distinctHandlers
               << "  runner-up run=" << s.runnerUpSlots
               << "  BoS handler +0x" << std::hex << s.bosHandlerRva << std::dec
+              << "  BosBp handler ";
+            if (s.bosBpOk) o << "+0x" << std::hex << s.bosBpHandlerRva << std::dec;
+            else           o << "NOT VERIFIED";
+            o
               << "  invalid handler +0x" << std::hex << s.invalidHandlerRva << std::dec
               << " x" << s.invalidSlots
               << "  partition=0x" << std::hex << s.partitionHash << std::dec

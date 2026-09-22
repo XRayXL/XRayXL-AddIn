@@ -5,9 +5,13 @@
 // opcode on every VBE7 build; see vbaderive.h.
 namespace vba
 {
-    // BosStub: a statement not yet compiled. A procedure that has never been compiled is a run of
-    // these, not p-code, until it runs.
+    // BosStub: an UNCOMPILED procedure, whatever it holds. Its whole body is one of these and 16
+    // bytes: the opcode, a zero dword where Bos carries its next-statement offset, a zero word, a
+    // dword that rises by 0x58 per procedure through the module, and a zero dword. VBA compiles a
+    // procedure before running it, so a walk never meets one; the DIAG corpus keeps such a body as
+    // a `stub` line, the only place this form is measured.
     constexpr std::uint32_t kSlot_BosStub                = 0x1348 / 8;   // 617
+    constexpr std::uint32_t kBosStubBody                 = 16;           // measured, every one
     // GoSub `Return`: jumps back to its GoSub, in the middle of a procedure.
     constexpr std::uint32_t kSlot_GoSubReturn            = 0x1360 / 8;   // 620
     // ZeroRetVal and ZeroRetValVar (their PDB names): clear a String/Object or a

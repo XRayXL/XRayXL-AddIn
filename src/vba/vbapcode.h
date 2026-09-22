@@ -137,6 +137,8 @@ namespace vba
     // that is WRONG rather than missing, the worse defect. Carries the
     // clean-walk fraction, the table's health number.
     const char*   PcodeSuspectWarning();
+    // Walks whose last statement did not end at ProcSize, by exit; "" when there were none.
+    const char*   PcodeClosureWarning();
     // LENGTHS THIS SESSION USED THAT NOTHING HAS EVER CONFIRMED, ranked.
     // Empty when the session met none, which is the ordinary case: the point
     // of the line is that a real workbook found one and we did not.

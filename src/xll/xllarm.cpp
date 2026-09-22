@@ -396,7 +396,7 @@ namespace xll
         // mistaken for a silent session. Open is idempotent, so a trace the VBA
         // side already opened this arm is kept rather than reopened.
         if (!emit::csv::Open(core::modes::GetBufferBytes(), core::modes::GetPauseOnFull(),
-                             core::modes::GetFormat()))
+                             core::modes::GetFormat(), core::modes::BreaksColumn()))
         {
             DisableAll();
             regwatch::Remove();     // as above: nothing is armed, so nothing may stay hooked

@@ -57,6 +57,7 @@ namespace vba
           << " ipUnavailable=" << t.ipUnavailable
           << " ipIntraProc=" << t.ipIntraProc
           << " ipLateOpen=" << t.ipLateOpen
+          << " breakpointStops=" << t.breakpointStops
           << " exitNotProcedureEnd=" << t.exitNotProcedureEnd
           << " exitOpUnreadable=" << t.exitOpUnreadable
           << " callerCell=" << t.callerCell

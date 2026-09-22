@@ -59,7 +59,7 @@ namespace vba
     {
         std::uint32_t slot = 0;         // index into the dispatch table
         std::uint32_t handlerRva = 0;   // what the slot currently holds
-        const char*   role = "";        // "bos", "exit" or "end"
+        const char*   role = "";        // "bos", "bosbp", "exit" or "end"
     };
 
     struct SlotSet
@@ -86,6 +86,11 @@ namespace vba
         // only signal that its frames are dead; a failed check degrades that one feature, the
         // depth and parentage of whatever runs after an `End`, rather than refusing the arm.
         bool          endOk = false;
+        // The breakpoint form of BoS. A breakpointed statement never reaches the BoS handler,
+        // so without it a call whose first statements have breakpoints opens late; a failed
+        // check costs that and the breakpoint count, not the arm.
+        bool          bosBpOk = false;
+        std::uint32_t bosBpHandlerRva = 0;
         int           exitGroups = 0;
         std::uint32_t declines[static_cast<int>(Decline::Count_)] = {};
         std::vector<PatchSite> sites;     // the slots to patch
@@ -110,7 +115,8 @@ namespace vba
     bool ExitHasTrailingResultSlot(std::uint32_t slot);
 
     // Every VBA statement starts with one, which makes it a known-good
-    // instruction boundary -- the anchor a walk resynchronises on.
+    // instruction boundary -- the anchor a walk resynchronises on. True for
+    // the breakpoint form too, which has the same operand and length.
     bool IsBosSlot(std::uint32_t slot);
 
     // A one-line-per-fact report for the action log and the dialog.

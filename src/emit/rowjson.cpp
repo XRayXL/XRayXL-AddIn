@@ -32,6 +32,7 @@ namespace json
             { "args",      r.args,      Kind::Json    }, { "ret",      r.ret,      Kind::Json    },
             { "rettype",   r.rettype,   Kind::Text    }, { "outcome",  r.outcome,  Kind::Text    },
             { "ticks",     r.ticks,     Kind::Integer }, { "trust",    r.trust,    Kind::Text    },
+            { "breaks",    r.breaks,    Kind::Integer },
         };
         bool first = true;
         for (const Field& f : fields)

@@ -49,6 +49,7 @@
 option casemap:none
 
 EXTERN XRayVbaOnStatement : PROC
+EXTERN XRayVbaOnBreakpoint : PROC
 EXTERN XRayVbaOnExit      : PROC
 EXTERN XRayVbaOnEnd       : PROC
 
@@ -136,7 +137,7 @@ endm
 
 ; --------------------------------------------------------------------------
 ; void XRayVbaBosThunk(void)   -- entered by CALL from a per-slot stub.
-; One shape for all four hooks: save everything, call the recorder, restore.
+; One shape for every hook: save everything, call the recorder, restore.
 HOOK_THUNK MACRO thunkName, recorder
 thunkName PROC FRAME
     .endprolog
@@ -153,6 +154,8 @@ thunkName ENDP
 ENDM
 
 HOOK_THUNK XRayVbaBosThunk,   XRayVbaOnStatement
+; A statement with a breakpoint set: it stops in the editor after this, never reaching BoS's handler.
+HOOK_THUNK XRayVbaBosBpThunk, XRayVbaOnBreakpoint
 HOOK_THUNK XRayVbaExitThunk,  XRayVbaOnExit
 ; The End opcode (slot 619) fires no exit for the frames it kills, and runs before its handler.
 HOOK_THUNK XRayVbaEndThunk,   XRayVbaOnEnd

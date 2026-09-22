@@ -24,6 +24,7 @@ namespace vba
         // __try cannot share a frame with anything that needs unwinding.
         using core::RdU64;
         using core::RdU16;
+        using core::RdI32;
     }
 
     Activation ActivationStart(std::uint64_t trailer, std::uint64_t savedRegs)
@@ -64,5 +65,11 @@ namespace vba
         if (op == kSlot_ZeroRetVal)    return Ending::No;
         if (op == kSlot_ZeroRetValVar) return Ending::No;
         return Ending::Yes;
+    }
+
+    bool ExitOperand(std::uint64_t savedRegs, std::int32_t& out)
+    {
+        std::uint64_t rsi = 0;
+        return RdU64(savedRegs + kReg_rsi, rsi) && rsi != 0 && RdI32(rsi, out);
     }
 }

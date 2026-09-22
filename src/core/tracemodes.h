@@ -9,6 +9,8 @@
 //   OBJECTS TRUE | FALSE      describe a COM object argument or result --
 //                             its class, and for a Range, Worksheet or
 //                             Workbook the detail that identifies it
+//   BREAKPOINTS TRUE | FALSE  VBA only: add a `breaks` column, how often each
+//                             call stopped at a breakpoint in the editor
 //
 // OBJECTS is the one setting that calls the object model, on the calculating thread; OFF returns
 // the tracer to pure observation.
@@ -31,17 +33,19 @@ namespace modes
     // The calling cell (xlfCaller) is always resolved: the VBA tracer needs it to
     // tell an error that escapes into a cell from one that propagates, so it is
     // not a setting.
-    enum class Param { Depth = 0, Args = 1, RetVal = 2, Objects = 3 };
+    enum class Param { Depth = 0, Args = 1, RetVal = 2, Objects = 3, Breakpoints = 4 };
 
     Depth GetDepth (Source s);
     bool  GetArgs  (Source s);
     bool  GetRetVal(Source s);
     bool  GetObjects(Source s);
+    bool  GetBreakpoints(Source s);
 
     void SetDepth (Source s, Depth d);
     void SetArgs  (Source s, bool on);
     void SetRetVal(Source s, bool on);
     void SetObjects(Source s, bool on);
+    void SetBreakpoints(Source s, bool on);
 
     const wchar_t* DepthNameW(Depth d);
     const char*    DepthName (Depth d);
@@ -55,6 +59,8 @@ namespace modes
     // two.
     bool XllEnabled();
     bool VbaEnabled();
+    // Whether a trace file opened now gets the `breaks` column: VBA traced, with BREAKPOINTS on.
+    bool BreaksColumn();
 
     // OUTPUT BUFFER, in BYTES -- a property of the FILE, not of a source, so no
     // Source. 0 is the synchronous write; N is a byte ring of that budget

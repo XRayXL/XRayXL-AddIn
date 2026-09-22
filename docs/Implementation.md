@@ -786,7 +786,7 @@ question, and trying to make one do so is what stalled this for a long while.
 
 | Mechanism | Answers | Cost / risk |
 |---|---|---|
-| **Dispatch-table patch** — BoS, 25 exit slots and `End` | Which procedure is running; entry and exit edges | Fires per *statement*; patches a process-wide table |
+| **Dispatch-table patch** — BoS, its breakpoint form, 25 exit slots and `End` | Which procedure is running; entry and exit edges | Fires per *statement*; patches a process-wide table |
 | **TLS shadow stack** — keyed on the p-code trailer | Call tree, nesting depth, recursion | O(1) per event, no allocation |
 | **`xlfCaller`, from inside the hook** | The calling cell | A call into Excel, so taken per activation and never per statement |
 
@@ -826,7 +826,12 @@ The table **is** the interface. A slot index is not an address.
    1700 slots, or if any exit repeat-group is not uniform.
 2. **Patch.** `VirtualProtect` the table; replace the BoS handler and the 25 exit
    handlers with thunks that preserve volatile state, call our handler with
-   `rsp`, and tail into the original. **Record every original pointer.**
+   `rsp`, and tail into the original. **Record every original pointer.** A
+   statement with a breakpoint set on it runs a different opcode, `BosBp` (slots
+   616 and 1646, the BoS pair's twins, same length and operand), which never
+   reaches the BoS handler, so its handler is patched too: it is a statement
+   first, then a stop charged to its frame. If that pair does not verify, the arm
+   says so and goes ahead without it.
 3. **Identify.** At `rsp + 0xB8` sits the p-code trailer (`RTMI`) identifying the
    running procedure. Compare against this thread's current trailer; if unchanged,
    return. **This is the hot path, and it is a load and a compare.**

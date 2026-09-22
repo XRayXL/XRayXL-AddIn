@@ -9,6 +9,7 @@
 // Built by XRayXL.sln into build\x64\Release\unit\.
 
 #include "vbaderive.h"
+#include "vbapcode_tables.h"
 
 #include <cstdio>
 #include <cstring>
@@ -34,6 +35,7 @@ namespace
             Set(1039, Handler(1038)); Set(1040, Handler(1038));                      // exit group of three
             for (std::uint32_t s : { 630u, 631u, 634u, 635u }) Set(s, Handler(628)); // exit group of five
             Set(1645, Handler(615));                                                  // the BoS pair
+            Set(1646, Handler(616));                                                  // its breakpoint twins
         }
         static std::uint64_t Handler(std::uint32_t i) { return kBase + kCodeLo + 0x10ull * i; }
         void Set(std::uint32_t slot, std::uint64_t v) { std::memcpy(&m_bytes[kTable + slot * 8], &v, 8); }
@@ -69,6 +71,29 @@ int main()
         printf("  control: %s\n", vba::Describe(s).c_str());
         Check(s.found && s.verified, "a well-formed table verifies");
         Check(s.endOk, "the End slot verifies on it");
+        Check(s.bosBpOk, "the BosBp pair verifies on it");
+        int bp = 0;
+        for (const vba::PatchSite& site : s.sites)
+            if (std::strcmp(site.role, "bosbp") == 0 && (site.slot == 616 || site.slot == 1646)) ++bp;
+        Check(bp == 2, "both BosBp slots are patch sites");
+        Check(vba::IsBosSlot(616) && vba::IsBosSlot(1646), "the walk takes BosBp as a statement");
+    }
+
+    // ---- the BosBp pair disagrees: breakpoints go unhandled, the arm does not --
+    {
+        FakeImage img;
+        img.Set(1646, FakeImage::Handler(1646));
+        const vba::SlotSet s = vba::Derive(img);
+        Check(!s.bosBpOk, "a BosBp pair holding two handlers does not verify");
+        Check(s.verified, "and the table still verifies");
+    }
+
+    // ---- the BosBp pair holds BoS's handler: not a distinct role ---------------
+    {
+        FakeImage img;
+        img.Set(616, FakeImage::Handler(615)); img.Set(1646, FakeImage::Handler(615));
+        const vba::SlotSet s = vba::Derive(img);
+        Check(!s.bosBpOk, "a BosBp pair holding the BoS handler does not verify");
     }
 
     // ---- one exit slot holds the BoS handler ---------------------------------
@@ -88,6 +113,29 @@ int main()
         const vba::SlotSet s = vba::Derive(img);
         printf("  exit group = BoS handler: %s\n", vba::Describe(s).c_str());
         Check(!s.verified, "an exit group holding the BoS handler refuses to verify");
+    }
+
+    // ---- an exit that ends its statement has no length ------------------------
+    // The walk never steps over one, so a length there could be wrong and nothing would notice.
+    {
+        int withLength = 0;
+        for (const vba::SigLength& e : vba::kSigLength)
+            if (vba::IsProcTerminatorSlot(e.slot)) { printf("  exit %u has length %u\n", e.slot, e.len); ++withLength; }
+        Check(withLength == 0, "no terminating exit slot carries a length");
+
+        // ...its length is in kExitLength instead, for the closure check; 953 is unmeasured.
+        int unmeasured = 0, notExit = 0;
+        for (std::uint32_t s = 0; s < 1700; ++s)
+        {
+            if (!vba::IsProcTerminatorSlot(s) || s == 953) continue;
+            bool have = false;
+            for (const vba::SigLength& e : vba::kExitLength) have = have || e.slot == s;
+            if (!have) { printf("  exit %u has no measured length\n", s); ++unmeasured; }
+        }
+        for (const vba::SigLength& e : vba::kExitLength)
+            if (!vba::IsProcTerminatorSlot(e.slot)) { printf("  %u is not an exit\n", e.slot); ++notExit; }
+        Check(unmeasured == 0, "every terminating exit but 953 has a measured length");
+        Check(notExit == 0, "kExitLength lists only terminating exits");
     }
 
     printf("\n%s\n", g_fail == 0 ? "ALL PASS" : "FAILED");

@@ -417,10 +417,11 @@ namespace vba
         const bool haveTypes = ReadArgTypes(trailer, types, slots - 1);
 
         // How many slots are arguments: argSz = 8 x (nargs + 1) for the reserved slot 0, plus
-        // one when a Function returns Variant and the caller's result VARIANT arrives first.
-        // The return kind comes from the exit opcode the walk stopped on; with no typed exit
-        // the plain arithmetic stands.
-        out.firstSlot = (ExitReturnKind(types.exitOp) == RetKind::Variant) ? 2 : 1;
+        // one when a Function returns a Variant or a record and the caller's result buffer
+        // arrives first. The return kind comes from the exit opcode the walk stopped on; with
+        // no typed exit the plain arithmetic stands.
+        const RetKind rk = ExitReturnKind(types.exitOp);
+        out.firstSlot = (rk == RetKind::Variant || rk == RetKind::Record) ? 2 : 1;
         out.slots     = slots - out.firstSlot;
 
         // A class or form Function is a COM method: its result comes back

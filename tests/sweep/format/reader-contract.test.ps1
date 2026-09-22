@@ -77,6 +77,23 @@ Expect-Refusal 'refuses-reordered-columns' 'expected:' `
 Expect-Refusal 'refuses-extra-column' 'expected:' `
     (New-TraceFile 'extra.csv' (@("$hdr,extra") + $good))
 
+# ---- the optional breaks column: a count on VBA exits, empty everywhere else ---
+$goodBreaks = @(($good[0] + ','), ($good[1] + ','), ($good[2] + ','), ($good[3] + ',2'))
+try {
+    $rows = @(Read-TraceFile (New-TraceFile 'breaks.csv' (@("$hdr,breaks") + $goodBreaks)))
+    if ($rows.Count -eq 4 -and $rows[3].breaks -eq '2' -and $rows[0].breaks -eq '') { Write-TestCase 'accepts-breaks-column' -Pass }
+    else { Write-TestCase 'accepts-breaks-column' -Fail -Detail "got $($rows.Count) rows"; $script:failed++ }
+} catch { Write-TestCase 'accepts-breaks-column' -Fail -Detail $_.Exception.Message; $script:failed++ }
+
+Expect-Refusal 'refuses-breaks-on-an-xll-row' 'on a XLL exit row' `
+    (New-TraceFile 'breaks-xll.csv' (@("$hdr,breaks") + @(($good[0] + ','), ($good[1] + ',1'), ($good[2] + ','), ($good[3] + ',0'))))
+
+Expect-Refusal 'refuses-breaks-missing-on-a-vba-exit' 'bad breaks' `
+    (New-TraceFile 'breaks-missing.csv' (@("$hdr,breaks") + @(($good[0] + ','), ($good[1] + ','), ($good[2] + ','), ($good[3] + ','))))
+
+Expect-Refusal 'refuses-a-row-without-the-breaks-field' 'has 22 columns, the header names 23' `
+    (New-TraceFile 'breaks-short.csv' (@("$hdr,breaks") + @(($good[0] + ','), ($good[1] + ','), ($good[2] + ','), $good[3])))
+
 Expect-Refusal 'refuses-unknown-kind' 'unknown kind' `
     (New-TraceFile 'kind.csv' (@($hdr) + $good + @('6,6,entry2,XLL,9,,,17248,2759222880000,X.xll,F,F,Q,,,,,,,,,')))
 

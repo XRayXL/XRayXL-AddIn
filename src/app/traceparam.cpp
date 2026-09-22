@@ -36,6 +36,7 @@ namespace
         case core::modes::Param::RetVal: core::modes::SetRetVal(s, on); break;
         // Named, not `default:`, so a new param cannot silently set another.
         case core::modes::Param::Objects: core::modes::SetObjects(s, on); break;
+        case core::modes::Param::Breakpoints: core::modes::SetBreakpoints(s, on); break;
         }
     }
 
@@ -47,7 +48,10 @@ namespace
         case core::modes::Param::Depth:  t = core::modes::DepthNameW(core::modes::GetDepth(s));  break;
         case core::modes::Param::Args:   t = core::modes::OnOffW(core::modes::GetArgs(s));       break;
         case core::modes::Param::RetVal: t = core::modes::OnOffW(core::modes::GetRetVal(s));     break;
-        // OBJECTS is VBA only; TRUE against XLL would promise an effect it has not.
+        // OBJECTS and BREAKPOINTS are VBA only; TRUE against XLL would promise an effect it has not.
+        case core::modes::Param::Breakpoints:
+            t = (s == core::modes::Source::Xll) ? L"n/a -- VBA only" : core::modes::OnOffW(core::modes::GetBreakpoints(s));
+            break;
         default: t = (s == core::modes::Source::Xll) ? L"n/a -- VBA only"
                                                      : core::modes::OnOffW(core::modes::GetObjects(s));
                  break;
@@ -186,12 +190,18 @@ namespace
         // With no Source, the settings of the recording as a whole are candidates too.
         if (!ParseParam(nameArg, p))
             return EchoStr(both
-                ? L"#Err - Name must be DEPTH, ARGS, RETVAL, OBJECTS, BUFFERSIZE, BUFFERWHENFULL, FORMAT or LOGLEVEL; nothing changed"
-                : L"#Err - Name must be DEPTH, ARGS, RETVAL or OBJECTS; nothing changed");
+                ? L"#Err - Name must be DEPTH, ARGS, RETVAL, OBJECTS, BREAKPOINTS, BUFFERSIZE, BUFFERWHENFULL, FORMAT or LOGLEVEL; nothing changed"
+                : L"#Err - Name must be DEPTH, ARGS, RETVAL, OBJECTS or BREAKPOINTS; nothing changed");
 
-        // OBJECTS is VBA only, so it is refused for XLL and for an omitted Source: "both" cannot mean one.
-        if (p == core::modes::Param::Objects && (both || s == core::modes::Source::Xll))
-            return EchoStr(L"#Err - OBJECTS Parameter only available for VBA");
+        // OBJECTS and BREAKPOINTS are VBA only, so they are refused for XLL and for an omitted Source:
+        // "both" cannot mean one.
+        if ((p == core::modes::Param::Objects || p == core::modes::Param::Breakpoints) &&
+            (both || s == core::modes::Source::Xll))
+        {
+            static wchar_t vbaOnly[80];
+            _snwprintf_s(vbaOnly, _TRUNCATE, L"#Err - %s Parameter only available for VBA", core::modes::ParamNameW(p));
+            return EchoStr(vbaOnly);
+        }
 
         if (AnythingArmed())
             return EchoStr(L"#Err - cannot change settings while armed; XRayXL_Disarm first, then set, then XRayXL_Arm");
@@ -273,11 +283,12 @@ namespace
         const bool haveName = !IsMissing(nameArg);
         core::modes::Param p = core::modes::Param::Depth;
         if (haveName && !ParseParam(nameArg, p))
-            return CellEcho(L"#Err - Name must be DEPTH, ARGS, RETVAL or OBJECTS");
+            return CellEcho(L"#Err - Name must be DEPTH, ARGS, RETVAL, OBJECTS or BREAKPOINTS");
 
         // Grid sizes derive from this list.
         const core::modes::Param all[] = { core::modes::Param::Depth, core::modes::Param::Args,
-                                      core::modes::Param::RetVal, core::modes::Param::Objects };
+                                      core::modes::Param::RetVal, core::modes::Param::Objects,
+                                      core::modes::Param::Breakpoints };
         constexpr int kParams = static_cast<int>(sizeof(all) / sizeof(all[0]));
         // The widest grid must fit t_param, whose last cell is reserved for Scalar.
         static_assert(2 * kParams * 3 <= 31,

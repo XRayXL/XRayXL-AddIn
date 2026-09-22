@@ -158,6 +158,17 @@ namespace vba
         using core::RdU16;
         using core::RdI32;
 
+        // Walks whose last statement did not end at ProcSize, by the exit it ended on, and walks
+        // whose last exit has no measured length, so could not be checked.
+        volatile LONG     g_openExitOp[PcodeLengths::kMax] = {};
+        volatile LONG64   g_closureUnchecked = 0;
+
+        std::uint32_t ExitLength(std::uint16_t op)
+        {
+            for (const SigLength& e : kExitLength) if (e.slot == op) return e.len;
+            return 0;
+        }
+
         // No length derivation here: the lengths are the constant kSigLength, and deriving them
         // is offline work. An unknown opcode is flagged by number where it stops a walk.
     }
@@ -193,11 +204,11 @@ namespace vba
         // The subtraction must exclude the exceptions too, or 1509 answers "Variant" through
         // 1477 and 695 "String" through 663.
         if (storeOp == 1477 + 32 || storeOp == 663 + 32) return nullptr;
-        // The ByRef Variant store has three forms, picked by the right-hand side:
-        // a number 774, `Set` 783, a full copy 787. Only 774 mirrors a load
-        // (742); 783 and 787 sit over 751 and 755, which name no type.
+        // The ByRef Variant store has several forms, picked by the right-hand side:
+        // a number 774, `Set` 783, `Set` of an IUnknown 784 (785 from a function), a full
+        // copy 787. Only 774 mirrors a load (742); the others sit over loads that name no type.
         //
-        if (storeOp == 783 || storeOp == 787) return "Variant&";
+        if (storeOp == 783 || storeOp == 784 || storeOp == 785 || storeOp == 787) return "Variant&";
         return PcodeTypeName(storeOp - 32);
     }
 
@@ -267,6 +278,24 @@ namespace vba
     // Which lengths are probably wrong: opcodes whose length was used and after which the walk
     // could not continue. Repeat offenders only, because a single break after an unrelated
     // desync blames whatever opcode preceded it.
+    // A walk that reached its last exit where ProcSize says it cannot be: a length in the last
+    // statement is wrong, since that statement has no successor to check it against.
+    const char* PcodeClosureWarning()
+    {
+        static char b[600];
+        b[0] = 0;
+        int slot[8]; long val[8];
+        const int n = TopSlots(g_openExitOp, 0, 8, true, slot, val);
+        if (!n) return b;
+        long total = 0;
+        for (int k = 0; k < n; ++k) total += val[k];
+        const int j = _snprintf_s(b, _TRUNCATE,
+                    "VBA p-code: %ld walk(s) reached the last statement's exit short of ProcSize, "
+                    "so a length in that statement is wrong. By exit:", total);
+        AppendOps(b, sizeof b, j, slot, val, n);
+        return b;
+    }
+
     const char* PcodeSuspectWarning()
     {
         static char b[1400];
@@ -350,7 +379,8 @@ namespace vba
         g_resyncs = 0;
         for (int i = 0; i < PcodeLengths::kMax; ++i)
         { g_stopOp[i] = 0; g_suspectOp[i] = 0; g_definiteOp[i] = 0; g_notFramedOp[i] = 0;
-          g_unverifiedOp[i] = 0; }
+          g_unverifiedOp[i] = 0; g_openExitOp[i] = 0; }
+        g_closureUnchecked = 0;
         g_cleanWalks = 0;
         InterlockedExchange(&g_dumpTaken, 0);
         InterlockedExchange(&g_dumpWriting, 0);
@@ -758,7 +788,16 @@ namespace vba
                     std::int32_t exOperand = 0;
                     if (RdI32(code + i + 2, exOperand)) out.exitOperand = exOperand;
                 }
-                if (stmtNext <= i) break;       // last statement: the real end
+                if (stmtNext <= i)              // last statement: the real end
+                {
+                    // It has no successor to land on, so it closes against ProcSize instead.
+                    const std::uint32_t el = ExitLength(op);
+                    const std::uint32_t end = i + el;
+                    if (!el) InterlockedIncrement64(&g_closureUnchecked);
+                    else if (end > procSize || (procSize - end != 0 && procSize - end != 2))
+                    { clean = false; InterlockedIncrement(&g_openExitOp[op]); }
+                    break;
+                }
                 prevOp = op;
                 i = stmtNext;
                 continue;           // a terminator is not a parameter load
@@ -880,6 +919,11 @@ namespace vba
         // and sits before its trailer like any other. Here, at disarm, never from a hook.
         const LONG before = kept;
         long uncompiled = 0;
+        // An uncompiled body is not p-code, but it is the only place BosStub is measured, so its
+        // trailer is kept and it is written apart, as a `stub` line the solvers do not read.
+        constexpr int kStubMax = 1024;
+        static std::uint64_t stubs[kStubMax];
+        int nStubs = 0;
         {
             static std::uint64_t seen[kCorpusProcs];
             for (LONG i = 0; i < kept; ++i) seen[i] = g_corpus[i].trailer;
@@ -892,7 +936,14 @@ namespace vba
                     std::uint16_t size = 0, first = 0;
                     if (!sib[j] || !RdU16(sib[j] + kTrl_procSize, size) || !size) continue;
                     // not compiled yet: a BosStub placeholder per statement, not p-code
-                    if (RdU16(sib[j] - size, first) && first == kSlot_BosStub) { ++uncompiled; continue; }
+                    if (RdU16(sib[j] - size, first) && first == kSlot_BosStub)
+                    {
+                        ++uncompiled;
+                        bool dup = false;
+                        for (int q = 0; q < nStubs && !dup; ++q) dup = (stubs[q] == sib[j]);
+                        if (!dup && nStubs < kStubMax) stubs[nStubs++] = sib[j];
+                        continue;
+                    }
                     CorpusOffer(sib[j], sib[j] - size, size);
                 }
             }
@@ -926,6 +977,21 @@ namespace vba
             fprintf(f, "\n");
             ++written;
         }
+        for (int s = 0; s < nStubs; ++s)
+        {
+            std::uint16_t size = 0;
+            if (!RdU16(stubs[s] + kTrl_procSize, size) || !size || size > kCorpusBytes) continue;
+            // every stub body measured is kBosStubBody; a different one is worth seeing
+            fprintf(f, "stub %llX size=%u%s bytes=", static_cast<unsigned long long>(stubs[s]), size,
+                    size == kBosStubBody ? "" : " UNEXPECTED");
+            for (std::uint32_t q = 0; q < size; ++q)
+            {
+                std::uint16_t b = 0;
+                if (!RdU16(stubs[s] - size + q, b)) break;
+                fprintf(f, "%02X", static_cast<unsigned>(b & 0xFF));
+            }
+            fprintf(f, "\n");
+        }
         fclose(f);
         _snprintf_s(msg, sizeof msg, _TRUNCATE,
                     "VBA p-code corpus: %d procedure(s) written, %ld of them never run but "
@@ -949,6 +1015,9 @@ namespace vba
                              " slots known, %llu resyncs)",
                              L->pinned, L->slots, L->invalidCount,
                              static_cast<unsigned long long>(g_resyncs));
+        if (g_closureUnchecked)
+            j += _snprintf_s(b + j, sizeof(b) - j, _TRUNCATE, ", %lld ending on an exit of unmeasured length",
+                             static_cast<long long>(g_closureUnchecked));
         for (int i = 0; i < static_cast<int>(PcDecline::Count_); ++i)
         {
             if (!g_declines[i]) continue;

@@ -35,4 +35,7 @@ namespace vba
     // so the number names the return type at the one moment the result can be
     // read.
     Ending ProcedureEnd(std::uint64_t savedRegs, std::uint16_t* opOut = nullptr);
+
+    // The 4-byte operand of the exit being dispatched. Only for an exit known to carry one.
+    bool ExitOperand(std::uint64_t savedRegs, std::int32_t& out);
 }

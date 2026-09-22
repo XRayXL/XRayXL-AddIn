@@ -72,9 +72,11 @@ function Set-XRaySessionDefaults($Sx) {
     try { [void]$app.Run('XRayXL_SetTraceParam', 'BUFFERWHENFULL', 'PAUSE') } catch {}
     # FORMAT is process state too, and every reader here but the JSONL test's reads CSV.
     try { [void]$app.Run('XRayXL_SetTraceParam', 'FORMAT', 'CSV') } catch {}
-    # OBJECTS and LOGLEVEL are process state too. Tests rely on this reset instead
-    # of restoring what they changed on the way out.
-    try { [void]$app.Run('XRayXL_SetTraceParam', [Type]::Missing, 'OBJECTS', $true) } catch {}
+    # OBJECTS, BREAKPOINTS and LOGLEVEL are process state too. Tests rely on this reset instead
+    # of restoring what they changed on the way out. The first two are VBA's alone, and refused
+    # without a Source.
+    try { [void]$app.Run('XRayXL_SetTraceParam', 'VBA', 'OBJECTS', $true) } catch {}
+    try { [void]$app.Run('XRayXL_SetTraceParam', 'VBA', 'BREAKPOINTS', $false) } catch {}
     $level = if ($env:XRAYXL_LOGLEVEL) { $env:XRAYXL_LOGLEVEL } else { 'INFO' }
     try { [void]$app.Run('XRayXL_SetTraceParam', 'LOGLEVEL', $level) } catch {}
     # Excel's own default; the timeline driver forces a thread count after this.
@@ -185,7 +187,22 @@ function Invoke-XRayDisarm($Sx) {
 function Stop-XRayTrace($Sx) {
     # Returns '' or a problem string. A dropped row would otherwise fail a later
     # assertion as if the tracer were wrong; tests that want drops use Invoke-XRayDisarm.
+    #
+    # So is a value the tracer could not type, or a walk the length table could not account for:
+    # the disarm report warns of both, and every test that traces VBA should fail on them, not
+    # only the ones that think to look.
+    $log  = (Get-XRayPaths $Sx.ProcId).Log
+    $mark = Get-LogLength $log
     $drops = Invoke-XRayDisarm $Sx
+    $after = @(Get-Content $log -ErrorAction SilentlyContinue | Select-Object -Skip $mark)
+    $untyped = @($after | Select-String ' WARNING - VBA (args|returns):' | ForEach-Object { $_.Line -replace '^.*? WARNING - ', '' })
+    if ($untyped.Count) {
+        return ('UNTYPED VALUE: the disarm report says ' + ($untyped -join ' | '))
+    }
+    $walks = @($after | Select-String ' WARNING - VBA p-code:' | ForEach-Object { $_.Line -replace '^.*? WARNING - ', '' })
+    if ($walks.Count) {
+        return ('P-CODE WALK: the disarm report says ' + ($walks -join ' | '))
+    }
     if ($drops -lt 0) {
         return 'XRayXL_Disarm faulted inside the XLL (contained -- see the XRayXL crash log)'
     }
@@ -605,8 +622,11 @@ function Read-TraceFile([string]$Path) {
         throw "trace contract: no reader for '$Path' -- formats are added to docs/TraceRowModel.md and Read-TraceFile in the same change"
     }
 
+    # The header is this one, or this one with the optional `breaks` column last (VBA
+    # BREAKPOINTS); nothing else.
     $first = Get-Content $Path -TotalCount 1
-    if ($first -cne $script:TraceHeader) {
+    $hasBreaks = ($first -ceq "$script:TraceHeader,breaks")
+    if ($first -cne $script:TraceHeader -and -not $hasBreaks) {
         throw ("trace contract violated at {0}`n  expected: {1}`n  found:    {2}" -f $Path, $script:TraceHeader, $first)
     }
 
@@ -615,7 +635,7 @@ function Read-TraceFile([string]$Path) {
     # column reads as a row full of blanks -- silently lossy, and the exact
     # shape this contract exists to refuse. Counting top-level commas is the
     # only place that distinction still survives.
-    $bad = Test-TraceColumnCount $Path ($script:TraceHeader.Split(',')).Count
+    $bad = Test-TraceColumnCount $Path ($first.Split(',')).Count
     if ($bad) { throw "trace contract: $bad, in $Path" }
 
     $rows = @(Import-Csv $Path)   # a parse failure here throws -- loud on purpose
@@ -643,6 +663,13 @@ function Read-TraceFile([string]$Path) {
         if (-not [uint64]::TryParse($r.thread, [ref]$u)) { throw "trace contract: non-numeric thread '$($r.thread)' at seq $seq in $Path" }
         $q = [int64]0
         if (-not [int64]::TryParse($r.qpc, [ref]$q)) { throw "trace contract: non-numeric qpc '$($r.qpc)' at seq $seq in $Path" }
+        # breaks: a count on every VBA exit row, empty on every other row
+        if ($hasBreaks) {
+            $b = [uint32]0
+            if ($r.kind -eq 'exit' -and $r.source -eq 'VBA') {
+                if (-not [uint32]::TryParse($r.breaks, [ref]$b)) { throw "trace contract: bad breaks '$($r.breaks)' on a VBA exit at seq $seq in $Path" }
+            } elseif ($r.breaks -ne '') { throw "trace contract: breaks '$($r.breaks)' on a $($r.source) $($r.kind) row at seq $seq in $Path" }
+        }
     }
     return $rows
 }

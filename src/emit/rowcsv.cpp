@@ -15,10 +15,13 @@ namespace csv
     const char* const kHeader =
         "seq,input,kind,source,span,parent,depth,thread,qpc,module,function,proc,typetext,"
         "caller,callerref,argcount,args,ret,rettype,outcome,ticks,trust\r\n";
+    const char* const kHeaderBreaks =
+        "seq,input,kind,source,span,parent,depth,thread,qpc,module,function,proc,typetext,"
+        "caller,callerref,argcount,args,ret,rettype,outcome,ticks,trust,breaks\r\n";
 
     namespace
     {
-        constexpr int kColumns = 20;    // fragment fields, after the seq/input prefixes
+        constexpr int kColumns = 21;    // fragment fields, after the seq/input prefixes; the last is optional
         void InOrder(const Row& r, const char* (&f)[kColumns])
         {
             f[0]  = r.kind;     f[1]  = r.source;   f[2]  = r.span;     f[3]  = r.parent;
@@ -26,7 +29,7 @@ namespace csv
             f[8]  = r.function; f[9]  = r.proc;     f[10] = r.typetext; f[11] = r.caller;
             f[12] = r.callerref; f[13] = r.argcount; f[14] = r.args;    f[15] = r.ret;
             f[16] = r.rettype;  f[17] = r.outcome;  f[18] = r.ticks;
-            f[19] = r.trust;
+            f[19] = r.trust;    f[20] = r.breaks;
         }
 
         bool NeedsQuote(const char* src)
@@ -61,22 +64,24 @@ namespace csv
         }
     }
 
-    std::size_t FragmentSize(const Row& row)
+    std::size_t FragmentSize(const Row& row, bool breaks)
     {
         const char* fields[kColumns];
         InOrder(row, fields);
-        std::size_t n = kColumns - 1 + 2;     // the commas, then CRLF
-        for (int i = 0; i < kColumns; i++) n += EscapedSize(fields[i] ? fields[i] : "");
+        const int cols = breaks ? kColumns : kColumns - 1;
+        std::size_t n = cols - 1 + 2;         // the commas, then CRLF
+        for (int i = 0; i < cols; i++) n += EscapedSize(fields[i] ? fields[i] : "");
         return n;
     }
 
-    std::size_t Fragment(const Row& row, char* out)
+    std::size_t Fragment(const Row& row, char* out, bool breaks)
     {
         const char* fields[kColumns];
         InOrder(row, fields);
+        const int cols = breaks ? kColumns : kColumns - 1;
         std::size_t n = 0;
         // Always emit every column: the reader rejects a short row.
-        for (int i = 0; i < kColumns; i++)
+        for (int i = 0; i < cols; i++)
         {
             if (i) out[n++] = ',';
             n += Escape(fields[i] ? fields[i] : "", out + n);

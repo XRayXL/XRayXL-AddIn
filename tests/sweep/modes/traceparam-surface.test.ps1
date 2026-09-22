@@ -51,19 +51,19 @@ try {
     # and pads the rest with #N/A, so the populated corner proves the width and height and the
     # #N/A cells prove it is not larger. A COM-set dynamic-array spill shows only its top-left
     # cell, which proves nothing about the shape.
-    $sws.Range('A1:C6').FormulaArray = '=XRayXL_GetTraceParam("XLL")'
+    $sws.Range('A1:C7').FormulaArray = '=XRayXL_GetTraceParam("XLL")'
     $sws.Range('E1:G3').FormulaArray = '=XRayXL_GetTraceParam(,"DEPTH")'
-    $sws.Range('J1:M11').FormulaArray = '=XRayXL_GetTraceParam()'
+    $sws.Range('J1:M13').FormulaArray = '=XRayXL_GetTraceParam()'
     Invoke-XRayRecalc $app
 
     function CellText($r) { return (Get-XRayCellText $sws.Range($r)) }
 
     # Source only -> exactly 5 rows x 2 cols: Name, Value. The last row proves
-    # the grid covers the whole settings list (4 settings, DEPTH..OBJECTS).
-    $ok = (CellText 'A1') -eq 'DEPTH' -and (CellText 'A4') -eq 'OBJECTS' -and (CellText 'B1') -ne '' `
-          -and (CellText 'C1') -eq '#N/A' -and (CellText 'A5') -eq '#N/A'
-    Check 'array-source-only-is-4x2' $ok ("A1='{0}' A4='{1}' B1='{2}' C1='{3}' A5='{4}'" -f `
-          (CellText 'A1'), (CellText 'A4'), (CellText 'B1'), (CellText 'C1'), (CellText 'A5'))
+    # the grid covers the whole settings list (5 settings, DEPTH..BREAKPOINTS).
+    $ok = (CellText 'A1') -eq 'DEPTH' -and (CellText 'A4') -eq 'OBJECTS' -and (CellText 'A5') -eq 'BREAKPOINTS' `
+          -and (CellText 'B1') -ne '' -and (CellText 'C1') -eq '#N/A' -and (CellText 'A6') -eq '#N/A'
+    Check 'array-source-only-is-5x2' $ok ("A1='{0}' A5='{1}' B1='{2}' C1='{3}' A6='{4}'" -f `
+          (CellText 'A1'), (CellText 'A5'), (CellText 'B1'), (CellText 'C1'), (CellText 'A6'))
 
     # Name only -> exactly 2 rows x 2 cols: Source, Value.
     $ok = (CellText 'E1') -eq 'XLL' -and (CellText 'E2') -eq 'VBA' -and (CellText 'F1') -ne '' `
@@ -71,18 +71,18 @@ try {
     Check 'array-name-only-is-2x2' $ok ("E1='{0}' E2='{1}' F1='{2}' G1='{3}' E3='{4}'" -f `
           (CellText 'E1'), (CellText 'E2'), (CellText 'F1'), (CellText 'G1'), (CellText 'E3'))
 
-    # Neither -> exactly 8 rows x 3 cols: Source, Name, Value (2 sources x 4 settings).
-    $ok = (CellText 'J1') -eq 'XLL' -and (CellText 'J5') -eq 'VBA' -and (CellText 'L1') -ne '' `
-          -and (CellText 'M1') -eq '#N/A' -and (CellText 'J9') -eq '#N/A'
-    Check 'array-everything-is-8x3' $ok ("J1='{0}' J5='{1}' L1='{2}' M1='{3}' J9='{4}'" -f `
-          (CellText 'J1'), (CellText 'J5'), (CellText 'L1'), (CellText 'M1'), (CellText 'J9'))
+    # Neither -> exactly 10 rows x 3 cols: Source, Name, Value (2 sources x 5 settings).
+    $ok = (CellText 'J1') -eq 'XLL' -and (CellText 'J5') -eq 'XLL' -and (CellText 'J6') -eq 'VBA' -and (CellText 'L1') -ne '' `
+          -and (CellText 'M1') -eq '#N/A' -and (CellText 'J11') -eq '#N/A'
+    Check 'array-everything-is-10x3' $ok ("J1='{0}' J6='{1}' L1='{2}' M1='{3}' J11='{4}'" -f `
+          (CellText 'J1'), (CellText 'J6'), (CellText 'L1'), (CellText 'M1'), (CellText 'J11'))
 
     # The CONTENT still arrives whole through Application.Run, in row-major
     # order -- only the shape is lost, so the values remain assertable there.
     $flat = @(ConvertTo-XRayGrid (Get-XRayTraceParam $sx 'XLL' $null))[0]
-    Check 'run-returns-all-cells' ($flat.Count -eq 8) "$($flat.Count) cells"
+    Check 'run-returns-all-cells' ($flat.Count -eq 10) "$($flat.Count) cells"
     Check 'run-cells-row-major' (($flat[0] -eq 'DEPTH') -and ($flat[2] -eq 'ARGS') -and
-                                 ($flat[4] -eq 'RETVAL') -and ($flat[6] -eq 'OBJECTS')) ($flat -join ',')
+                                 ($flat[4] -eq 'RETVAL') -and ($flat[6] -eq 'OBJECTS') -and ($flat[8] -eq 'BREAKPOINTS')) ($flat -join ',')
 
     # ---- 4. REFUSALS: loud, and nothing changes ---------------------------
     $before = [string](Get-XRayTraceParam $sx 'XLL' 'DEPTH')
@@ -96,15 +96,15 @@ try {
     $e = Set-XRayTraceParam $sx 'XLL' 'ARGS' 'PERHAPS'
     Check 'bad-bool-refused' ($e -match '#Err') $e
 
-    # With no Source the recording-wide settings are names too, so the refusal lists all eight.
+    # With no Source the recording-wide settings are names too, so the refusal lists all nine.
     $e = Set-XRayTraceParam $sx $null 'NOSUCH' 'ALL'
-    Check 'no-source-refusal-names-all-eight' (($e -match 'BUFFERSIZE') -and ($e -match 'BUFFERWHENFULL') -and ($e -match 'FORMAT') -and ($e -match 'LOGLEVEL') -and ($e -match 'OBJECTS')) $e
+    Check 'no-source-refusal-names-all-nine' (($e -match 'BUFFERSIZE') -and ($e -match 'BUFFERWHENFULL') -and ($e -match 'FORMAT') -and ($e -match 'LOGLEVEL') -and ($e -match 'OBJECTS') -and ($e -match 'BREAKPOINTS')) $e
 
     # A getter refusal arrives whole, not cut at the grid's cell width.
     $e = [string](Get-XRayTraceParam $sx 'NOPE' 'DEPTH')
     Check 'getter-refusal-is-whole' ($e -eq '#Err - Source must be XLL or VBA, or omit for both') $e
     $e = [string](Get-XRayTraceParam $sx 'XLL' 'NOSUCH')
-    Check 'getter-name-refusal-is-whole' ($e -eq '#Err - Name must be DEPTH, ARGS, RETVAL or OBJECTS') $e
+    Check 'getter-name-refusal-is-whole' ($e -eq '#Err - Name must be DEPTH, ARGS, RETVAL, OBJECTS or BREAKPOINTS') $e
 
     # DROP leaves one hole per dropped row, and the echo says so.
     $full = [string](Get-XRayTraceParam $sx $null 'BUFFERWHENFULL')

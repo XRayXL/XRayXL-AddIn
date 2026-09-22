@@ -24,6 +24,7 @@
 
 // The shared thunks, from vbathunk.asm. Entered by CALL from a per-slot stub.
 extern "C" void XRayVbaBosThunk(void);
+extern "C" void XRayVbaBosBpThunk(void);
 extern "C" void XRayVbaExitThunk(void);
 extern "C" void XRayVbaEndThunk(void);
 
@@ -152,7 +153,7 @@ namespace vba
         }
         core::ModuleId       g_vbe7;        // the image armed; disarm restores into no other
         int                  g_bosSlots = 0, g_exitSlots = 0;
-        int                  g_endSlots = 0;
+        int                  g_endSlots = 0, g_bosBpSlots = 0;
 
         // ROLES ARE MATCHED WHOLE, never by first letter. "end" and "exit"
         // share one, so a first-letter test sends "end" down "exit"'s arm --
@@ -167,6 +168,7 @@ namespace vba
         const void* ThunkForRole(const char* role)
         {
             if (IsRole(role, "bos"))   return reinterpret_cast<const void*>(&XRayVbaBosThunk);
+            if (IsRole(role, "bosbp")) return reinterpret_cast<const void*>(&XRayVbaBosBpThunk);
             if (IsRole(role, "end"))   return reinterpret_cast<const void*>(&XRayVbaEndThunk);
             if (IsRole(role, "exit"))  return reinterpret_cast<const void*>(&XRayVbaExitThunk);
             return nullptr;
@@ -380,7 +382,7 @@ namespace vba
         // opened the trace. Same file either way: one timeline, not two.
         // Open and Close are counted in csv, so this side just opens and closes.
         emit::csv::Open(core::modes::GetBufferBytes(), core::modes::GetPauseOnFull(),
-                        core::modes::GetFormat());
+                        core::modes::GetFormat(), core::modes::BreaksColumn());
 
         // Before any slot is live, so no frame opens without it.
         {
@@ -390,7 +392,7 @@ namespace vba
                                 "runs inside another's DoEvents is reported beneath it");
         }
 
-        g_bosSlots = g_exitSlots = g_endSlots = 0;
+        g_bosSlots = g_exitSlots = g_endSlots = g_bosBpSlots = 0;
         for (const PatchSite& site : s.sites)
         {
             const std::uint64_t orig = g_base + site.handlerRva;
@@ -404,6 +406,7 @@ namespace vba
             g_patched.push_back({ slot, orig, stub });
             InterlockedExchange64(reinterpret_cast<volatile LONG64*>(slot), static_cast<LONG64>(stub));
             if      (IsRole(site.role, "bos"))   ++g_bosSlots;
+            else if (IsRole(site.role, "bosbp")) ++g_bosBpSlots;
             else if (IsRole(site.role, "end"))   ++g_endSlots;
             else                                 ++g_exitSlots;
         }
@@ -438,7 +441,7 @@ namespace vba
         std::ostringstream o;
         o << "VBA tracing: ARMED [" << core::modes::DepthName(core::modes::GetDepth(core::modes::Source::Vba)) << "] -- "
           << g_patched.size() << " of " << s.sites.size() << " slots patched ("
-          << g_bosSlots << " bos, " << g_exitSlots << " exit, "
+          << g_bosSlots << " bos, " << g_bosBpSlots << " breakpoint, " << g_exitSlots << " exit, "
           << g_endSlots << " end; "
           << byOriginal.size() << " stubs), table +0x" << std::hex << s.tableRva << std::dec;
         // SAY WHEN A FEATURE IS ABSENT. Without the `End` slot a chain killed by `End` is closed
@@ -448,6 +451,9 @@ namespace vba
         if (!s.endOk)
             o << " -- NO `End` HANDLING: the End slot did not verify;"
                  " depth after an End may be overstated";
+        if (!s.bosBpOk)
+            o << " -- NO BREAKPOINT HANDLING: the BosBp pair did not verify;"
+                 " a call whose first statements have breakpoints opens late";
         return o.str();
     }
 
@@ -460,6 +466,7 @@ namespace vba
         // Kept separate from the stop warning: "no length" and "wrong length"
         // are different defects with different fixes, and the second is worse.
         if (PcodeSuspectWarning()[0])     w.push_back(PcodeSuspectWarning());
+        if (PcodeClosureWarning()[0])     w.push_back(PcodeClosureWarning());
         if (ArgTypeUnknownWarning()[0])   w.push_back(ArgTypeUnknownWarning());
         const std::string r = ReturnTypeUnknownWarning();
         if (!r.empty())                   w.push_back(r);

@@ -8,7 +8,7 @@ rows *mean* is [TraceRowModel.md](./TraceRowModel.md).
 The **XRayXL group** on the Developer tab is a front end to exactly these calls —
 **Arm**, **Disarm** and **Options**, the last a dialog with five pages: Capture (a section
 per source, each a Depth drop-down and check boxes), Output (the format
-drop-down, the trace folder and file), Advanced (the output buffer and the log level),
+drop-down, the trace folder and file), Advanced (the output buffer, the optional `breaks` column and the log level),
 About (the version and the licence), and Notices (the third-party notices). It holds no settings of its own, so the two can never
 disagree: press Apply and `XRayXL_GetTraceParam` reports what you chose; change
 something from a macro and the dialog shows it the next time it opens. Cancel
@@ -29,7 +29,7 @@ described in the [README](../README.md#diagnostics-what-is-actually-loaded).
 `XRayXL_Arm` and `XRayXL_Disarm` start and stop a recording; `XRayXL_Disarm`
 returns the number of rows dropped.
 
-Everything is on by default. If you are after the most accurate timings, set
+Everything is on by default except `BREAKPOINTS`, which changes the file's header. If you are after the most accurate timings, set
 `ARGS`, `RETVAL` and `OBJECTS` to `FALSE` — each one costs work inside the call
 being measured. The calling cell is always resolved and is not a setting: the VBA
 tracer needs it to tell an error that escapes into a cell from one that propagates.
@@ -47,6 +47,7 @@ nothing about the other.
 | `ARGS` | `TRUE` / `FALSE` | `TRUE` | Capture argument values |
 | `RETVAL` | `TRUE` / `FALSE` | `TRUE` | Capture return values |
 | `OBJECTS` | `TRUE` / `FALSE` | `TRUE` | **VBA only** — `XLL`, or an omitted `Source`, is **refused**. Name an object argument or result, and describe a `Range`, `Worksheet` or `Workbook`. The one setting that calls Excel's object model from inside a traced call; `FALSE` renders every object as its address. An XLL argument is an `XLOPER` decoded structurally, with no object model to call, so there is nothing for it to gate |
+| `BREAKPOINTS` | `TRUE` / `FALSE` | `FALSE` | **VBA only** — refused for `XLL` or an omitted `Source`. Adds one column, `breaks`, to the trace file: on each VBA exit row, how often that call stopped at a breakpoint in the VBA editor, so a duration that includes time in the debugger says so. Off by default because it changes the file's header ([TraceRowModel.md](./TraceRowModel.md)). In the Options dialog it is the check box on the Advanced page. Breakpoints are *handled* either way — a call whose first lines have breakpoints still opens on time — this only adds the column |
 
 **`DEPTH` changes which rows appear, never their shape.** Under `TOP` the
 totals still count every frame, so the disarm report and

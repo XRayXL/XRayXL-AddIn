@@ -75,6 +75,26 @@ End Sub
 Public Property Get PGet() As Long
     PGet = 99
 End Property
+' A LONG BUILT FROM NESTED MEMBER CALLS, whose results pass through temporaries at
+' [R14-0x18] -- the offset a Variant result lives at. A load from such a temporary once
+' counted as a Variant store and cancelled the Long, so this read back empty.
+Friend Function Twice(ByVal n As Long) As Long
+    Twice = n * 2
+End Function
+Public Function RLongNested() As Long
+    RLongNested = Me.Twice(Me.Twice(1)) + Twice(Twice(2))
+End Function
+' RESULTS WRITTEN FROM A TEMPORARY take other stores than a plain assignment: a computed
+' String is moved in (695, not 708) and an object from a function is set by 706 (not 696).
+Public Function RStringMoved() As String
+    RStringMoved = Trim$("  moved  ") & "!"
+End Function
+Private Function MakeColl() As Collection
+    Set MakeColl = New Collection
+End Function
+Public Function RObjectFromFn() As Object
+    Set RObjectFromFn = MakeColl()
+End Function
 '@
 
 $moduleCode = @'
@@ -109,6 +129,9 @@ Public Sub R_Drive()
     Set ob = o.RObject
     o.RSub
     x = o.PGet
+    l = o.RLongNested
+    t = o.RStringMoved
+    Set ob = o.RObjectFromFn
     Set o = Nothing
 End Sub
 '@
@@ -144,7 +167,7 @@ try {
     # Every typed Function must have run, or the report below is about nothing.
     $want = @('RByte','RInteger','RLong','RSingle','RDouble','RCurrency',
               'RString','RBoolean','RVariant','RVariantArr','RVariantStr',
-              'RLongArr','RLongArrBusy','RObject','RSub','PGet')
+              'RLongArr','RLongArrBusy','RObject','RSub','PGet','RLongNested','RStringMoved','RObjectFromFn')
     $seen = @($exits | ForEach-Object { $_.function })
     $missing = @($want | Where-Object { $seen -notcontains $_ })
     Check 'every-typed-function-ran' ($missing.Count -eq 0) `
@@ -207,6 +230,8 @@ try {
         RCurrency = @('9.9900', 'Currency')
         RBoolean  = @('-1',     'Integer')
         PGet      = @('99',     'Long')
+        RLongNested = @('12',   'Long')
+        RStringMoved = @('"moved!"', 'String')
         RString   = @('"hello"', 'String')
     }
     $wrong = @()
@@ -245,6 +270,10 @@ try {
     Check 'object-decodes' `
           (($obj.Count -ge 1) -and ($obj[0].rettype -eq 'Object')) `
           ("RObject ret='$($obj[0].ret)' type='$($obj[0].rettype)'")
+    $objFn = @($exits | Where-Object { $_.function -eq 'RObjectFromFn' })
+    Check 'object-set-from-a-function-decodes' `
+          (($objFn.Count -ge 1) -and ($objFn[0].rettype -eq 'Object') -and ($objFn[0].ret -match 'Collection')) `
+          ("RObjectFromFn ret='$($objFn[0].ret)' type='$($objFn[0].rettype)'")
 
     $withRet = @($exits | Where-Object { $_.ret })
     $nUnmapped = 0

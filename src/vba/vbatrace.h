@@ -20,6 +20,8 @@ namespace vba
     //                registers lie below it, r14 (the VBA frame base) at -0x68
     //                (vbaregs.h is the one authority for these offsets)
     extern "C" void XRayVbaOnStatement(std::uint64_t dispatchSp, std::uint64_t savedRegs);
+    // The same statement with a breakpoint on it, about to stop in the editor.
+    extern "C" void XRayVbaOnBreakpoint(std::uint64_t dispatchSp, std::uint64_t savedRegs);
     extern "C" void XRayVbaOnExit(std::uint64_t dispatchSp, std::uint64_t savedRegs);
 
     // Called from the detour on VBE7's rtcDoEvents, on the thread entering and leaving it: a
@@ -104,6 +106,10 @@ namespace vba
         // to nothing would be worse -- but its start time and parent are
         // guesses, and this is what says so. Zero in a clean session.
         std::uint64_t ipLateOpen = 0;
+
+        // Statements that stopped at a breakpoint in the editor. Each is a stretch of the call's
+        // duration spent in the debugger rather than running.
+        std::uint64_t breakpointStops = 0;
 
         // Not every exit opcode ends a procedure: a GoSub `Return` fires one mid-activation.
         // `exitOpUnreadable` closes nothing rather than guessing.

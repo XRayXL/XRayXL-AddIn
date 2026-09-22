@@ -159,7 +159,7 @@ namespace params
         static const Word<core::modes::Param> k[] = {
             { L"DEPTH",  core::modes::Param::Depth  }, { L"ARGS",   core::modes::Param::Args   },
             { L"RETVAL", core::modes::Param::RetVal },
-            { L"OBJECTS", core::modes::Param::Objects } };
+            { L"OBJECTS", core::modes::Param::Objects }, { L"BREAKPOINTS", core::modes::Param::Breakpoints } };
         return ParseWord(v, k, p);
     }
 

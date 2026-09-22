@@ -27,11 +27,12 @@ namespace csv
     // only the last close tears down. The first opener's settings win.
     //
     // `bufferBytes` 0 is synchronous; N rounds down to a power of two, reported by
-    // RingCapacityBytes(). `format` is latched for the file, values included. False only if a
-    // new file could not be created.
-    bool Open(std::size_t bufferBytes, bool pauseOnFull, core::modes::Format format);
+    // RingCapacityBytes(). `format` is latched for the file, values included, and so is `breaks`,
+    // the optional column. False only if a new file could not be created.
+    bool Open(std::size_t bufferBytes, bool pauseOnFull, core::modes::Format format, bool breaks);
     void Close();
     bool IsOpen();      // armed, not "the file exists" -- creation is lazy
+    bool HasBreaksColumn();     // the optional `breaks` column, latched at Open
 
     // The trace's name, decided at Open although the file is created lazily. A copy: the drain may set it.
     std::wstring Path();

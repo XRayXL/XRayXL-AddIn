@@ -18,13 +18,14 @@ namespace
 {
     struct Toggle { const wchar_t* id; Source src; Param param; };
 
-    // The per-source check boxes. OBJECTS is VBA only.
+    // The per-source check boxes. OBJECTS and BREAKPOINTS are VBA only.
     const Toggle kToggles[] = {
         { L"cbXllArgs", Source::Xll, Param::Args    },
         { L"cbXllRet",  Source::Xll, Param::RetVal  },
         { L"cbVbaArgs", Source::Vba, Param::Args    },
         { L"cbVbaRet",  Source::Vba, Param::RetVal  },
         { L"cbVbaObj",  Source::Vba, Param::Objects },
+        { L"cbVbaBrk",  Source::Vba, Param::Breakpoints },
     };
     const wchar_t* const kPauseFull = L"cbPauseFull";
 
@@ -144,6 +145,7 @@ bool ReadToggle(const wchar_t* id)
     case Param::Args:    return core::modes::GetArgs(t->src);
     case Param::RetVal:  return core::modes::GetRetVal(t->src);
     case Param::Objects: return core::modes::GetObjects(t->src);
+    case Param::Breakpoints: return core::modes::GetBreakpoints(t->src);
     default:             return false;
     }
 }
@@ -158,6 +160,7 @@ void WriteToggle(const wchar_t* id, bool on)
     case Param::Args:    core::modes::SetArgs(t->src, on);    break;
     case Param::RetVal:  core::modes::SetRetVal(t->src, on);  break;
     case Param::Objects: core::modes::SetObjects(t->src, on); break;
+    case Param::Breakpoints: core::modes::SetBreakpoints(t->src, on); break;
     default: break;
     }
 }

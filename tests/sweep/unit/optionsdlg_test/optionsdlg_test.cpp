@@ -7,6 +7,7 @@
 #include "ui/optionsdlg.h"
 #include "ui/optionsres.h"
 #include "ui/reflow.h"
+#include "ui/dlgexcelstyle.h"
 #include "app/settings.h"
 #include "core/tracemodes.h"
 #include "core/log.h"
@@ -100,6 +101,7 @@ static std::wstring TextOf(HWND dlg, int id)
 
 static bool Visible(HWND dlg, int id) { HWND c = GetDlgItem(dlg, id); return c && IsWindowVisible(c); }
 static bool Enabled(HWND dlg, int id) { HWND c = GetDlgItem(dlg, id); return c && IsWindowEnabled(c); }
+static bool Checked(HWND dlg, int id) { return ui::excelstyle::IsChecked(dlg, id); }
 
 // The page the user would get by clicking its name in the list.
 static void ShowPage(HWND dlg, const wchar_t* name)
@@ -177,7 +179,7 @@ static void SettingsCases()
 
     const std::string all = app::settings::List(app::settings::Take());
     for (const char* name : { "XLL DEPTH=", "XLL ARGS=", "XLL RETVAL=", "VBA DEPTH=", "VBA ARGS=", "VBA RETVAL=",
-                              "VBA OBJECTS=", "BUFFERSIZE=", "BUFFERWHENFULL=", "FORMAT=", "LOGLEVEL=" })
+                              "VBA OBJECTS=", "VBA BREAKPOINTS=", "BUFFERSIZE=", "BUFFERWHENFULL=", "FORMAT=", "LOGLEVEL=" })
         Check(all.find(name) != std::string::npos, (std::string("the live list has ") + name).c_str(), Wide(all));
 }
 
@@ -231,7 +233,9 @@ int main()
         ShowPage(dlg, L"Advanced");
         Check(!Visible(dlg, IDC_OUT_FMT), "Advanced does not show the Format drop-down");
         Check(Visible(dlg, IDC_ADV_FULL) && Visible(dlg, IDC_ADV_LVL), "Advanced shows the buffer and the log level");
-        Check(TextOf(dlg, IDC_ADV_SEC1) == L"Buffer", "Advanced's first section is Buffer", TextOf(dlg, IDC_ADV_SEC1));
+        Check(TextOf(dlg, IDC_ADV_SEC1) == L"Trace file", "Advanced's first section is Trace file", TextOf(dlg, IDC_ADV_SEC1));
+        Check(Visible(dlg, IDC_ADV_BRK) && Contains(TextOf(dlg, IDC_ADV_BRK), L"breaks"),
+              "Advanced offers the breaks column", TextOf(dlg, IDC_ADV_BRK));
 
         ShowPage(dlg, L"About");
         const std::wstring lic = TextOf(dlg, IDC_ABT_LICENSE);
@@ -325,7 +329,29 @@ int main()
     Check(core::modes::GetFormat() == core::modes::Format::Jsonl, "Apply while armed did not change the format");
     Check(core::Log::GetLevel() == core::Log::Level::Debug, "Apply while armed changed the log level");
     Check(Logged("options: applied -- LOGLEVEL INFO -> DEBUG"), "and the log says only that");
+
+    // ---- the breaks column: off by default, lights Apply, and is locked while armed ----------
+    Session("armed: the breaks column is locked", [](HWND dlg)
+    {
+        ShowPage(dlg, L"Advanced");
+        Check(!Enabled(dlg, IDC_ADV_BRK), "the breaks column is greyed while armed");
+        Press(dlg, IDCANCEL);
+    });
     g_armed = false;
+    g_notes.clear();
+    Session("disarmed: the breaks column", [](HWND dlg)
+    {
+        ShowPage(dlg, L"Advanced");
+        Check(Enabled(dlg, IDC_ADV_BRK) && !Checked(dlg, IDC_ADV_BRK), "the breaks column is off, and can be turned on");
+        Press(dlg, IDC_ADV_BRK);
+        Check(Enabled(dlg, IDOK), "ticking it lights Apply");
+        g_notes.clear();
+        Press(dlg, IDOK);
+    });
+    Check(core::modes::GetBreakpoints(core::modes::Source::Vba), "Apply turned VBA BREAKPOINTS on");
+    Check(Logged("options: applied -- VBA BREAKPOINTS FALSE -> TRUE"), "and the log says only that",
+          g_notes.empty() ? L"" : Wide(g_notes.back()));
+    core::modes::SetBreakpoints(core::modes::Source::Vba, false);
 
     std::printf("\n%s\n", g_fail == 0 ? "ALL PASS" : "FAILED");
     return g_fail == 0 ? 0 : 1;

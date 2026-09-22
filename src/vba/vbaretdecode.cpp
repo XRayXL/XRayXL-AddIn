@@ -491,6 +491,11 @@ namespace vba
         case 708: return RetKind::String;
         case 694: return RetKind::Variant;
         case 696: return RetKind::Object;
+        // The same slots written from a temporary: 695 moves a computed string in (`F = a & b`,
+        // `F = Trim(x)`), 706 sets an object from a function. Across the corpus each writes
+        // [R14-8] only in Functions of that type.
+        case 695: return RetKind::String;
+        case 706: return RetKind::Object;
 
         default:  return RetKind::Unknown;
         }
@@ -552,6 +557,11 @@ namespace vba
         // it is a LOCAL, so leaving this unmapped read a local as a result.
         case 504: return RetKind::None;
         case 952: return RetKind::Variant;
+        // 1494 IS THE RECORD FUNCTION EXIT. Unmapped, the store scan read a field of the
+        // record as the whole result.
+        case 1494: return RetKind::Record;
+        // 1495 is the same for a record small enough to come back in a register.
+        case 1495: return RetKind::RecordInFrame;
         default:  return RetKind::Unknown;
         }
     }
@@ -569,6 +579,8 @@ namespace vba
         case RetKind::String:   return "String";
         case RetKind::Object:   return "Object";
         case RetKind::Variant:  return "Variant";
+        case RetKind::Record:
+        case RetKind::RecordInFrame: return "Udt";
         case RetKind::None:     return "Sub";
         default:                return "?";
         }
@@ -579,7 +591,7 @@ namespace vba
     // the STORE (DecideReturnKind), and deriving it in two places would be two
     // places to disagree.
     bool DescribeReturnKind(std::uint64_t r14, RetKind k, std::uint16_t storeOp,
-                            ValueWriter& w, const char** typeOut)
+                            std::int32_t exitOperand, ValueWriter& w, const char** typeOut)
     {
         *typeOut = "";
         if (r14 == 0) return false;
@@ -589,6 +601,24 @@ namespace vba
         case RetKind::None:
         case RetKind::Unknown:
             return false;
+
+        // The record itself, by the address it is returned to: the same shape a record
+        // argument takes, since its layout is not known here.
+        case RetKind::Record:
+        {
+            std::uint64_t rec = 0;
+            if (!RdU64(r14 + 8, rec) || rec == 0) return false;
+            *typeOut = "Udt";
+            w.Udt(rec);
+            return true;
+        }
+        case RetKind::RecordInFrame:
+        {
+            if (exitOperand >= 0) return false;   // the record is a local, below R14
+            *typeOut = "Udt";
+            w.Udt(r14 + static_cast<std::int64_t>(exitOperand));
+            return true;
+        }
 
         case RetKind::String:
         {

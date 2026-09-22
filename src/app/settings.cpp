@@ -33,6 +33,7 @@ namespace settings
             s.emplace_back(pre + "RETVAL", TrueFalse(GetRetVal(src)));
         }
         s.emplace_back("VBA OBJECTS",    TrueFalse(GetObjects(Source::Vba)));   // VBA only
+        s.emplace_back("VBA BREAKPOINTS", TrueFalse(GetBreakpoints(Source::Vba)));
         s.emplace_back("BUFFERSIZE",     BufferText(GetBufferBytes()));
         s.emplace_back("BUFFERWHENFULL", GetPauseOnFull() ? "PAUSE" : "DROP");
         s.emplace_back("FORMAT",         FormatName(GetFormat()));

@@ -51,6 +51,8 @@ namespace csv
         volatile LONG64  g_span = 0;
         // The file's format, latched at Open for the life of the file.
         core::modes::Format g_format = core::modes::Format::Csv;
+        // Whether the file has the optional `breaks` column, latched at Open with the format.
+        bool g_breaks = false;
 
         bool Jsonl() { return g_format == core::modes::Format::Jsonl; }
 
@@ -132,7 +134,11 @@ namespace csv
                     g_rows = 0;
                     g_file = h;                          // publish before the header write below
                     // JSON Lines has no header: every line names its own keys.
-                    if (!Jsonl()) WriteRaw(kHeader, static_cast<DWORD>(strlen(kHeader)));
+                    if (!Jsonl())
+                    {
+                        const char* header = g_breaks ? kHeaderBreaks : kHeader;
+                        WriteRaw(header, static_cast<DWORD>(strlen(header)));
+                    }
                 }
             }
             const bool ok = (g_file != INVALID_HANDLE_VALUE);
@@ -272,7 +278,7 @@ namespace csv
         }
     }
 
-    bool Open(std::size_t bufferBytes, bool pauseOnFull, core::modes::Format format)
+    bool Open(std::size_t bufferBytes, bool pauseOnFull, core::modes::Format format, bool breaks)
     {
         if (!g_csReady) { InitializeCriticalSection(&g_cs); g_csReady = true; }
         Lock();
@@ -290,6 +296,7 @@ namespace csv
         g_path.clear();
         g_format = format;
         core::LatchFormat(format);      // every value in this file is spelt one way
+        g_breaks = breaks;
         g_planned = BuildTracePath();   // named now, created on the first record
 
         // Logged HERE rather than at the arm sites, because the name belongs to
@@ -380,6 +387,7 @@ namespace csv
 
     // "Armed", not "file exists" -- see g_prepared.
     bool IsOpen() { return Prepared(); }
+    bool HasBreaksColumn() { return g_breaks; }
     std::wstring Path()
     {
         if (!g_csReady) return std::wstring();
@@ -432,11 +440,11 @@ namespace csv
         }
         else
         {
-        char* buf = FragBuf(24 + FragmentSize(row) + 1);
+        char* buf = FragBuf(24 + FragmentSize(row, g_breaks) + 1);
         if (!buf) return;
         const int il = _snprintf_s(buf, 24, _TRUNCATE, "%lld,",
             static_cast<long long>(InterlockedIncrement64(&g_in)));
-        n = il + static_cast<int>(Fragment(row, buf + il));
+        n = il + static_cast<int>(Fragment(row, buf + il, g_breaks));
         frag = buf;
         }   // "input,kind,...,note\r\n"
 

@@ -43,7 +43,7 @@ namespace
     const int kOut[]     = { IDC_OUT_HDR, IDC_OUT_SEC1, IDC_OUT_RULE1, IDC_OUT_FMTLBL, IDC_OUT_FMT,
                              IDC_OUT_DIRLBL, IDC_OUT_DIR, IDC_OUT_FILELBL, IDC_OUT_FILE, IDC_OUT_TAIL };
     const int kAdvanced[] = { IDC_ADV_HDR, IDC_ADV_SEC1, IDC_ADV_RULE1, IDC_ADV_BUFLBL, IDC_ADV_BUF,
-                              IDC_ADV_BUFHINT, IDC_ADV_FULLLBL, IDC_ADV_FULL,
+                              IDC_ADV_BUFHINT, IDC_ADV_FULLLBL, IDC_ADV_FULL, IDC_ADV_BRK,
                               IDC_ADV_SEC2, IDC_ADV_RULE2, IDC_ADV_LVLLBL, IDC_ADV_LVL, IDC_ADV_LVLNOTE,
                               IDC_ADV_LOGLBL, IDC_ADV_LOG };
     const int kAbout[]   = { IDC_ABT_HDR, IDC_ABT_OWNER, IDC_ABT_LICLBL, IDC_ABT_LICENSE };
@@ -65,7 +65,7 @@ namespace
     const int kHeadingIds[] = { IDC_XLL_SEC1, IDC_VBA_SEC1, IDC_OUT_SEC1, IDC_ADV_SEC1, IDC_ADV_SEC2 };
     const int kRuleIds[]    = { IDC_XLL_RULE1, IDC_VBA_RULE1, IDC_OUT_RULE1, IDC_ADV_RULE1, IDC_ADV_RULE2 };
     const int kTitleIds[]   = { IDC_CAP_HDR, IDC_OUT_HDR, IDC_ADV_HDR, IDC_ABT_HDR, IDC_NOT_HDR };
-    const int kCheckIds[]   = { IDC_XLL_ARGS, IDC_XLL_RET, IDC_VBA_ARGS, IDC_VBA_RET, IDC_VBA_OBJ };
+    const int kCheckIds[]   = { IDC_XLL_ARGS, IDC_XLL_RET, IDC_VBA_ARGS, IDC_VBA_RET, IDC_VBA_OBJ, IDC_ADV_BRK };
     const int kButtonIds[]  = { IDOK, IDCANCEL, IDC_OUT_TAIL };
     const int kComboIds[]   = { IDC_XLL_DEPTH, IDC_VBA_DEPTH, IDC_OUT_FMT, IDC_ADV_FULL, IDC_ADV_LVL };
     const int kEditIds[]    = { IDC_OUT_DIR, IDC_OUT_FILE, IDC_ADV_BUF, IDC_ADV_LOG, IDC_ABT_LICENSE,
@@ -83,7 +83,7 @@ namespace
     {
         int  xllDepth = 0, vbaDepth = 0;
         bool xllArgs = false, xllRet = false;
-        bool vbaArgs = false, vbaRet = false, vbaObj = false;
+        bool vbaArgs = false, vbaRet = false, vbaObj = false, vbaBrk = false;
         bool pauseOnFull = true;
         int  format = 0;            // core::modes::Format
         wchar_t buffer[32] = {};
@@ -107,6 +107,7 @@ namespace
         d.vbaArgs  = M::ReadToggle(L"cbVbaArgs");
         d.vbaRet   = M::ReadToggle(L"cbVbaRet");
         d.vbaObj   = M::ReadToggle(L"cbVbaObj");
+        d.vbaBrk   = M::ReadToggle(L"cbVbaBrk");
         d.pauseOnFull = M::ReadToggle(L"cbPauseFull");
         d.format   = static_cast<int>(core::modes::GetFormat());
         M::BufferText(d.buffer, 32);
@@ -123,6 +124,7 @@ namespace
         d.vbaArgs  = IsChecked(dlg, IDC_VBA_ARGS);
         d.vbaRet   = IsChecked(dlg, IDC_VBA_RET);
         d.vbaObj   = IsChecked(dlg, IDC_VBA_OBJ);
+        d.vbaBrk   = IsChecked(dlg, IDC_ADV_BRK);
         d.pauseOnFull = SendDlgItemMessageW(dlg, IDC_ADV_FULL, CB_GETCURSEL, 0, 0) == 0;
         d.format   = static_cast<int>(SendDlgItemMessageW(dlg, IDC_OUT_FMT, CB_GETCURSEL, 0, 0));
         GetDlgItemTextW(dlg, IDC_ADV_BUF, d.buffer, 32);
@@ -139,7 +141,7 @@ namespace
         if (!M::ParseBufferBox(d.buffer, bytes) || bytes != core::modes::GetBufferBytes()) return true;
         return d.xllDepth != cur.xllDepth || d.vbaDepth != cur.vbaDepth ||
                d.xllArgs != cur.xllArgs || d.xllRet != cur.xllRet ||
-               d.vbaArgs != cur.vbaArgs || d.vbaRet != cur.vbaRet || d.vbaObj != cur.vbaObj ||
+               d.vbaArgs != cur.vbaArgs || d.vbaRet != cur.vbaRet || d.vbaObj != cur.vbaObj || d.vbaBrk != cur.vbaBrk ||
                d.pauseOnFull != cur.pauseOnFull || d.format != cur.format;
     }
 
@@ -186,6 +188,7 @@ namespace
         M::WriteToggle(L"cbVbaArgs",  d.vbaArgs);
         M::WriteToggle(L"cbVbaRet",   d.vbaRet);
         M::WriteToggle(L"cbVbaObj",   d.vbaObj);
+        M::WriteToggle(L"cbVbaBrk",   d.vbaBrk);
         M::WriteToggle(L"cbPauseFull", d.pauseOnFull);
         if (d.format == static_cast<int>(core::modes::Format::Csv) ||
             d.format == static_cast<int>(core::modes::Format::Jsonl))
@@ -227,10 +230,11 @@ namespace
         { IDC_ADV_BUFLBL,   182,  97, 118,  23 }, { IDC_ADV_BUF,    302,  97,  91, 23 },
         { IDC_ADV_BUFHINT,  302, 123,   0,  15 },
         { IDC_ADV_FULLLBL,  182, 146, 118,  21 }, { IDC_ADV_FULL,   302, 146, 180,  0 },
-        { IDC_ADV_SEC2,     169, 182,   0,  20 }, { IDC_ADV_RULE2,  169, 205,   0,  1 },
-        { IDC_ADV_LVLLBL,   182, 215, 118,  21 }, { IDC_ADV_LVL,    302, 215, 180,  0 },
-        { IDC_ADV_LVLNOTE,  302, 242,   0,  15 },
-        { IDC_ADV_LOGLBL,   182, 264,   0,  15 }, { IDC_ADV_LOG,    182, 282,   0, 23 },
+        { IDC_ADV_BRK,      182, 175,   0,  17 },
+        { IDC_ADV_SEC2,     169, 206,   0,  20 }, { IDC_ADV_RULE2,  169, 229,   0,  1 },
+        { IDC_ADV_LVLLBL,   182, 239, 118,  21 }, { IDC_ADV_LVL,    302, 239, 180,  0 },
+        { IDC_ADV_LVLNOTE,  302, 266,   0,  15 },
+        { IDC_ADV_LOGLBL,   182, 288,   0,  15 }, { IDC_ADV_LOG,    182, 306,   0, 23 },
 
         { IDC_ABT_HDR,      222,  15,   0,  30 },
         { IDC_NOT_HDR,      222,  15,   0,  30 },
@@ -433,7 +437,7 @@ namespace
     {
         const int locked[] = { IDC_XLL_DEPTH, IDC_XLL_ARGS, IDC_XLL_RET,
                                IDC_VBA_DEPTH, IDC_VBA_ARGS, IDC_VBA_RET, IDC_VBA_OBJ,
-                               IDC_ADV_BUF, IDC_ADV_FULL, IDC_OUT_FMT };
+                               IDC_ADV_BUF, IDC_ADV_FULL, IDC_ADV_BRK, IDC_OUT_FMT };
         for (int id : locked) EnableWindow(GetDlgItem(dlg, id), armed ? FALSE : TRUE);
         SetDlgItemTextW(dlg, IDC_ARMEDNOTE, armed
             ? L"Tracing is armed. These settings are read when a session starts, so "
@@ -471,6 +475,7 @@ namespace
         SetChecked(dlg, IDC_VBA_ARGS, d.vbaArgs);
         SetChecked(dlg, IDC_VBA_RET,  d.vbaRet);
         SetChecked(dlg, IDC_VBA_OBJ,  d.vbaObj);
+        SetChecked(dlg, IDC_ADV_BRK,  d.vbaBrk);
         SendDlgItemMessageW(dlg, IDC_ADV_FULL, CB_SETCURSEL, d.pauseOnFull ? 0 : 1, 0);
         SendDlgItemMessageW(dlg, IDC_OUT_FMT, CB_SETCURSEL, d.format, 0);
         SetDlgItemTextW(dlg, IDC_ADV_BUF, d.buffer);

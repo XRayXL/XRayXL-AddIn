@@ -16,6 +16,9 @@ namespace csv
     // column order in rowcsv.cpp -- the one place that knows it -- and
     // docs/TraceRowModel.md change with it.
     extern const char* const kHeader;
+    // The same with the optional `breaks` column after `trust`, when VBA BREAKPOINTS is on for
+    // the file. Every row of that file then has it, empty where it does not apply.
+    extern const char* const kHeaderBreaks;
 
     // ONE ROW, NAMED, so neither source counts positions
     // (docs/TraceRowModel.md). Pointers, not copies: a row is formatted
@@ -52,15 +55,19 @@ namespace csv
         // and `flush` are upper bounds (docs/TraceRowModel.md).
         const char* ticks    = "";      // QPC ticks; empty when none exists
         const char* trust    = "";      // exit | end | backstop | flush | async
+        // VBA exit rows only, and only in a file opened with the column: how often the call
+        // stopped at a breakpoint in the editor.
+        const char* breaks   = "";
     };
 
     // The bytes Fragment will write for `row`, without the NUL. A field is never cut, so this
     // is how the caller sizes its buffer.
-    std::size_t FragmentSize(const Row& row);
+    std::size_t FragmentSize(const Row& row, bool breaks = false);
 
     // Escape every field, comma-join them in column order, and end with CRLF --
     // WITHOUT the seq/input prefixes, which the writer/producer prepend. `out`
-    // must hold FragmentSize(row) + 1 bytes. Returns the number of bytes written.
-    std::size_t Fragment(const Row& row, char* out);
+    // must hold FragmentSize(row) + 1 bytes. Returns the number of bytes written. `breaks` adds
+    // the optional column, as kHeaderBreaks does.
+    std::size_t Fragment(const Row& row, char* out, bool breaks = false);
 }
 }   // namespace emit

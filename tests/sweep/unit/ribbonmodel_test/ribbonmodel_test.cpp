@@ -183,6 +183,8 @@ int main()
     // OBJECTS is VBA only: an XLL argument has no object model to describe.
     Check("xll-has-no-objects-control", !M::KnownControl(L"cbXllObj"),
           "OBJECTS is not honoured by src/xll -- offering it promises nothing");
+    Check("xll-has-no-breakpoints-control", !M::KnownControl(L"cbXllBrk"),
+          "an XLL has no breakpoints");
 
     // ---- the buffer size box: SetTraceParam's own words and parser ----
     {
@@ -231,7 +233,7 @@ int main()
     // ---- check boxes read and write the real settings ----------------------
     const wchar_t* kToggleIds[] = {
         L"cbXllArgs", L"cbXllRet",
-        L"cbVbaArgs", L"cbVbaRet", L"cbVbaObj", L"cbPauseFull"
+        L"cbVbaArgs", L"cbVbaRet", L"cbVbaObj", L"cbVbaBrk", L"cbPauseFull"
     };
     for (const wchar_t* id : kToggleIds)
     {

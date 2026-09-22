@@ -37,6 +37,10 @@ namespace vba
         Object,       // an interface pointer at [R14-8], or 0 for Nothing
         LongLongOrArray, // slot 634 serves both; the store opcode splits them
         Variant,
+        Record,       // a user-defined Type: built in the frame, copied to the caller's buffer,
+                      // which arrives as the hidden first argument at [R14+8]
+        RecordInFrame,  // a Type of 1, 2, 4 or 8 bytes: returned in RAX, no hidden argument;
+                        // the record is in the frame at R14 + the exit's operand
     };
 
     // The declared return kind from the exit opcode the activation ended on.
@@ -49,10 +53,11 @@ namespace vba
 
     // The result of the activation whose frame base is `r14`, with the kind supplied by the
     // caller. `storeOp` is the opcode that wrote [R14-8] when known, needed only to split slot
-    // 634. False, having written nothing, when nothing can be said truthfully; `typeOut`
-    // receives the name to publish in `rettype`.
+    // 634. `exitOperand` is the exit instruction's operand, needed only by RecordInFrame. False,
+    // having written nothing, when nothing can be said truthfully; `typeOut` receives the name
+    // to publish in `rettype`.
     bool DescribeReturnKind(std::uint64_t r14, RetKind k, std::uint16_t storeOp,
-                            core::ValueWriter& w, const char** typeOut);
+                            std::int32_t exitOperand, core::ValueWriter& w, const char** typeOut);
 
     // One decoder for both columns: a ByVal Variant parameter's first two frame slots are, byte
     // for byte, a VARIANT. The held value is written inside BeginVariant/EndVariant, so a
