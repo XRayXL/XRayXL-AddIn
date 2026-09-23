@@ -12,6 +12,9 @@ namespace vba
     // a `stub` line, the only place this form is measured.
     constexpr std::uint32_t kSlot_BosStub                = 0x1348 / 8;   // 617
     constexpr std::uint32_t kBosStubBody                 = 16;           // measured, every one
+    // `Stop`: a breakpoint written into the source. It pauses in the editor and resumes, so it
+    // ends no frame, and its statement's BoS has already run by the time it dispatches.
+    constexpr std::uint32_t kSlot_Stop                   = 0x1328 / 8;   // 613
     // GoSub `Return`: jumps back to its GoSub, in the middle of a procedure.
     constexpr std::uint32_t kSlot_GoSubReturn            = 0x1360 / 8;   // 620
     // ZeroRetVal and ZeroRetValVar (their PDB names): clear a String/Object or a

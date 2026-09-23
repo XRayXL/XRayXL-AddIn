@@ -86,6 +86,9 @@ namespace vba
         // only signal that its frames are dead; a failed check degrades that one feature, the
         // depth and parentage of whatever runs after an `End`, rather than refusing the arm.
         bool          endOk = false;
+        // The `Stop` slot, verified on its own fingerprint like `End`. A failure costs the
+        // break-in-the-editor count and nothing else.
+        bool          stopOk = false;
         // The breakpoint form of BoS. A breakpointed statement never reaches the BoS handler,
         // so without it a call whose first statements have breakpoints opens late; a failed
         // check costs that and the breakpoint count, not the arm.

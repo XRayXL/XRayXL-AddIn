@@ -791,6 +791,7 @@ namespace vba
 
         void OnStatementBody(std::uint64_t dispatchSp, std::uint64_t savedRegs);
         void OnBreakpointBody(std::uint64_t dispatchSp, std::uint64_t savedRegs);
+        void OnStopBody(std::uint64_t dispatchSp, std::uint64_t savedRegs);
         void OnExitBody(std::uint64_t dispatchSp, std::uint64_t savedRegs);
         void OnEndBody();
     }
@@ -829,6 +830,11 @@ namespace vba
     extern "C" void XRayVbaOnBreakpoint(std::uint64_t dispatchSp, std::uint64_t savedRegs)
     {
         RunHook(OnBreakpointBody, dispatchSp, savedRegs);
+    }
+
+    extern "C" void XRayVbaOnStop(std::uint64_t dispatchSp, std::uint64_t savedRegs)
+    {
+        RunHook(OnStopBody, dispatchSp, savedRegs);
     }
 
     extern "C" void XRayVbaOnExit(std::uint64_t dispatchSp, std::uint64_t savedRegs)
@@ -1185,6 +1191,19 @@ namespace vba
         OnStatementBody(dispatchSp, savedRegs);
         Bump(g_totals.breakpointStops);
         ThreadState* s = State();
+        if (s && s->depth > 0 && s->stack[s->depth - 1].sp == dispatchSp)
+            ++s->stack[s->depth - 1].breaks;
+    }
+
+    // A `Stop` statement, charged to the frame it is in. It touches no frame state: its
+    // statement's BoS has already run, and the editor resumes with the frame intact.
+    void OnStopBody(std::uint64_t dispatchSp, std::uint64_t savedRegs)
+    {
+        (void)savedRegs;
+        Bump(g_totals.stopStatements);
+        ThreadState* s = State();
+        // The same frame match the breakpoint hook uses: both dispatch at the interpreter rsp the
+        // frame was opened at.
         if (s && s->depth > 0 && s->stack[s->depth - 1].sp == dispatchSp)
             ++s->stack[s->depth - 1].breaks;
     }

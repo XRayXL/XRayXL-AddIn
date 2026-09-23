@@ -27,6 +27,7 @@ extern "C" void XRayVbaBosThunk(void);
 extern "C" void XRayVbaBosBpThunk(void);
 extern "C" void XRayVbaExitThunk(void);
 extern "C" void XRayVbaEndThunk(void);
+extern "C" void XRayVbaStopThunk(void);
 
 namespace vba
 {
@@ -153,7 +154,7 @@ namespace vba
         }
         core::ModuleId       g_vbe7;        // the image armed; disarm restores into no other
         int                  g_bosSlots = 0, g_exitSlots = 0;
-        int                  g_endSlots = 0, g_bosBpSlots = 0;
+        int                  g_endSlots = 0, g_bosBpSlots = 0, g_stopSlots = 0;
 
         // ROLES ARE MATCHED WHOLE, never by first letter. "end" and "exit"
         // share one, so a first-letter test sends "end" down "exit"'s arm --
@@ -170,6 +171,7 @@ namespace vba
             if (IsRole(role, "bos"))   return reinterpret_cast<const void*>(&XRayVbaBosThunk);
             if (IsRole(role, "bosbp")) return reinterpret_cast<const void*>(&XRayVbaBosBpThunk);
             if (IsRole(role, "end"))   return reinterpret_cast<const void*>(&XRayVbaEndThunk);
+            if (IsRole(role, "stop"))  return reinterpret_cast<const void*>(&XRayVbaStopThunk);
             if (IsRole(role, "exit"))  return reinterpret_cast<const void*>(&XRayVbaExitThunk);
             return nullptr;
         }
@@ -392,7 +394,7 @@ namespace vba
                                 "runs inside another's DoEvents is reported beneath it");
         }
 
-        g_bosSlots = g_exitSlots = g_endSlots = g_bosBpSlots = 0;
+        g_bosSlots = g_exitSlots = g_endSlots = g_bosBpSlots = g_stopSlots = 0;
         for (const PatchSite& site : s.sites)
         {
             const std::uint64_t orig = g_base + site.handlerRva;
@@ -408,6 +410,7 @@ namespace vba
             if      (IsRole(site.role, "bos"))   ++g_bosSlots;
             else if (IsRole(site.role, "bosbp")) ++g_bosBpSlots;
             else if (IsRole(site.role, "end"))   ++g_endSlots;
+            else if (IsRole(site.role, "stop"))  ++g_stopSlots;
             else                                 ++g_exitSlots;
         }
 
@@ -442,7 +445,7 @@ namespace vba
         o << "VBA tracing: ARMED [" << core::modes::DepthName(core::modes::GetDepth(core::modes::Source::Vba)) << "] -- "
           << g_patched.size() << " of " << s.sites.size() << " slots patched ("
           << g_bosSlots << " bos, " << g_bosBpSlots << " breakpoint, " << g_exitSlots << " exit, "
-          << g_endSlots << " end; "
+          << g_endSlots << " end, " << g_stopSlots << " stop; "
           << byOriginal.size() << " stubs), table +0x" << std::hex << s.tableRva << std::dec;
         // SAY WHEN A FEATURE IS ABSENT. Without the `End` slot a chain killed by `End` is closed
         // only by the stack-pointer backstop, so whatever runs next can nest
@@ -454,6 +457,11 @@ namespace vba
         if (!s.bosBpOk)
             o << " -- NO BREAKPOINT HANDLING: the BosBp pair did not verify;"
                  " a call whose first statements have breakpoints opens late";
+        // Narrower than the two above: nothing traces differently, the pause is
+        // just not counted, so a long `ticks` loses its explanation.
+        if (!s.stopOk)
+            o << " -- NO `Stop` COUNT: the Stop slot did not verify;"
+                 " time paused at a `Stop` is in ticks but not in breaks";
         return o.str();
     }
 

@@ -52,6 +52,7 @@ EXTERN XRayVbaOnStatement : PROC
 EXTERN XRayVbaOnBreakpoint : PROC
 EXTERN XRayVbaOnExit      : PROC
 EXTERN XRayVbaOnEnd       : PROC
+EXTERN XRayVbaOnStop      : PROC
 
 .code
 
@@ -159,5 +160,7 @@ HOOK_THUNK XRayVbaBosBpThunk, XRayVbaOnBreakpoint
 HOOK_THUNK XRayVbaExitThunk,  XRayVbaOnExit
 ; The End opcode (slot 619) fires no exit for the frames it kills, and runs before its handler.
 HOOK_THUNK XRayVbaEndThunk,   XRayVbaOnEnd
+; The Stop opcode (slot 613): the editor pauses here and resumes; no frame ends.
+HOOK_THUNK XRayVbaStopThunk,  XRayVbaOnStop
 
 END

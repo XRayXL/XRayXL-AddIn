@@ -475,10 +475,13 @@ private:
         if (id == DISPID_LOADIMAGE)
         {
             // Asked once per image id and cached by Office; 'disarm' is the only one.
-            IDispatch* app = GetDispProp(g_addInInst, L"Application");
+            // From the window chain, not the add-in object: the ribbon owns no lifetime state.
+            std::ostringstream om;
+            IDispatch* app = core::excelom::AcquireApplication(om);
             IDispatch* pic = ui::ribbon::art::DisarmPicture(app, MainWindow());
             if (app) app->Release();
             if (!pic) core::Log::Warning("ribbon: Disarm's picture could not be made; the button shows no icon");
+            else      core::Log::Debug("ribbon: Disarm's picture made");
             if (result && pic) { result->vt = VT_DISPATCH; result->pdispVal = pic; }
             else if (pic) pic->Release();
             return S_OK;
@@ -564,41 +567,6 @@ private:
     std::atomic<long> m_ref{ 1 };
 };
 
-// From Excel 2310 the first connect only half-loads the add-in: a throwaway object takes it.
-class DummyAddin : public IDTExtensibility2
-{
-public:
-    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppv) override
-    {
-        if (!ppv) return E_POINTER;
-        *ppv = nullptr;
-        if (riid == IID_IUnknown || riid == IID_IDispatch || riid == __uuidof(IDTExtensibility2))
-        { *ppv = static_cast<IDTExtensibility2*>(this); AddRef(); return S_OK; }
-        return E_NOINTERFACE;
-    }
-    ULONG STDMETHODCALLTYPE AddRef() override { return static_cast<ULONG>(++m_ref); }
-    ULONG STDMETHODCALLTYPE Release() override
-    {
-        const long n = --m_ref;
-        if (n == 0) { delete this; return 0; }
-        return static_cast<ULONG>(n < 0 ? 0 : n);
-    }
-    HRESULT STDMETHODCALLTYPE GetTypeInfoCount(UINT* p) override { if (p) *p = 0; return S_OK; }
-    HRESULT STDMETHODCALLTYPE GetTypeInfo(UINT, LCID, ITypeInfo** p) override { if (p) *p = nullptr; return E_NOTIMPL; }
-    HRESULT STDMETHODCALLTYPE GetIDsOfNames(REFIID, LPOLESTR*, UINT, LCID, DISPID*) override { return DISP_E_UNKNOWNNAME; }
-    HRESULT STDMETHODCALLTYPE Invoke(DISPID, REFIID, LCID, WORD, DISPPARAMS*, VARIANT*, EXCEPINFO*, UINT*) override
-    { return DISP_E_MEMBERNOTFOUND; }
-    HRESULT STDMETHODCALLTYPE OnConnection(IDispatch*, int, IDispatch*, SAFEARRAY**) override { return S_OK; }
-    HRESULT STDMETHODCALLTYPE OnDisconnection(int, SAFEARRAY**) override { return S_OK; }
-    HRESULT STDMETHODCALLTYPE OnAddInsUpdate(SAFEARRAY**) override { return S_OK; }
-    HRESULT STDMETHODCALLTYPE OnStartupComplete(SAFEARRAY**) override { return S_OK; }
-    HRESULT STDMETHODCALLTYPE OnBeginShutdown(SAFEARRAY**) override { return S_OK; }
-private:
-    std::atomic<long> m_ref{ 1 };
-};
-
-// which object the next CreateInstance serves
-std::atomic<bool> g_serveDummy{ false };
 
 class ClassFactory : public IClassFactory
 {
@@ -625,14 +593,6 @@ private:
     static HRESULT CreateImpl(IUnknown* outer, REFIID riid, void** ppv)
     {
         if (outer) return CLASS_E_NOAGGREGATION;
-        if (g_serveDummy.load())
-        {
-            DummyAddin* d = new (std::nothrow) DummyAddin();
-            if (!d) return E_OUTOFMEMORY;
-            const HRESULT hr = d->QueryInterface(riid, ppv);
-            d->Release();
-            return hr;
-        }
         RibbonAddin* obj = new (std::nothrow) RibbonAddin();
         if (!obj) return E_OUTOFMEMORY;
         const HRESULT hr = obj->QueryInterface(riid, ppv);
@@ -864,10 +824,7 @@ void ConnectNow()
         InvokeNoArgs(coll, L"Update");                  // make Excel read the key just written
         if (IDispatch* entry = CallItem(coll, kProgId))
         {
-            // the throwaway object takes the first pass, the real one the second
-            g_serveDummy.store(true);
-            PutBoolProp(entry, L"Connect", false);
-            g_serveDummy.store(false);
+            // One pass. A second fires OnDisconnection on the real object, which disarms.
             connected = PutBoolProp(entry, L"Connect", true);
             entry->Release();
         }

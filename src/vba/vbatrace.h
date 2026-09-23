@@ -22,6 +22,8 @@ namespace vba
     extern "C" void XRayVbaOnStatement(std::uint64_t dispatchSp, std::uint64_t savedRegs);
     // The same statement with a breakpoint on it, about to stop in the editor.
     extern "C" void XRayVbaOnBreakpoint(std::uint64_t dispatchSp, std::uint64_t savedRegs);
+    // A `Stop` statement, the same pause written into the source. Its BoS has already run.
+    extern "C" void XRayVbaOnStop(std::uint64_t dispatchSp, std::uint64_t savedRegs);
     extern "C" void XRayVbaOnExit(std::uint64_t dispatchSp, std::uint64_t savedRegs);
 
     // Called from the detour on VBE7's rtcDoEvents, on the thread entering and leaving it: a
@@ -110,6 +112,9 @@ namespace vba
         // Statements that stopped at a breakpoint in the editor. Each is a stretch of the call's
         // duration spent in the debugger rather than running.
         std::uint64_t breakpointStops = 0;
+        // Counted apart from breakpointStops: a breakpoint is session state, a `Stop` is saved in
+        // the workbook and ships to whoever opens it.
+        std::uint64_t stopStatements = 0;
 
         // Not every exit opcode ends a procedure: a GoSub `Return` fires one mid-activation.
         // `exitOpUnreadable` closes nothing rather than guessing.

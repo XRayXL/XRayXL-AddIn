@@ -411,6 +411,7 @@ namespace vba
 
         // 5. the singleton slot and the breakpoint pair -- features, not the product, so not in `ok`
         VerifySingletonSlot(img, s, kEndSlot, "end", s.endOk);
+        VerifySingletonSlot(img, s, kSlot_Stop, "stop", s.stopOk);
         VerifyBosBpPair(img, s);
 
         s.verified = ok;
