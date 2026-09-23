@@ -634,7 +634,7 @@ namespace
         }
 
         case WM_MOUSEMOVE:
-            if (s && s->dragColumn >= 0)
+            if (s && s->dragColumn >= 0 && s->dragColumn < static_cast<int>(s->width.size()))
             {
                 const int want = s->dragFromWidth + (GET_X_LPARAM(lp) - s->dragFromX);
                 s->width[s->dragColumn] = (std::max)(MulDiv(24, s->dpi, 96), want);
@@ -645,6 +645,11 @@ namespace
 
         case WM_LBUTTONUP:
             if (s && s->dragColumn >= 0) { s->dragColumn = -1; ReleaseCapture(); }
+            return 0;
+
+        // Alt+Tab or anything else can take the mouse mid-drag, and no button-up follows.
+        case WM_CAPTURECHANGED:
+            if (s) s->dragColumn = -1;
             return 0;
 
         case WM_SETCURSOR:
@@ -812,6 +817,8 @@ void SetTable(HWND list, diag::Table table)
 {
     State* s = Get(list);
     if (!s) return;
+    // a drag in progress was over the old columns
+    if (s->dragColumn >= 0) { s->dragColumn = -1; ReleaseCapture(); }
     s->table = std::move(table);
     s->width.clear();
     for (const diag::Column& c : s->table.columns) s->width.push_back(MulDiv(c.width96, s->dpi, 96));
