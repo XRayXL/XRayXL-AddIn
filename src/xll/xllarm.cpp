@@ -248,6 +248,20 @@ namespace xll
         core::Log::Note(b);
         log << "  " << b << "\n";
 
+        // A refusal only. Excel having no name for a registration is ordinary -- an add-in
+        // unloaded while armed leaves some -- but a refused call misnames every row.
+        if (rc.firstFailRc != 0)
+        {
+            char w[320];
+            _snprintf_s(w, _TRUNCATE,
+                        "XLL name resolution: %s returned %s, so %d of %d registered name(s) are"
+                        " unresolved and those rows carry the EXPORT name, not the registered one",
+                        (rc.firstFailFn == xlfGetDef) ? "xlfGetDef" : "xlfRegisterId",
+                        XlRetName(rc.firstFailRc), rc.calls - rc.resolved, rc.calls);
+            core::Log::Warning(w);
+            log << "  " << w << "\n";
+        }
+
         const InstallCost ic = TakeInstallCost();
         char b2[320];
         _snprintf_s(b2, _TRUNCATE,

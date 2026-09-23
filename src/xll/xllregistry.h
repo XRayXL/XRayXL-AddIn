@@ -28,7 +28,12 @@ namespace xll
         long long getDefUs = 0;   // xlfGetDef, plus its xlFree
         int       calls    = 0;
         int       resolved = 0;   // names Excel gave us; the rest fall back
+        // The first refusal, kept: without it a name that fell back says only that it did,
+        // and xlretInvXlfn -- the C API refusing outside a macro context -- reads as silence.
+        int       firstFailFn = 0;   // xlfRegisterId or xlfGetDef
+        int       firstFailRc = 0;   // its xlret*, 0 if none failed
     };
+    const char* XlRetName(int rc);
     ResolveCost TakeResolveCost();   // reads and resets
 
     // pxProcedure is the export and pxFunctionText is what goes in a cell; an add-in that

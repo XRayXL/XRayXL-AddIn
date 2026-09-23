@@ -131,6 +131,25 @@ namespace xll
     }
 
     // ---- the real name ------------------------------------------------------
+    // The SDK's xlret* codes by name, so a refusal says what it was. xlretInvXlfn is the one
+    // that matters here: the C API declining because there is no macro context.
+    const char* XlRetName(int rc)
+    {
+        switch (rc)
+        {
+        case xlretSuccess:       return "success";
+        case xlretAbort:         return "xlretAbort";
+        case xlretInvXlfn:       return "xlretInvXlfn (no macro context)";
+        case xlretInvCount:      return "xlretInvCount";
+        case xlretInvXloper:     return "xlretInvXloper";
+        case xlretStackOvfl:     return "xlretStackOvfl";
+        case xlretFailed:        return "xlretFailed";
+        case xlretUncalced:      return "xlretUncalced";
+        case xlretNotThreadSafe: return "xlretNotThreadSafe";
+        default:                 return "xlret?";
+        }
+    }
+
     ResolveCost TakeResolveCost()
     {
         const ResolveCost c = g_cost;
@@ -150,8 +169,10 @@ namespace xll
         const long long t0 = QpcMicros();
 
         XLOPER12 regId{};
-        if (Excel12(xlfRegisterId, &regId, 3, &m.oper, &p.oper, &t.oper) != xlretSuccess)
+        const int rrc = Excel12(xlfRegisterId, &regId, 3, &m.oper, &p.oper, &t.oper);
+        if (rrc != xlretSuccess)
         {
+            if (g_cost.firstFailRc == 0) { g_cost.firstFailFn = xlfRegisterId; g_cost.firstFailRc = rrc; }
             g_cost.regIdUs += QpcMicros() - t0;
             return L"";
         }
@@ -180,6 +201,9 @@ namespace xll
 
         XLOPER12 defRes{};
         const int drc = Excel12(xlfGetDef, &defRes, 3, &idOper, &missing, &typeNum);
+
+        if (drc != xlretSuccess && g_cost.firstFailRc == 0)
+        { g_cost.firstFailFn = xlfGetDef; g_cost.firstFailRc = drc; }
 
         std::wstring name;
         if (drc == xlretSuccess && (defRes.xltype & core::kXlTypeMask) == xltypeStr &&
