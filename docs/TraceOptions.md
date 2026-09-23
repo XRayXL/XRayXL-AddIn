@@ -165,6 +165,7 @@ Read when Excel loads the add-in, so set them before launching Excel.
 | `XRAYXL_DIAG=1` | Diagnostics in the disarm report, and registers `XRayXL_FaultProbe`, which faults on purpose to test the crash handler |
 | `XRAYXL_NOREGWATCH=1` | Do not watch for functions registered after arming; only functions registered at arm time are traced |
 | `XRAYXL_RIBBON=0` | No ribbon buttons, and no COM object of ours in the process at all. Everything else is unaffected — it is the switch to reach for if you suspect the ribbon of anything |
+| `XRAYXL_NOMESSAGEBOX=1` | No message box when the ribbon cannot load; the log still says why. A hidden Excel never gets the box |
 
 While `%TEMP%\XRayXL\inert.on` exists, the add-in loads and does nothing at all —
 no log, no commands, no hooks — which tells a crash caused by what it does from

@@ -139,7 +139,7 @@ no longer describe the run it is attached to. (`LOGLEVEL` is the exception to
 | `xlAutoRemove` | Note that the Add-ins dialog is removing the add-in, so the `xlAutoClose` that follows tears down. |
 | `xlAutoClose` | Disarm and bring the ribbon down — but only when the add-in is being removed or the ribbon is not connected. Otherwise nothing: see *Shutting it down*. |
 | `xlAutoFree12` | Free `XLOPER12`s we allocated. |
-| `xlAddInManagerInfo12` | Name in the add-in manager. |
+| `xlAddInManagerInfo12` | Name in the Add-ins dialog, `XRayXL XLL v<version>`, so copies of different builds can be told apart. |
 | `DllGetClassObject` | The ribbon add-in's class object — this CLSID only. |
 | `DllCanUnloadNow` | Always `S_FALSE`. |
 
@@ -171,10 +171,11 @@ else in the codebase includes it.
 
 **It is the only part of the add-in allowed to fail.** It loads *after* the
 commands are registered, so by the time it is tried everything else already
-works. On any failure it logs, shows a message box **if this Excel has a visible
-window** — a hidden automation Excel gets the log line instead, because a modal
-box in one blocks the process until something times out — and returns.
-`XRAYXL_RIBBON=0` skips it entirely.
+works. On any failure it logs, shows a message box **only where a user is
+watching**, and returns. A modal box in an automated Excel blocks the process
+until something times out, so there is none when Excel has no visible window,
+or under `XRAYXL_NOMESSAGEBOX=1`. The log says which. `XRAYXL_RIBBON=0` skips
+the ribbon entirely.
 
 **The controls.** Three large buttons — Arm, Disarm, Options — in a group appended
 to Excel's own Developer tab (`idMso='TabDeveloper'`). The ribbon is not a
@@ -201,6 +202,21 @@ whole job, and leaving them would advertise the XLL as an in-proc COM server
 that outlives the add-in. Three attempts, 750 ms apart: the commonest failure is
 an XLL registered before Excel has built the window its object model is reached
 through, which is transient.
+
+**When signing is required.** With the Trust Center's *Require Application
+Add-ins to be signed by Trusted Publisher* ticked, the XLL still loads but Excel
+refuses the connect, because the XLL is not signed, and shows a Security Warning bar. **Enable Content** on
+that bar makes Excel connect the add-in itself — `OnConnection` arrives with
+`ConnectMode` 0 and no `Connect = True` from us — and it reads the registry keys
+to do it. So a refused connect **keeps the keys**, and `OnConnection` counts as
+the connect and removes them: Excel has built the object from them by then. It
+has to be there, because a connected ribbon is torn down by `OnDisconnection`, not
+`Stop`. If the bar is never clicked, `Stop` removes them. The box says only
+that the ribbon could not load, most likely because of Excel's security
+settings. It does not read those settings to say more: several of them decide
+whether there is a bar at all, and guessing wrong would send the user looking for
+one that is not there. The bar is not necessarily ours alone: Enable Content
+releases every add-in it held back.
 
 **It waits for a workbook.** `COMAddIns` hangs off the `Application` object, and
 an XLL is never handed one: it is reached through the `EXCEL7` window of a

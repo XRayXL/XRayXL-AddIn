@@ -240,6 +240,7 @@ int               g_ribbonCount = 0;
 DWORD             g_uiThread = 0;
 std::atomic<bool> g_dirty{ false };
 std::atomic<bool> g_stopping{ false };
+std::atomic<bool> g_connected{ false };   // Excel holds the add-in: set on connect, cleared on teardown
 
 // deduplicated by pointer
 void RememberRibbonUi(IDispatch* ui)
@@ -308,6 +309,7 @@ enum : DISPID {
 
 // defined with the connect plumbing below
 HWND MainWindow();
+void MarkConnected();
 
 int  g_lastRegistered = 0;
 int  g_lastArmed = 0;
@@ -425,6 +427,8 @@ public:
         _snprintf_s(line, _TRUNCATE, "ribbon: OnConnection (ConnectMode %d)%s", mode,
                     AddInInst ? "" : " -- no add-in object offered");
         core::Log::Note(line);
+        // Not always our Connect = True: Enable Content on the Security Warning bar lands here too.
+        MarkConnected();
         return S_OK;
     }
     // RemoveMode 0 is Excel exiting, after any Cancel; 1 is a disconnect asked for.
@@ -586,6 +590,8 @@ private:
         _snprintf_s(line, _TRUNCATE, "%s%s%s", which, mode_,
                     g_stopping.load() ? "" : " -- tearing down");
         core::Log::Note(line);
+        // Also a disconnect mid-session (RemoveMode 1): after it, xlAutoClose must disarm itself.
+        g_connected.store(false);
         core::SubscribeStateChanged(nullptr);
         ReleaseRibbonUis();
         if (g_addInInst) { IDispatch* a = g_addInInst; g_addInInst = nullptr; a->Release(); }
@@ -670,7 +676,9 @@ bool RegisterServer()
     ok &= SetSz(clsid + L"\\InprocServer32", L"ThreadingModel", L"Both") == ERROR_SUCCESS;
     ok &= SetSz(clsid + L"\\ProgID", nullptr, kProgId) == ERROR_SUCCESS;
     ok &= SetSz(ProgIdKey() + L"\\CLSID", nullptr, kClsidText) == ERROR_SUCCESS;
-    ok &= SetSz(AddinsKey(), L"FriendlyName", L"XRayXL") == ERROR_SUCCESS;
+    wchar_t friendly[48];
+    _snwprintf_s(friendly, _TRUNCATE, L"XRayXL Ribbon v%hs", app::VersionText());
+    ok &= SetSz(AddinsKey(), L"FriendlyName", friendly) == ERROR_SUCCESS;
     ok &= SetSz(AddinsKey(), L"Description", L"XRayXL, Excel calculation diagnostics") == ERROR_SUCCESS;
     // LoadBehavior 0: Connect = True loads it anyway, and 3 would autoload it into the next Excel.
     ok &= SetDword(AddinsKey(), L"LoadBehavior", 0) == ERROR_SUCCESS;
@@ -686,10 +694,21 @@ void UnregisterServer()
 
 // ---- connect --------------------------------------------------------------
 
-std::atomic<bool> g_connected{ false };
 UINT_PTR g_timer     = 0;
 int      g_attempt   = 0;   // real connect attempts -- not the waiting below
 int      g_waits     = 0;   // polls spent waiting for an object model to exist
+
+void UnregisterServer();
+
+// Once, however the connect arrived. Excel built the object from the keys before calling
+// OnConnection, so they have done their job.
+void MarkConnected()
+{
+    if (g_stopping.load() || g_connected.exchange(true)) return;
+    UnregisterServer();
+    core::SubscribeStateChanged(OnStateChanged);
+    core::Log::Info("ribbon: XRayXL buttons loaded");
+}
 
 // A visible XLMAIN of ours: the first in z-order is often an invisible container.
 HWND MainWindow()
@@ -734,25 +753,35 @@ bool ObjectModelReachable()
     return false;
 }
 
-// A message box only for a visible Excel: in a hidden one it would block the process.
+bool MessageBoxOff()
+{
+    wchar_t v[8]{};
+    return GetEnvironmentVariableW(L"XRAYXL_NOMESSAGEBOX", v, 8) > 0 && v[0] == L'1';
+}
+
+// A message box only where a user is watching: in any other Excel it would block the process.
 void FailSoft(const wchar_t* reason, const char* logged)
 {
     core::Log::Warning(std::string("ribbon: ") + logged +
-                       " -- no ribbon buttons this session; XRayXL_Arm, XRayXL_Disarm and the"
+                       " -- no ribbon buttons; XRayXL_Arm, XRayXL_Disarm and the"
                        " trace parameters are unaffected");
     core::crashlog::Note("ribbon: NOT loaded; the XLL commands are unaffected");
 
     HWND owner = MainWindow();
-    if (!owner || !IsWindowVisible(owner))
+    const char* silent =
+        !owner || !IsWindowVisible(owner) ? "Excel has no visible window"
+        : MessageBoxOff()                 ? "XRAYXL_NOMESSAGEBOX=1"
+        :                                   nullptr;
+    if (silent)
     {
-        core::Log::Note("ribbon: Excel has no visible window, so nothing was shown to a user");
+        core::Log::Note(std::string("ribbon: ") + silent + ", so no message box");
         return;
     }
     wchar_t text[1024];
     _snwprintf_s(text, _TRUNCATE,
-        L"XRayXL could not add its buttons to the Developer tab in this Excel session.\n\n%s\n\n"
-        L"Everything else works normally. Arm and disarm from VBA, the Macro dialog, "
-        L"or any automation client:\n\n"
+        L"XRayXL could not load its ribbon.\n\n%s\n\n"
+        L"XRayXL's functions and macros work without the ribbon. Arm and disarm from VBA, "
+        L"the Macro dialog, or any automation client:\n\n"
         L"    Application.Run \"XRayXL_Arm\"\n"
         L"    Application.Run \"XRayXL_Disarm\"\n\n"
         L"Capture settings:\n"
@@ -863,22 +892,17 @@ void ConnectNow()
     if (hadSecurity && oldSecurity != 1) PutIntProp(app, L"AutomationSecurity", oldSecurity);
     app->Release();
 
-    // Unregistered at once, connected or not: the keys must not outlive the connect.
-    UnregisterServer();
-
     if (!connected)
     {
-        // Excel also refuses while it is still loading; the same retry covers it
-        RetryOrFail(L"Excel refused to connect the add-in that carries the ribbon buttons. "
-                    L"If XRayXL is listed under File > Options > Add-ins > Manage: "
-                    L"Disabled Items, re-enable it and restart Excel.",
+        // Keys kept: Enable Content on the Security Warning bar connects through them.
+        // Excel also refuses while it is still loading; the retry covers that.
+        RetryOrFail(L"This is most likely because of Excel's security settings. If Excel shows "
+                    L"a yellow Security Warning bar, clicking Enable Content may load it.",
                     "COMAddIns connect refused");
         return;
     }
 
-    g_connected.store(true);
-    core::SubscribeStateChanged(OnStateChanged);
-    core::Log::Info("ribbon: XRayXL buttons loaded");
+    MarkConnected();      // normally already done by OnConnection, keys and all
 }
 
 bool RibbonDisabledByEnv()

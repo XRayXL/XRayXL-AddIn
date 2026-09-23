@@ -11,7 +11,6 @@
 #include "emit/csv.h"
 #include "ui/ribbon.h"
 
-
 #include <windows.h>
 #include <sstream>
 #include <string>
@@ -93,7 +92,10 @@ extern "C" LPXLOPER12 __stdcall xlAddInManagerInfo12(LPXLOPER12 xAction)
 
     if (static_cast<int>(action) == 1)
     {
-        name = core::MakeStr(L"XRayXL");
+        // the version, so copies of different builds can be told apart in the Add-ins dialog
+        wchar_t text[48];
+        _snwprintf_s(text, _TRUNCATE, L"XRayXL XLL v%hs", kVersionText);
+        name = core::MakeStr(text);
         result = name.oper;
     }
     else
