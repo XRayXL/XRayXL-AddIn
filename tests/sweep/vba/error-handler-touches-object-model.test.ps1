@@ -65,4 +65,5 @@ try {
     if ($checkFails) { Complete-Test -Fail -Detail "$checkFails case(s) failed -- P3_Thrower=$t P3_Outer=$o" }
     Complete-Test -Pass -Detail "handler with object-model cleanup: P3_Thrower=$t P3_Outer=$o"
 }
-catch { Complete-Test -Fail -Detail ("exception: " + $_.Exception.Message) }
+catch { Complete-Test -Fail -Detail ("exception: " + ($_.Exception.Message -replace '\s+', ' ') +
+                              $(if ($_.ScriptStackTrace) { "  at " + ($_.ScriptStackTrace -replace '\s+', ' ') } else { '' })) }

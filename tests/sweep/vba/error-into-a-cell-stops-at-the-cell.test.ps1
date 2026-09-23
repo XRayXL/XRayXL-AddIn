@@ -191,5 +191,6 @@ try {
     Complete-Test -Pass -Detail 'an unhandled error reads unhandled and stops at the cell; a returned error is returned; disarm is not a throw'
 }
 catch {
-    Complete-Test -Fail -Detail ("exception: " + $_.Exception.Message)
+    Complete-Test -Fail -Detail ("exception: " + ($_.Exception.Message -replace '\s+', ' ') +
+                              $(if ($_.ScriptStackTrace) { "  at " + ($_.ScriptStackTrace -replace '\s+', ' ') } else { '' }))
 }

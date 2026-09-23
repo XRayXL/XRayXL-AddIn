@@ -164,5 +164,6 @@ try {
     Complete-Test -Pass -Detail "form + timer captured: form code, timer handler, VBA UDF (+helper) and XLL UDF all in one trace"
 }
 catch {
-    Complete-Test -Fail -Detail ("exception: " + $_.Exception.Message)
+    Complete-Test -Fail -Detail ("exception: " + ($_.Exception.Message -replace '\s+', ' ') +
+                              $(if ($_.ScriptStackTrace) { "  at " + ($_.ScriptStackTrace -replace '\s+', ' ') } else { '' }))
 }

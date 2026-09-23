@@ -42,5 +42,6 @@ try {
     Complete-Test -Pass -Detail 'a fault holding the arm gate left VBA free to arm and disarm'
 }
 catch {
-    Complete-Test -Fail -Detail ("exception: " + $_.Exception.Message)
+    Complete-Test -Fail -Detail ("exception: " + ($_.Exception.Message -replace '\s+', ' ') +
+                              $(if ($_.ScriptStackTrace) { "  at " + ($_.ScriptStackTrace -replace '\s+', ' ') } else { '' }))
 }

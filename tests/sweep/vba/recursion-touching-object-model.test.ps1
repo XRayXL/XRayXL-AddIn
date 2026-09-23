@@ -72,4 +72,5 @@ try {
     if ($checkFails) { Complete-Test -Fail -Detail "$checkFails case(s) failed (recEx=$($recEx.Count) depth=$maxDepth)" }
     Complete-Test -Pass -Detail "recursion touching the object model: $($recEx.Count) levels, depth $maxDepth, all returned"
 }
-catch { Complete-Test -Fail -Detail ("exception: " + $_.Exception.Message) }
+catch { Complete-Test -Fail -Detail ("exception: " + ($_.Exception.Message -replace '\s+', ' ') +
+                              $(if ($_.ScriptStackTrace) { "  at " + ($_.ScriptStackTrace -replace '\s+', ' ') } else { '' })) }

@@ -63,4 +63,5 @@ try {
     if ($checkFails) { Complete-Test -Fail -Detail "$checkFails case(s) failed -- outcome='$outcome'" }
     Complete-Test -Pass -Detail "same-frame Resume Next of a real error reads '$outcome' -- correct: the error never left its frame, so there is no chain to report"
 }
-catch { Complete-Test -Fail -Detail ("exception: " + $_.Exception.Message) }
+catch { Complete-Test -Fail -Detail ("exception: " + ($_.Exception.Message -replace '\s+', ' ') +
+                              $(if ($_.ScriptStackTrace) { "  at " + ($_.ScriptStackTrace -replace '\s+', ' ') } else { '' })) }

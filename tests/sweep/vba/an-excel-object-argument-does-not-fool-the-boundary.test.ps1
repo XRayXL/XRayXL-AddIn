@@ -81,5 +81,6 @@ try {
     Complete-Test -Pass -Detail 'an Excel object argument did not fool the boundary; the error chain held'
 }
 catch {
-    Complete-Test -Fail -Detail ("exception: " + $_.Exception.Message)
+    Complete-Test -Fail -Detail ("exception: " + ($_.Exception.Message -replace '\s+', ' ') +
+                              $(if ($_.ScriptStackTrace) { "  at " + ($_.ScriptStackTrace -replace '\s+', ' ') } else { '' }))
 }

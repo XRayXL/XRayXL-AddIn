@@ -499,5 +499,6 @@ try {
     Complete-Test -Pass -Detail ("{0} declared types, ByVal and ByRef, all agreeing" -f $grid.Count)
 }
 catch {
-    Complete-Test -Fail -Detail ("exception: " + $_.Exception.Message)
+    Complete-Test -Fail -Detail ("exception: " + ($_.Exception.Message -replace '\s+', ' ') +
+                              $(if ($_.ScriptStackTrace) { "  at " + ($_.ScriptStackTrace -replace '\s+', ' ') } else { '' }))
 }

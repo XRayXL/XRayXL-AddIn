@@ -70,7 +70,8 @@ try {
     Complete-Test -Pass -Detail 'left untouched while gone, traced again when it returned'
 }
 catch {
-    Complete-Test -Fail -Detail ("exception: " + $_.Exception.Message)
+    Complete-Test -Fail -Detail ("exception: " + ($_.Exception.Message -replace '\s+', ' ') +
+                              $(if ($_.ScriptStackTrace) { "  at " + ($_.ScriptStackTrace -replace '\s+', ' ') } else { '' }))
 }
 finally {
     if ($copy) { Remove-Item $copy -Force -ErrorAction SilentlyContinue }

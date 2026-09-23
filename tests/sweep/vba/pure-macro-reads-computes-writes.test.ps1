@@ -149,5 +149,6 @@ try {
     Complete-Test -Pass -Detail "pure macro traced end to end: $($entries.Count) entries / $($exits.Count) exits, D1='$written'"
 }
 catch {
-    Complete-Test -Fail -Detail ("exception: " + $_.Exception.Message)
+    Complete-Test -Fail -Detail ("exception: " + ($_.Exception.Message -replace '\s+', ' ') +
+                              $(if ($_.ScriptStackTrace) { "  at " + ($_.ScriptStackTrace -replace '\s+', ' ') } else { '' }))
 }

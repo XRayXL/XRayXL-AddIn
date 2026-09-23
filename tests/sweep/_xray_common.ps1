@@ -470,7 +470,9 @@ function Invoke-XRayArmedSession {
         [array]$Settings = @(),
         [scriptblock]$Body = $null,
         [string]$Leaf = '',
-        [string]$ArmWait = 'armed \d+ of|nothing armed|could not'
+        # 'XLL tracing: OFF' is the last line an arm writes when the XLL side is off; without
+        # it the wait has nothing to match and times out.
+        [string]$ArmWait = 'armed \d+ of|nothing armed|could not|XLL tracing: OFF'
     )
     foreach ($xrSetting in $Settings) { [void](Set-XRayTraceParam $Sx $xrSetting[0] $xrSetting[1] $xrSetting[2]) }
     $xrLog = (Get-XRayPaths $Sx.ProcId).Log

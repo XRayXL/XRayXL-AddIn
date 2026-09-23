@@ -64,5 +64,6 @@ try {
     Complete-Test -Pass -Detail "TimerMac depth 1 parent 0; doEventsChains=$($t.doEventsChains)"
 }
 catch {
-    Complete-Test -Fail -Detail ("exception: " + $_.Exception.Message)
+    Complete-Test -Fail -Detail ("exception: " + ($_.Exception.Message -replace '\s+', ' ') +
+                              $(if ($_.ScriptStackTrace) { "  at " + ($_.ScriptStackTrace -replace '\s+', ' ') } else { '' }))
 }

@@ -62,5 +62,6 @@ End Function
     Complete-Test -Pass -Detail "TxB=23 untraced, T_Plain traced ($($rows.Count) rows, 0 xll)"
 }
 catch {
-    Complete-Test -Fail -Detail ("exception: " + $_.Exception.Message)
+    Complete-Test -Fail -Detail ("exception: " + ($_.Exception.Message -replace '\s+', ' ') +
+                              $(if ($_.ScriptStackTrace) { "  at " + ($_.ScriptStackTrace -replace '\s+', ' ') } else { '' }))
 }

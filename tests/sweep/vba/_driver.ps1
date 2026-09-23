@@ -131,6 +131,7 @@ function Invoke-VbaCase($Case) {
             $t.statements, $t.procedures, $t.maxDepth, $t.framesOpened, $t.framesClosed, $t.exits, $t.faults, $raised)
     }
     catch {
-        Complete-Test -Fail -Detail ("exception: " + $_.Exception.Message)
+        Complete-Test -Fail -Detail ("exception: " + ($_.Exception.Message -replace '\s+', ' ') +
+                              $(if ($_.ScriptStackTrace) { "  at " + ($_.ScriptStackTrace -replace '\s+', ' ') } else { '' }))
     }
 }

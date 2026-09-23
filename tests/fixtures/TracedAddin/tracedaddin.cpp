@@ -479,13 +479,19 @@ extern "C" __declspec(dllexport) int __stdcall TxRegisterNoResult()
 {
     XLOPER12 xDLL; ZeroMemory(&xDLL, sizeof(xDLL));
     Excel12(xlGetName, &xDLL, 0);
+    // A fresh Excel name each call, returned so the caller knows it: registering the same
+    // one twice in a session would find it already there and the late path would not run.
+    static int calls = 0;
+    ++calls;
+    wchar_t excelName[32];
+    swprintf_s(excelName, L"TxLateNoResult%d", calls);
     PascalStr proc; proc.Set(L"TxLateNoResult");
     PascalStr type; type.Set(L"QB");
-    PascalStr func; func.Set(L"TxLateNoResult");
+    PascalStr func; func.Set(excelName);
     const int rc = Excel12(xlfRegister, nullptr, 4, &xDLL, &proc.oper, &type.oper, &func.oper);
     Log("register TxLateNoResult with no result rc", rc);
     Excel12(xlFree, nullptr, 1, &xDLL);
-    return 1;
+    return calls;
 }
 
 // TxTwoShapes again, under a WIDER type text: five arguments where arming saw two.
@@ -493,6 +499,8 @@ extern "C" __declspec(dllexport) int __stdcall TxRegisterReshape()
 {
     XLOPER12 xDLL; ZeroMemory(&xDLL, sizeof(xDLL));
     Excel12(xlGetName, &xDLL, 0);
+    // A unique name per call would not make this repeatable: the test needs TxTwoShapes still
+    // bound NARROW at arm, and one reshape leaves it wide for the life of the process.
     Register(xDLL, L"TxTwoShapes", L"QBBBBB", L"TxShapeWide");
     Excel12(xlFree, nullptr, 1, &xDLL);
     return 1;
@@ -524,13 +532,19 @@ extern "C" __declspec(dllexport) int __stdcall TxRegisterLongName()
     wcscat_s(name, L"Tail");
     PascalStr proc; proc.Set(name);
     PascalStr type; type.Set(L"QB");
-    PascalStr func; func.Set(L"TxLongNamed");
+    // A fresh Excel name each call, returned to the caller: registering one twice in a session
+    // would find it already there and the watch would never see the cut procedure name.
+    static int calls = 0;
+    ++calls;
+    wchar_t excelName[32];
+    swprintf_s(excelName, L"TxLongNamed%d", calls);
+    PascalStr func; func.Set(excelName);
     XLOPER12 res; ZeroMemory(&res, sizeof(res));
     const int rc = Excel12(xlfRegister, &res, 4, &xDLL, &proc.oper, &type.oper, &func.oper);
     Log("register TxLongNamed rc", rc);
     Excel12(xlFree, nullptr, 1, &res);
     Excel12(xlFree, nullptr, 1, &xDLL);
-    return 1;
+    return calls;
 }
 
 // Calls the 127-character export directly, so a detour wrongly placed on it shows in the trace.

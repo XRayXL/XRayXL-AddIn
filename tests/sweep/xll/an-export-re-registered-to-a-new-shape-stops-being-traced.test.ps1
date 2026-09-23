@@ -14,7 +14,8 @@ try {
     $app = $sx.App
     [void](Set-XRayTraceParam $sx 'VBA' 'DEPTH' 'OFF')
 
-    # Re-registered by an earlier run in this Excel, the arm plans the wide shape and nothing changes.
+    # Re-registered by an earlier run in this Excel, the arm plans the wide shape and nothing
+    # changes. A unique name per run does not help: the premise is the NARROW binding at arm.
     if (@($app.Evaluate('TxShapeWide(1,2,3,4,5)'))[0] -is [double]) {
         Complete-Test -Skip -Detail 'TxTwoShapes was re-registered before this arm, so the reshape cannot happen'
     }
@@ -55,5 +56,6 @@ try {
     Complete-Test -Pass -Detail "traced as QBB, dropped on reshape, call still returned $after"
 }
 catch {
-    Complete-Test -Fail -Detail ("exception: " + $_.Exception.Message)
+    Complete-Test -Fail -Detail ("exception: " + ($_.Exception.Message -replace '\s+', ' ') +
+                              $(if ($_.ScriptStackTrace) { "  at " + ($_.ScriptStackTrace -replace '\s+', ' ') } else { '' }))
 }

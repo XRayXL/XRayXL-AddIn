@@ -271,5 +271,6 @@ try {
     Complete-Test -Pass -Detail "tracer reproduced Application.Caller in every case; nested Change was $(if ($inner.Vba -eq $outer.Vba) { 'inherited' } else { 'reset' })"
 }
 catch {
-    Complete-Test -Fail -Detail ("exception: " + $_.Exception.Message)
+    Complete-Test -Fail -Detail ("exception: " + ($_.Exception.Message -replace '\s+', ' ') +
+                              $(if ($_.ScriptStackTrace) { "  at " + ($_.ScriptStackTrace -replace '\s+', ' ') } else { '' }))
 }

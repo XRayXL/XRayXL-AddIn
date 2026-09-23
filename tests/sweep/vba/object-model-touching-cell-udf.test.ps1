@@ -79,4 +79,5 @@ try {
     if ($checkFails) { Complete-Test -Fail -Detail "$checkFails case(s) failed" }
     Complete-Test -Pass -Detail "object-model-touching cell UDF traced clean: P6_Udf (+helper), caller=cell, all returned"
 }
-catch { Complete-Test -Fail -Detail ("exception: " + $_.Exception.Message) }
+catch { Complete-Test -Fail -Detail ("exception: " + ($_.Exception.Message -replace '\s+', ' ') +
+                              $(if ($_.ScriptStackTrace) { "  at " + ($_.ScriptStackTrace -replace '\s+', ' ') } else { '' })) }

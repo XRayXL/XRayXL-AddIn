@@ -72,5 +72,6 @@ try {
     Complete-Test -Pass -Detail 'TOP emits the outermost XLL call only; inner calls dropped from the trace but still counted'
 }
 catch {
-    Complete-Test -Fail -Detail ("exception: " + $_.Exception.Message)
+    Complete-Test -Fail -Detail ("exception: " + ($_.Exception.Message -replace '\s+', ' ') +
+                              $(if ($_.ScriptStackTrace) { "  at " + ($_.ScriptStackTrace -replace '\s+', ' ') } else { '' }))
 }

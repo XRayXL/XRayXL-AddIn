@@ -13,10 +13,8 @@ try {
     $app = $sx.App
     [void](Set-XRayTraceParam $sx 'VBA' 'DEPTH' 'OFF')
 
-    # Registered by an earlier run in this Excel, it is hooked at arm and the late path never runs.
-    if (@($app.Evaluate('TxLateNoResult(3)'))[0] -is [double]) {
-        Complete-Test -Skip -Detail 'TxLateNoResult was registered before this arm, so the late path cannot run'
-    }
+    # TxRegisterNoResult picks a fresh Excel name every call and returns which one, so a
+    # reused session cannot find it already registered and skip the late path.
 
     $mark = Get-LogLength $paths.Log
     [void](Invoke-XRayCommand $sx 'XRayXL_Arm')
@@ -26,28 +24,30 @@ try {
     if ($watchLine -notmatch 'installed on MdCallBack12') { Complete-Test -Fail -Detail "watch: $watchLine" }
 
     $mark2 = Get-LogLength $paths.Log
-    $app.Run('TxRegisterNoResult') | Out-Null
+    $which = [int]$app.Run('TxRegisterNoResult')
+    $lateName = "TxLateNoResult$which"
     $lateLine = Wait-LogLine $paths.Log 'late arm:' $mark2 20
     Write-XRayObservation 'late-arm' "$lateLine"
 
     $ws = $app.ActiveSheet
-    $ws.Cells.Item(1, 1).Formula = '=TxLateNoResult(3)'
+    $ws.Cells.Item(1, 1).Formula = "=$lateName(3)"
     Invoke-XRayRecalc $app
     $value = Get-XRayCellText $ws.Cells.Item(1, 1)
     $lossy = Stop-XRayTrace $sx
     if ($lossy) { Complete-Test -Fail -Detail $lossy }
 
-    $rows = @(Read-TraceFile (Get-XRayTraceCsv $sx.ProcId) | Where-Object { $_.function -eq 'TxLateNoResult' })
+    $rows = @(Read-TraceFile (Get-XRayTraceCsv $sx.ProcId) | Where-Object { $_.function -eq $lateName })
 
     Check 'excel-accepted-the-registration' ($value -eq '21') "A1='$value'"
     Check 'the-late-arm-hooked-it' ($lateLine -match 'late arm:.*hooked [1-9]') "$lateLine"
     Check 'the-late-arm-did-not-call-it-refused' ($lateLine -notmatch 'refused') "$lateLine"
-    Check 'the-function-was-traced' ($rows.Count -ge 2) "rows naming TxLateNoResult: $($rows.Count)"
+    Check 'the-function-was-traced' ($rows.Count -ge 2) "rows naming $lateName`: $($rows.Count)"
 
     $checkFails = Get-XRayCheckFailures
     if ($checkFails) { Complete-Test -Fail -Detail "$checkFails case(s) failed" }
     Complete-Test -Pass -Detail "traced $($rows.Count) row(s) of a function registered with no result"
 }
 catch {
-    Complete-Test -Fail -Detail ("exception: " + $_.Exception.Message)
+    Complete-Test -Fail -Detail ("exception: " + ($_.Exception.Message -replace '\s+', ' ') +
+                              $(if ($_.ScriptStackTrace) { "  at " + ($_.ScriptStackTrace -replace '\s+', ' ') } else { '' }))
 }

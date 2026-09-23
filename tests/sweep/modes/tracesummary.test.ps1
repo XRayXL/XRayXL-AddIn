@@ -114,5 +114,6 @@ End Function
     Complete-Test -Pass -Detail 'both sources listed with live counts, wildcard filter, empty case loud, 4 columns'
 }
 catch {
-    Complete-Test -Fail -Detail ("exception: " + $_.Exception.Message)
+    Complete-Test -Fail -Detail ("exception: " + ($_.Exception.Message -replace '\s+', ' ') +
+                              $(if ($_.ScriptStackTrace) { "  at " + ($_.ScriptStackTrace -replace '\s+', ' ') } else { '' }))
 }

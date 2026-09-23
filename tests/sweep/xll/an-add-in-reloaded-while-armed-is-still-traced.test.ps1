@@ -65,7 +65,8 @@ try {
     Complete-Test -Pass -Detail 'unloaded for real, loaded again, and traced'
 }
 catch {
-    Complete-Test -Fail -Detail ("exception: " + $_.Exception.Message)
+    Complete-Test -Fail -Detail ("exception: " + ($_.Exception.Message -replace '\s+', ' ') +
+                              $(if ($_.ScriptStackTrace) { "  at " + ($_.ScriptStackTrace -replace '\s+', ' ') } else { '' }))
 }
 finally {
     if ($copy) { Remove-Item $copy -Force -ErrorAction SilentlyContinue }

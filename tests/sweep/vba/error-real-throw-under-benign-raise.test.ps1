@@ -68,4 +68,5 @@ try {
     if ($checkFails) { Complete-Test -Fail -Detail "$checkFails case(s) failed -- P1_Thrower=$t P1_Mid=$m P1_Outer=$o" }
     Complete-Test -Pass -Detail "real throw beneath a benign raise: P1_Thrower=$t P1_Mid=$m P1_Outer=$o"
 }
-catch { Complete-Test -Fail -Detail ("exception: " + $_.Exception.Message) }
+catch { Complete-Test -Fail -Detail ("exception: " + ($_.Exception.Message -replace '\s+', ' ') +
+                              $(if ($_.ScriptStackTrace) { "  at " + ($_.ScriptStackTrace -replace '\s+', ' ') } else { '' })) }

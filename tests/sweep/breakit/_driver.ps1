@@ -127,6 +127,7 @@ function Invoke-FuzzCase($Case) {
         Complete-Test -Pass -Detail ("survived ({0}): {1} (cell='{2}', {3} trace rows)" -f $how, $c.W, $now, $rows.Count)
     }
     catch {
-        Complete-Test -Fail -Detail ("exception: " + $_.Exception.Message)
+        Complete-Test -Fail -Detail ("exception: " + ($_.Exception.Message -replace '\s+', ' ') +
+                              $(if ($_.ScriptStackTrace) { "  at " + ($_.ScriptStackTrace -replace '\s+', ' ') } else { '' }))
     }
 }

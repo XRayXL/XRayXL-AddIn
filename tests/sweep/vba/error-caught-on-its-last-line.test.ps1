@@ -82,5 +82,6 @@ try {
     Complete-Test -Pass -Detail "Boom=$boom Catch=$catch Top=$top CatchAtTop=$atTop errEscaped=$escaped"
 }
 catch {
-    Complete-Test -Fail -Detail ("exception: " + $_.Exception.Message)
+    Complete-Test -Fail -Detail ("exception: " + ($_.Exception.Message -replace '\s+', ' ') +
+                              $(if ($_.ScriptStackTrace) { "  at " + ($_.ScriptStackTrace -replace '\s+', ' ') } else { '' }))
 }

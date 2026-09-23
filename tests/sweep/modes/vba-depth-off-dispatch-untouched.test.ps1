@@ -58,5 +58,6 @@ End Function
     Complete-Test -Pass -Detail "TxB traced, T_Quiet untraced ($($rows.Count) rows, 0 vba)"
 }
 catch {
-    Complete-Test -Fail -Detail ("exception: " + $_.Exception.Message)
+    Complete-Test -Fail -Detail ("exception: " + ($_.Exception.Message -replace '\s+', ' ') +
+                              $(if ($_.ScriptStackTrace) { "  at " + ($_.ScriptStackTrace -replace '\s+', ' ') } else { '' }))
 }

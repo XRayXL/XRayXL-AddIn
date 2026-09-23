@@ -97,4 +97,5 @@ try {
     if ($checkFails) { Complete-Test -Fail -Detail "$checkFails case(s) failed (calcN=$calcN helpN=$helpN)" }
     Complete-Test -Pass -Detail "Worksheet_Calculate with an object-model write traced clean: fired $calcN, helper $helpN, all returned"
 }
-catch { Complete-Test -Fail -Detail ("exception: " + $_.Exception.Message) }
+catch { Complete-Test -Fail -Detail ("exception: " + ($_.Exception.Message -replace '\s+', ' ') +
+                              $(if ($_.ScriptStackTrace) { "  at " + ($_.ScriptStackTrace -replace '\s+', ' ') } else { '' })) }

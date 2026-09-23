@@ -67,7 +67,8 @@ try {
 }
 catch {
     # Without this an exception ends the script with no verdict, which the manager reports as ERROR.
-    Complete-Test -Fail -Detail ("exception: " + $_.Exception.Message)
+    Complete-Test -Fail -Detail ("exception: " + ($_.Exception.Message -replace '\s+', ' ') +
+                              $(if ($_.ScriptStackTrace) { "  at " + ($_.ScriptStackTrace -replace '\s+', ' ') } else { '' }))
 }
 finally {
     # The XLL stays loaded, so the delete usually fails -- that is expected and

@@ -110,5 +110,6 @@ try {
     Complete-Test -Pass -Detail ("a user-triggered event and an OnTime macro both read threw, not unhandled; $dlgNew dialog(s) dismissed")
 }
 catch {
-    Complete-Test -Fail -Detail ("exception: " + $_.Exception.Message)
+    Complete-Test -Fail -Detail ("exception: " + ($_.Exception.Message -replace '\s+', ' ') +
+                              $(if ($_.ScriptStackTrace) { "  at " + ($_.ScriptStackTrace -replace '\s+', ' ') } else { '' }))
 }

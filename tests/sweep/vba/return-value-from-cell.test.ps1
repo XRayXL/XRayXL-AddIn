@@ -434,5 +434,6 @@ End Function
     Complete-Test -Pass -Detail 'scalars, booleans, strings, Variants, Variant arrays of Variants, nested arrays, objects in every position, depth 2 and 3 and Subs all as measured'
 }
 catch {
-    Complete-Test -Fail -Detail ("exception: " + $_.Exception.Message)
+    Complete-Test -Fail -Detail ("exception: " + ($_.Exception.Message -replace '\s+', ' ') +
+                              $(if ($_.ScriptStackTrace) { "  at " + ($_.ScriptStackTrace -replace '\s+', ' ') } else { '' }))
 }

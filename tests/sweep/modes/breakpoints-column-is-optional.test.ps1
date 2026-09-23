@@ -70,5 +70,6 @@ End Function
     Complete-Test -Pass -Detail 'BREAKPOINTS is VBA only and off by default; on, it adds breaks with 0 on VBA exits'
 }
 catch {
-    Complete-Test -Fail -Detail ("exception: " + $_.Exception.Message)
+    Complete-Test -Fail -Detail ("exception: " + ($_.Exception.Message -replace '\s+', ' ') +
+                              $(if ($_.ScriptStackTrace) { "  at " + ($_.ScriptStackTrace -replace '\s+', ' ') } else { '' }))
 }

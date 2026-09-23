@@ -101,5 +101,6 @@ try {
     Complete-Test -Pass -Detail "$kCycles re-arms, then $($entries.Count) entry / $($exits.Count) exit, every span paired"
 }
 catch {
-    Complete-Test -Fail -Detail ("exception: " + $_.Exception.Message)
+    Complete-Test -Fail -Detail ("exception: " + ($_.Exception.Message -replace '\s+', ' ') +
+                              $(if ($_.ScriptStackTrace) { "  at " + ($_.ScriptStackTrace -replace '\s+', ' ') } else { '' }))
 }

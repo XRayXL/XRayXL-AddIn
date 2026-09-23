@@ -70,5 +70,6 @@ try {
     Complete-Test -Pass -Detail "counts reset at arm: 3 rebuilds gave $first, a fresh arm gave nothing, then 1 rebuild gave $second"
 }
 catch {
-    Complete-Test -Fail -Detail ("exception: " + $_.Exception.Message)
+    Complete-Test -Fail -Detail ("exception: " + ($_.Exception.Message -replace '\s+', ' ') +
+                              $(if ($_.ScriptStackTrace) { "  at " + ($_.ScriptStackTrace -replace '\s+', ' ') } else { '' }))
 }

@@ -116,5 +116,6 @@ try {
     Complete-Test -Pass -Detail ("Application.Run and a sheet event propagate as VBA, neither a cell escape; $dlgNew dialog(s) dismissed")
 }
 catch {
-    Complete-Test -Fail -Detail ("exception: " + $_.Exception.Message)
+    Complete-Test -Fail -Detail ("exception: " + ($_.Exception.Message -replace '\s+', ' ') +
+                              $(if ($_.ScriptStackTrace) { "  at " + ($_.ScriptStackTrace -replace '\s+', ' ') } else { '' }))
 }

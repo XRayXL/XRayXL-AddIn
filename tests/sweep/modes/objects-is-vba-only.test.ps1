@@ -51,5 +51,6 @@ try {
     Complete-Test -Pass -Detail 'OBJECTS is VBA only; refusals say #Err - and words are case-insensitive'
 }
 catch {
-    Complete-Test -Fail -Detail ("exception: " + $_.Exception.Message)
+    Complete-Test -Fail -Detail ("exception: " + ($_.Exception.Message -replace '\s+', ' ') +
+                              $(if ($_.ScriptStackTrace) { "  at " + ($_.ScriptStackTrace -replace '\s+', ' ') } else { '' }))
 }

@@ -271,6 +271,7 @@ function Invoke-XllSoak {
     }
     catch {
         try { $app.Calculation = -4105 } catch {}
-        Complete-Test -Fail -Detail ("exception: " + $_.Exception.Message)
+        Complete-Test -Fail -Detail ("exception: " + ($_.Exception.Message -replace '\s+', ' ') +
+                              $(if ($_.ScriptStackTrace) { "  at " + ($_.ScriptStackTrace -replace '\s+', ' ') } else { '' }))
     }
 }
