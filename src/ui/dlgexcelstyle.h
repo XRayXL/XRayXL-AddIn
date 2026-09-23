@@ -36,8 +36,12 @@ namespace excelstyle
     // ---- the brushes and fonts every control paints with --------------------------------
 
     // At WM_INITDIALOG and WM_DESTROY. Begin is idempotent within one dialog.
-    void Begin();
+    void Begin(HWND dlg);
     void End();
+
+    // This state is one per process, so only one XRayXL dialog may be open. True, with that
+    // dialog brought to the front, if one already is.
+    bool ShowOpenDialog();
 
     HBRUSH PageBrush();
     HBRUSH PaneBrush();

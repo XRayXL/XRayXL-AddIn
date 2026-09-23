@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <vector>
 
 namespace ui
 {
@@ -183,8 +184,36 @@ namespace
 
 // ---- brushes and fonts -----------------------------------------------------------------
 
-void Begin()
+namespace
 {
+    HWND g_openDialog = nullptr;
+
+    // Modal to the whole of Excel, as MB_TASKMODAL is: DialogBox disables only the owner, and
+    // every workbook window is a top-level window on this thread. Only these are re-enabled.
+    std::vector<HWND> g_disabled;
+
+    BOOL CALLBACK DisableOther(HWND h, LPARAM dlg)
+    {
+        if (h != reinterpret_cast<HWND>(dlg) && IsWindowVisible(h) && IsWindowEnabled(h))
+        {
+            EnableWindow(h, FALSE);
+            g_disabled.push_back(h);
+        }
+        return TRUE;
+    }
+}
+
+bool ShowOpenDialog()
+{
+    if (!g_openDialog || !IsWindow(g_openDialog)) return false;
+    SetForegroundWindow(g_openDialog);
+    return true;
+}
+
+void Begin(HWND dlg)
+{
+    g_openDialog = dlg;
+    EnumThreadWindows(GetCurrentThreadId(), DisableOther, reinterpret_cast<LPARAM>(dlg));
     g_hotItem = -1;
     g_hotCtl = nullptr;
     g_dropping = false;
@@ -195,6 +224,9 @@ void Begin()
 
 void End()
 {
+    g_openDialog = nullptr;
+    for (HWND h : g_disabled) if (IsWindow(h)) EnableWindow(h, TRUE);
+    g_disabled.clear();
     for (HBRUSH* b : { &g_white, &g_pane, &g_hot }) if (*b) { DeleteObject(*b); *b = nullptr; }
     for (HFONT* f : { &g_edit, &g_editSoft })       if (*f) { DeleteObject(*f); *f = nullptr; }
     g_editMenu = nullptr;

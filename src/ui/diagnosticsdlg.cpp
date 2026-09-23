@@ -272,7 +272,7 @@ namespace
         {
             g_page = 0;
             ReadEverything();
-            excelstyle::Begin();
+            excelstyle::Begin(dlg);
             InitControls(dlg);
             excelstyle::WhiteCaption(dlg);
 
@@ -429,6 +429,13 @@ bool Show(void* ownerHwnd)
     // The ribbon is the only caller and it hands over its own window; a null owner leaves the
     // dialog unowned, which is what the tests open it as.
     HWND owner = static_cast<HWND>(ownerHwnd);
+
+    // pressed on another workbook window's ribbon while a dialog is up
+    if (excelstyle::ShowOpenDialog())
+    {
+        core::Log::Note("diagnostics: an XRayXL dialog is already open; brought it to the front");
+        return false;
+    }
 
     if (!ui::text::Ready())
     {
