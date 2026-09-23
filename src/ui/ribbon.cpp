@@ -133,6 +133,30 @@ bool PutIntProp(IDispatch* obj, const wchar_t* name, int value)
     return PutVariantProp(obj, name, v);
 }
 
+// Arming goes through Application.Run, not in process: xlfGetDef needs the macro context a
+// registered command has and a ribbon callback does not, or names fall back to the export.
+bool RunCommand(const wchar_t* command)
+{
+    std::ostringstream om;
+    IDispatch* app = core::excelom::AcquireApplication(om);
+    if (!app) return false;
+    DISPID id = 0;
+    OLECHAR  nm[] = L"Run";
+    OLECHAR* n = nm;
+    bool ok = false;
+    if (SUCCEEDED(app->GetIDsOfNames(IID_NULL, &n, 1, LOCALE_USER_DEFAULT, &id)))
+    {
+        VARIANT arg; VariantInit(&arg);
+        arg.vt = VT_BSTR; arg.bstrVal = SysAllocString(command);
+        DISPPARAMS dp{ &arg, nullptr, 1, 0 };
+        ok = SUCCEEDED(app->Invoke(id, IID_NULL, LOCALE_USER_DEFAULT,
+                                   DISPATCH_METHOD, &dp, nullptr, nullptr, nullptr));
+        VariantClear(&arg);
+    }
+    app->Release();
+    return ok;
+}
+
 bool InvokeNoArgs(IDispatch* obj, const wchar_t* name)
 {
     if (!obj) return false;
@@ -498,7 +522,12 @@ private:
         case DISPID_ONARM:
         {
             core::Log::Note("ribbon: Arm pressed");
-            if (!app::IsArmed()) ArmNoUnwind();
+            if (!app::IsArmed() && !RunCommand(L"XRayXL_Arm"))
+            {
+                core::Log::Warning("ribbon: Application.Run(\"XRayXL_Arm\") failed; arming in place,"
+                                   " which leaves registered names unresolved");
+                ArmNoUnwind();
+            }
             // arming can legitimately hook nothing, and then nothing on the ribbon changes
             const bool armed = app::IsArmed();
             if (!armed)
@@ -528,7 +557,7 @@ private:
 
         case DISPID_ONDISARM:
             core::Log::Note("ribbon: Disarm pressed");
-            if (app::IsArmed()) app::Disarm();
+            if (app::IsArmed() && !RunCommand(L"XRayXL_Disarm")) app::Disarm();
             InvalidateNow();
             return S_OK;
 

@@ -45,7 +45,12 @@ function Invoke-XllCase($Case) {
         }
         $e = $entries[0]
         if ($e.function -ne $c.Fn) {
-            Complete-Test -Fail -Detail "A1 attributed to '$($e.function)', expected '$($c.Fn)'"
+            # A name that fell back to the export means xlfGetDef was refused, which happens
+            # when arming had no macro context. Say so rather than leaving it to be guessed.
+            $res = (Select-String -Path (Get-XRayPaths $sx.ProcId).Log -Pattern 'name resolution' `
+                    -ErrorAction SilentlyContinue | Select-Object -Last 1).Line
+            $why = if ($res -match 'over (\d+) calls, 0 resolved') { "  -- 0 of $($Matches[1]) names resolved" } else { '' }
+            Complete-Test -Fail -Detail "A1 attributed to '$($e.function)', expected '$($c.Fn)'$why"
         }
         $x = @($rows | Where-Object { ($_.kind -eq 'exit' -and $_.source -eq 'XLL') -and $_.span -eq $e.span })
         if ($x.Count -ne 1) {
