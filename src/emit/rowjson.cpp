@@ -31,7 +31,8 @@ namespace json
             { "callerref", r.callerref, Kind::Text    }, { "argcount", r.argcount, Kind::Integer },
             { "args",      r.args,      Kind::Json    }, { "ret",      r.ret,      Kind::Json    },
             { "rettype",   r.rettype,   Kind::Text    }, { "outcome",  r.outcome,  Kind::Text    },
-            { "ticks",     r.ticks,     Kind::Integer }, { "trust",    r.trust,    Kind::Text    },
+            { "ticks",     r.ticks,     Kind::Integer }, { "tracerticks", r.tracerticks, Kind::Integer },
+            { "trust",     r.trust,     Kind::Text    },
             { "breaks",    r.breaks,    Kind::Integer },
         };
         bool first = true;

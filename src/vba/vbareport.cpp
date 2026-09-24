@@ -23,10 +23,9 @@ namespace vba
           << " transitions=" << t.transitions
           << " procedures=" << t.procedures
           << " maxDepth=" << t.maxDepth
-          << " deepestSeen=" << t.deepestSeen
           << " recursions=" << t.recursions
           << " faults=" << t.faults
-          << " overflows=" << t.overflows
+          << " stackGrowFailures=" << t.stackGrowFailures
           << " tableFull=" << t.tableFull
           << " unmatchedExits=" << t.unmatchedExits
           << " exitClosed=" << t.exitClosed
@@ -93,11 +92,8 @@ namespace vba
               << t.callerUnavailable << " activation(s)";
         if (t.callerFaults)
             o << " WARNING: asking who called faulted " << t.callerFaults << " time(s)";
-        // A capped run must not read like a complete one.
-        if (t.overflows)
-            o << " WARNING: the shadow stack (" << kMaxDepth << " frames) ran out; "
-              << t.overflows << " activation(s) have no rows, and VBA reached at"
-                 " least depth " << t.deepestSeen;
+        if (t.stackGrowFailures)
+            o << " WARNING: a frame stack could not grow, so VBA tracing stood down";
         // A silently degraded boundary reads exactly like one that was never wrong.
         if (t.ipUnavailable)
             o << " WARNING: the p-code activation boundary could not be evaluated"

@@ -9,6 +9,8 @@
 #include "app/settings.h"
 #include "core/text.h"
 #include "emit/csv.h"
+#include "vba/vbatrace.h"
+#include "xll/xlltrace.h"
 #include "ui/ribbon.h"
 
 #include <windows.h>
@@ -210,7 +212,12 @@ extern "C" void __stdcall xlAutoFree12(LPXLOPER12) {}
 BOOL APIENTRY DllMain(HMODULE, DWORD reason, LPVOID lpReserved)
 {
     // A thread that ends normally gives back its row scratch; never at process exit, below.
-    if (reason == DLL_THREAD_DETACH) emit::csv::ReleaseThreadScratch();
+    if (reason == DLL_THREAD_DETACH)
+    {
+        emit::csv::ReleaseThreadScratch();
+        vba::ReleaseThreadState();
+        xll::ReleaseThreadState();
+    }
     if (reason == DLL_PROCESS_DETACH)
     {
         // Non-null lpReserved means the process is exiting: the other threads were terminated

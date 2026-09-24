@@ -171,8 +171,6 @@ never counted as a case, so it cannot pass or fail.
     it BEFORE arming and after disarm and uses the difference, so the tally covers
     the same window as the trace and adds no rows to it;
     `Test-TracedCallsMatchCounters` then requires a row per counted call.
-  - **`DepthCappedUnder`** -- the index of the deepest recorded call, for a
-    recursion past the shadow stack: exactly one `depth-capped` row must name it.
 - **Assert the row invariants on every row** (`Test-RowInvariants`): every entry
   has its exit, one of each per span, ticks equal to the exit's qpc less the
   entry's, a same-source parent one level up, and a function named. Also assert

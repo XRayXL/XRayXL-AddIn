@@ -29,12 +29,7 @@ namespace vba
         std::uint64_t transitions = 0;  // times the running procedure changed
         std::uint64_t procedures = 0;   // distinct trailers seen
         std::uint64_t recursions = 0;   // pushes onto a stack already holding that trailer
-        // Capped by the shadow stack; `deepestSeen` is the depth VBA reached.
         std::uint32_t maxDepth = 0;
-
-        // A lower bound, counting activations past the cap: one unwind abandoning several capped
-        // activations decrements by one, so it is reported as ">=".
-        std::uint32_t deepestSeen = 0;
         std::uint64_t faults = 0;       // guarded reads that faulted
 
         // The tracer itself faulting inside a VBA thread, unlike `faults`; trips the breaker.
@@ -47,7 +42,7 @@ namespace vba
 
         // The ABI shared with the assembly has broken; counted apart from "no frame base".
         std::uint64_t regReadFailures = 0;
-        std::uint64_t overflows = 0;    // pushes past the shadow stack's capacity
+        std::uint64_t stackGrowFailures = 0;   // the frame stack could not grow; trips the breaker
         std::uint64_t tableFull = 0;    // procedures we could not record
         std::uint64_t unmatchedExits = 0; // exit with nothing on our stack
 
@@ -156,6 +151,9 @@ namespace vba
     // Only the calling thread's frames are reachable; other threads' stay visible as unmatched
     // entries rather than being invented.
     void   FlushOpenFrames();
+
+    // At thread exit: frees the thread's frame stack.
+    void   ReleaseThreadState();
 
     Totals ReadTotals();
 

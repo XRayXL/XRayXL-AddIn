@@ -52,51 +52,52 @@ function called from four cells, in the order Excel calculated them:
 `VbaOuter` also calls the XLL function itself, through `Application.Run`.
 
 ```text
-seq  input  kind   source  span  parent  depth  thread  qpc            module                         function  proc           typetext  caller  callerref                          argcount  args         ret  rettype  outcome   ticks  trust
-1    1      entry  VBA     1     0       1      43652   3461532742964  [OneTimeline_39248.xlsm]Probe  VbaOuter  0x291330F7408  Double    cell    [OneTimeline_39248.xlsm]Sheet1!A3  1         a1:Double=3
-2    2      entry  XLL     2     0       1      43652   3461532745498  TracedAddin64.xll              TxE       TxE            E         cell    [OneTimeline_39248.xlsm]Sheet1!A3  1         a1:E=3
-3    3      exit   XLL     2     0       1      43652   3461532745611  TracedAddin64.xll              TxE       TxE                                                                                        3    Q        returned  113    exit
-4    4      exit   VBA     1     0       1      43652   3461532745730  [OneTimeline_39248.xlsm]Probe  VbaOuter  0x291330F7408                                                                              4    Double   returned  2766   exit
-5    5      entry  XLL     3     0       1      43652   3461532746066  TracedAddin64.xll              TxE       TxE            E         cell    [OneTimeline_39248.xlsm]Sheet1!A4  1         a1:E=4.5
-6    6      exit   XLL     3     0       1      43652   3461532746182  TracedAddin64.xll              TxE       TxE                                                                                        4.5  Q        returned  116    exit
-7    7      entry  VBA     4     0       1      43652   3461532746473  [OneTimeline_39248.xlsm]Probe  VbaPlain  0x290A38EFB18  Double    cell    [OneTimeline_39248.xlsm]Sheet1!A2  1         a1:Double=2
-8    8      exit   VBA     4     0       1      43652   3461532746654  [OneTimeline_39248.xlsm]Probe  VbaPlain  0x290A38EFB18                                                                              6    Double   returned  181    exit
-9    9      entry  XLL     5     0       1      43652   3461532746910  TracedAddin64.xll              TxE       TxE            E         cell    [OneTimeline_39248.xlsm]Sheet1!A1  1         a1:E=1.5
-10   10     exit   XLL     5     0       1      43652   3461532747069  TracedAddin64.xll              TxE       TxE                                                                                        1.5  Q        returned  159    exit
+seq  input  kind   source  span  parent  depth  thread  qpc            module                        function  proc           typetext  caller  callerref                         argcount  args         ret  rettype  outcome   ticks  tracerticks  trust
+1    1      entry  VBA     1     0       1      35720   8328812397734  [OneTimeline_8276.xlsm]Probe  VbaOuter  0x1B043D88988  Double    cell    [OneTimeline_8276.xlsm]Sheet1!A3  1         a1:Double=3
+2    2      entry  XLL     2     0       1      35720   8328812401312  TracedAddin64.xll             TxE       TxE            E         cell    [OneTimeline_8276.xlsm]Sheet1!A3  1         a1:E=3
+3    3      exit   XLL     2     0       1      35720   8328812401584  TracedAddin64.xll             TxE       TxE                                                                                       3    Q        returned  272    267          exit
+4    4      exit   VBA     1     0       1      35720   8328812401830  [OneTimeline_8276.xlsm]Probe  VbaOuter  0x1B043D88988                                                                             4    Double   returned  4096   1151         exit
+5    5      entry  XLL     3     0       1      35720   8328812402445  TracedAddin64.xll             TxE       TxE            E         cell    [OneTimeline_8276.xlsm]Sheet1!A4  1         a1:E=4.5
+6    6      exit   XLL     3     0       1      35720   8328812402661  TracedAddin64.xll             TxE       TxE                                                                                       4.5  Q        returned  216    213          exit
+7    7      entry  VBA     4     0       1      35720   8328812403216  [OneTimeline_8276.xlsm]Probe  VbaPlain  0x1B043D4F208  Double    cell    [OneTimeline_8276.xlsm]Sheet1!A2  1         a1:Double=2
+8    8      exit   VBA     4     0       1      35720   8328812403626  [OneTimeline_8276.xlsm]Probe  VbaPlain  0x1B043D4F208                                                                             6    Double   returned  410    399          exit
+9    9      entry  XLL     5     0       1      35720   8328812403977  TracedAddin64.xll             TxE       TxE            E         cell    [OneTimeline_8276.xlsm]Sheet1!A1  1         a1:E=1.5
+10   10     exit   XLL     5     0       1      35720   8328812404144  TracedAddin64.xll             TxE       TxE                                                                                       1.5  Q        returned  167    165          exit
 ```
 
 <details>
 <summary>Show the raw file</summary>
 
 ```csv
-seq,input,kind,source,span,parent,depth,thread,qpc,module,function,proc,typetext,caller,callerref,argcount,args,ret,rettype,outcome,ticks,trust
-1,1,entry,VBA,1,0,1,43652,3461532742964,[OneTimeline_39248.xlsm]Probe,VbaOuter,0x291330F7408,Double,cell,[OneTimeline_39248.xlsm]Sheet1!A3,1,a1:Double=3,,,,,
-2,2,entry,XLL,2,0,1,43652,3461532745498,TracedAddin64.xll,TxE,TxE,E,cell,[OneTimeline_39248.xlsm]Sheet1!A3,1,a1:E=3,,,,,
-3,3,exit,XLL,2,0,1,43652,3461532745611,TracedAddin64.xll,TxE,TxE,,,,,,3,Q,returned,113,exit
-4,4,exit,VBA,1,0,1,43652,3461532745730,[OneTimeline_39248.xlsm]Probe,VbaOuter,0x291330F7408,,,,,,4,Double,returned,2766,exit
-5,5,entry,XLL,3,0,1,43652,3461532746066,TracedAddin64.xll,TxE,TxE,E,cell,[OneTimeline_39248.xlsm]Sheet1!A4,1,a1:E=4.5,,,,,
-6,6,exit,XLL,3,0,1,43652,3461532746182,TracedAddin64.xll,TxE,TxE,,,,,,4.5,Q,returned,116,exit
-7,7,entry,VBA,4,0,1,43652,3461532746473,[OneTimeline_39248.xlsm]Probe,VbaPlain,0x290A38EFB18,Double,cell,[OneTimeline_39248.xlsm]Sheet1!A2,1,a1:Double=2,,,,,
-8,8,exit,VBA,4,0,1,43652,3461532746654,[OneTimeline_39248.xlsm]Probe,VbaPlain,0x290A38EFB18,,,,,,6,Double,returned,181,exit
-9,9,entry,XLL,5,0,1,43652,3461532746910,TracedAddin64.xll,TxE,TxE,E,cell,[OneTimeline_39248.xlsm]Sheet1!A1,1,a1:E=1.5,,,,,
-10,10,exit,XLL,5,0,1,43652,3461532747069,TracedAddin64.xll,TxE,TxE,,,,,,1.5,Q,returned,159,exit
+seq,input,kind,source,span,parent,depth,thread,qpc,module,function,proc,typetext,caller,callerref,argcount,args,ret,rettype,outcome,ticks,tracerticks,trust
+1,1,entry,VBA,1,0,1,35720,8328812397734,[OneTimeline_8276.xlsm]Probe,VbaOuter,0x1B043D88988,Double,cell,[OneTimeline_8276.xlsm]Sheet1!A3,1,a1:Double=3,,,,,,
+2,2,entry,XLL,2,0,1,35720,8328812401312,TracedAddin64.xll,TxE,TxE,E,cell,[OneTimeline_8276.xlsm]Sheet1!A3,1,a1:E=3,,,,,,
+3,3,exit,XLL,2,0,1,35720,8328812401584,TracedAddin64.xll,TxE,TxE,,,,,,3,Q,returned,272,267,exit
+4,4,exit,VBA,1,0,1,35720,8328812401830,[OneTimeline_8276.xlsm]Probe,VbaOuter,0x1B043D88988,,,,,,4,Double,returned,4096,1151,exit
+5,5,entry,XLL,3,0,1,35720,8328812402445,TracedAddin64.xll,TxE,TxE,E,cell,[OneTimeline_8276.xlsm]Sheet1!A4,1,a1:E=4.5,,,,,,
+6,6,exit,XLL,3,0,1,35720,8328812402661,TracedAddin64.xll,TxE,TxE,,,,,,4.5,Q,returned,216,213,exit
+7,7,entry,VBA,4,0,1,35720,8328812403216,[OneTimeline_8276.xlsm]Probe,VbaPlain,0x1B043D4F208,Double,cell,[OneTimeline_8276.xlsm]Sheet1!A2,1,a1:Double=2,,,,,,
+8,8,exit,VBA,4,0,1,35720,8328812403626,[OneTimeline_8276.xlsm]Probe,VbaPlain,0x1B043D4F208,,,,,,6,Double,returned,410,399,exit
+9,9,entry,XLL,5,0,1,35720,8328812403977,TracedAddin64.xll,TxE,TxE,E,cell,[OneTimeline_8276.xlsm]Sheet1!A1,1,a1:E=1.5,,,,,,
+10,10,exit,XLL,5,0,1,35720,8328812404144,TracedAddin64.xll,TxE,TxE,,,,,,1.5,Q,returned,167,165,exit
 ```
 
 </details>
 
-Read row 1 as: *the VBA function `VbaOuter`, in module `Probe` of `OneTimeline_39248.xlsm`,
-called from `[OneTimeline_39248.xlsm]Sheet1!A3`, declared `Double`, given
+Read row 1 as: *the VBA function `VbaOuter`, in module `Probe` of `OneTimeline_8276.xlsm`,
+called from `[OneTimeline_8276.xlsm]Sheet1!A3`, declared `Double`, given
 `3`.* The `caller` column says what **kind** of thing called it and
 `callerref` describes which one — the same address Excel's own
 `Range.Address(,,,True)` gives, so you can paste it straight back into a formula.
 
 Rows 2 and 3 are the add-in call `VbaOuter` made: *`TxE`, exported by
 `TracedAddin64.xll`, registered with argument code `E`, given `3`,
-returned `3` in 113 ticks.* It still names `A3` as its caller, because
+returned `3` in 272 ticks.* It still names `A3` as its caller, because
 Excel reports the cell that started the chain. Each source counts its own
 `depth`, so the add-in call reads `depth` 1 and `parent` 0; its place inside
 `VbaOuter` shows in the order of the rows, between that function's entry and exit.
-Row 4 closes `VbaOuter`: *returned `4`, a `Double`, after 2766 ticks.*
+Row 4 closes `VbaOuter`: *returned `4`, a `Double`, after 4096 ticks, 1151 of them the
+tracer's own* (`tracerticks`), so the function itself took 2945.
 
 The other rows are the same shapes on their own: `VbaPlain` from `A2`
 returning `6`, and `TxE` called directly from `A4` and `A1`.

@@ -7,7 +7,6 @@
 // The tracer's counters as the report sees them, formatted at disarm after the hooks drain.
 namespace vba
 {
-    constexpr int kMaxDepth = 256;      // deeper than any sane VBA stack
 
     // Lock-free (key, subkey) -> count. Full is silent: a diagnostic that could stall a VBA
     // statement is worse than one that stops counting.

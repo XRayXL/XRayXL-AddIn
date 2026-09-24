@@ -11,6 +11,7 @@
 #include "xlcall.h"
 #include "core/clock.h"
 #include "core/valueformat.h"
+#include "core/tlsstack.h"
 
 #include <cstdio>
 
@@ -44,6 +45,8 @@ namespace xll
         // exception unwound past the thunk without an exit.
         volatile LONG64 g_recorderFaults = 0;
         volatile LONG64 g_framesResynced = 0;
+        // Calls not recorded because the frame stack could not grow.
+        volatile LONG64 g_stackGrowFailures = 0;
 
         // Per-thread state. TLS only: multithreaded calculation puts several threads inside one
         // hooked function at once.
@@ -51,6 +54,7 @@ namespace xll
         {
             unsigned long long span = 0;
             long long          startQpc = 0;
+            unsigned long long tracerAtEntry = 0;   // core::TracerTicks() when the entry was stamped
             bool               recorded = false;   // did its entry get written?
             ULONG_PTR          sp = 0;             // the thunk frame, for resynchronising
         };
@@ -59,8 +63,10 @@ namespace xll
         {
             int    depth = 0;                 // call nesting on this thread
             bool   inside = false;            // we are inside our own recorder
-            static const int kMaxDepth = 64;
-            Frame  frames[kMaxDepth];
+            core::TlsStack<Frame, 64> frames = {};
+            // Once growing fails the stack stays that size, so every deeper call is skipped alike
+            // and no exit reads a slot its entry never wrote.
+            bool   growFailed = false;
         };
         __declspec(thread) ThreadState t_state;
 
@@ -142,13 +148,13 @@ namespace xll
         }
 
         void WriteExit(Target* t, const Regs& r, unsigned long long span, unsigned long long parent,
-                       int depth, long long qpc, long long startQpc)
+                       int depth, long long qpc, long long startQpc, unsigned long long tracer)
         {
             const Stamp st(span, qpc);
             char parentb[24], depthb[16];
             _snprintf_s(parentb, _TRUNCATE, "%llu", parent);
             _snprintf_s(depthb, _TRUNCATE, "%d", depth);
-            char durbuf[32];
+            char durbuf[32], tracerb[24] = {};
 
             // An async function has not produced its answer yet, so the span measures only the
             // dispatch. `ticks` is left empty and `trust` says `async`.
@@ -157,6 +163,7 @@ namespace xll
             else
             {
                 _snprintf_s(durbuf, _TRUNCATE, "%lld", qpc - startQpc);
+                _snprintf_s(tracerb, _TRUNCATE, "%llu", tracer);
                 // The detour fires on the return path, so this row proves the call came back,
                 // as VBA's exit opcode does.
                 trustText = "exit";
@@ -185,7 +192,7 @@ namespace xll
             row.rettype = wantRet ? t->plan.returnText : "";
             // Only the return path writes this row, so `returned` is always true.
             row.outcome = "returned";
-            row.ticks = durbuf;  row.trust = trustText;
+            row.ticks = durbuf;  row.tracerticks = tracerb;  row.trust = trustText;
             emit::csv::WriteRow(row);
         }
     }
@@ -204,21 +211,28 @@ namespace xll
         const ULONG_PTR sp = reinterpret_cast<ULONG_PTR>(regs);
         while (t_state.depth > 0)
         {
-            // Frames past the table were never recorded; they are stale if the deepest recorded one is.
-            const int top = t_state.depth > ThreadState::kMaxDepth ? ThreadState::kMaxDepth : t_state.depth;
-            if (t_state.frames[top - 1].sp > sp) break;
+            // Frames past the stack were never recorded; they are stale if the deepest recorded one is.
+            const int top = t_state.depth > t_state.frames.capacity ? t_state.frames.capacity : t_state.depth;
+            if (top == 0 || t_state.frames[top - 1].sp > sp) break;
             t_state.depth = top - 1;
             InterlockedIncrement64(&g_framesResynced);
         }
 
         const int d = t_state.depth;
         t_state.depth++;
-        if (d >= ThreadState::kMaxDepth) return;
+        if (d >= t_state.frames.capacity && (t_state.growFailed || !t_state.frames.Reserve(d)))
+        {
+            t_state.growFailed = true;
+            InterlockedIncrement64(&g_stackGrowFailures);
+            return;
+        }
 
-        Frame& f = t_state.frames[d];
-        f.recorded = false;
-        f.span = 0;          // a frame that is not recorded must never lend a stale span as a parent
-        f.sp = sp;
+        {
+            Frame& f = t_state.frames[d];
+            f.recorded = false;
+            f.span = 0;      // a frame that is not recorded must never lend a stale span as a parent
+            f.sp = sp;
+        }
 
         // Reentrancy: our own decoding calls back into Excel, which can reach
         // a hooked function. Without this the first traced call recurses.
@@ -234,11 +248,16 @@ namespace xll
             // cannot leave a dangling exit.
             if (d == 0 || InterlockedCompareExchange(&g_topOnly, 0, 0) == 0)
             {
-                f.span = emit::csv::NextSpan();
-                f.startQpc = Qpc();
-                // depth counts this thread's XLL frames; parent is the frame below, 0 at the top.
-                WriteEntry(t, *r, f.span, d ? t_state.frames[d - 1].span : 0, d + 1, f.startQpc);
-                f.recorded = true;
+                const unsigned long long span = emit::csv::NextSpan();
+                const long long startQpc = Qpc();
+                t_state.frames[d].span = span;
+                t_state.frames[d].startQpc = startQpc;
+                t_state.frames[d].tracerAtEntry = core::TracerTicks();
+                // Indexed afresh after WriteEntry: a call it makes into Excel can push a frame
+                // and move the stack.
+                WriteEntry(t, *r, span, d ? t_state.frames[d - 1].span : 0, d + 1, startQpc);
+                t_state.frames[d].recorded = true;
+                core::TracerTicks() += Qpc() - startQpc;
             }
         }
         __except (EXCEPTION_EXECUTE_HANDLER)
@@ -256,9 +275,9 @@ namespace xll
         if (t_state.depth <= 0) return;          // never seen an entry: refuse
         t_state.depth--;
         const int d = t_state.depth;
-        if (d >= ThreadState::kMaxDepth) return;
+        if (d >= t_state.frames.capacity) return;        // its entry could not grow the stack
 
-        Frame& f = t_state.frames[d];
+        const Frame f = t_state.frames[d];
 
         // A filtered entry must not leave an exit that invents a span. An entry the ring later
         // drops was emitted, so its exit is still written; `input` locates the loss.
@@ -269,17 +288,22 @@ namespace xll
         t_state.inside = true;
         __try
         {
-            WriteExit(t, *r, f.span, d ? t_state.frames[d - 1].span : 0, d + 1, Qpc(), f.startQpc);
+            const long long exitQpc = Qpc();
+            WriteExit(t, *r, f.span, d ? t_state.frames[d - 1].span : 0, d + 1, exitQpc, f.startQpc,
+                      core::TracerTicks() - f.tracerAtEntry);
+            core::TracerTicks() += Qpc() - exitQpc;
         }
         __except (EXCEPTION_EXECUTE_HANDLER)
         {
             InterlockedIncrement64(&g_recorderFaults);
         }
         t_state.inside = false;
-        f.recorded = false;
+        t_state.frames[d].recorded = false;
     }
 
     long long ExitsDropped() { return InterlockedCompareExchange64(&g_exitsDropped, 0, 0); }
     long long RecorderFaults() { return InterlockedCompareExchange64(&g_recorderFaults, 0, 0); }
     long long FramesResynced() { return InterlockedCompareExchange64(&g_framesResynced, 0, 0); }
+    long long StackGrowFailures() { return InterlockedCompareExchange64(&g_stackGrowFailures, 0, 0); }
+    void ReleaseThreadState() { t_state.frames.Release(); }
 }

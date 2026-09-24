@@ -484,6 +484,8 @@ namespace xll
 
         if (const long long f = RecorderFaults())
             core::Log::Warning("disarm -- " + std::to_string(f) + " XLL row(s) lost to faults while decoding");
+        if (const long long g = StackGrowFailures())
+            core::Log::Warning("disarm -- " + std::to_string(g) + " XLL call(s) not recorded: a thread's frame stack could not grow");
         if (const long long r = FramesResynced())
             core::Log::Note("disarm -- " + std::to_string(r) + " XLL frame(s) closed after an exception unwound past them");
 

@@ -41,4 +41,8 @@ namespace xll
     long long ExitsDropped();
     long long RecorderFaults();
     long long FramesResynced();
+    // Calls not recorded because a thread's frame stack could not grow.
+    long long StackGrowFailures();
+    // At thread exit: frees the thread's frame stack.
+    void      ReleaseThreadState();
 }

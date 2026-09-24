@@ -20,7 +20,7 @@ namespace csv
     // synchronously from the frame that built its text.
     struct Row
     {
-        const char* kind     = "";      // entry | exit | depth-capped
+        const char* kind     = "";      // entry | exit
         const char* source   = "";      // XLL | VBA
         const char* span     = "";
         // Where this activation sat in the call chain: on every row, never empty, each source
@@ -48,6 +48,8 @@ namespace csv
         // ended the measurement, not a verdict on it: `exit` and `end` are readings, `backstop`
         // and `flush` are upper bounds (docs/TraceRowModel.md).
         const char* ticks    = "";      // QPC ticks; empty when none exists
+        // Exit rows only: how many of `ticks` the tracer itself spent inside the activation.
+        const char* tracerticks = "";
         const char* trust    = "";      // exit | end | backstop | flush | async
         // VBA exit rows only, and only in a file opened with the column: how often the call
         // stopped at a breakpoint in the editor.

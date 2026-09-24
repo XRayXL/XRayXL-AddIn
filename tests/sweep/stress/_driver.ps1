@@ -270,15 +270,6 @@ function Invoke-StressCase($Case) {
         }
         # Calls, when the case knows them: every VBA call in the trace, in order, and no others.
         if ($c.ContainsKey('Calls')) { $callerProbs += Test-ExpectedTrace $rows $c.Calls 'VBA' -AnyOrder:([bool]$c.CallsAnyOrder) }
-        # The one depth-capped marker a run past the shadow stack writes, when the case expects it.
-        if ($c.ContainsKey('DepthCappedUnder')) {
-            $marks = @($rows | Where-Object { $_.kind -eq 'depth-capped' })
-            $under = @($rows | Where-Object { $_.kind -eq 'entry' -and $_.source -eq 'VBA' })[[int]$c.DepthCappedUnder]
-            if ($marks.Count -ne 1) { $callerProbs += "depth-capped rows: $($marks.Count), expected 1" }
-            elseif (-not $under -or [string]$marks[0].parent -ne [string]$under.span) {
-                $callerProbs += "the depth-capped row names parent $($marks[0].parent), expected the deepest recorded call's span $(if ($under) { $under.span })"
-            }
-        }
         $expectFirst = $c.Trigger.FirstCaller
         if (-not $expectFirst) {
             $expectFirst = switch ($c.Trigger.Kind) {

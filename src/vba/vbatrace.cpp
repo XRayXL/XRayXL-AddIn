@@ -15,6 +15,7 @@
 #include "core/hash.h"
 #include "core/safemem.h"
 #include "core/valueformat.h"
+#include "core/tlsstack.h"
 
 #include <windows.h>
 #include <cstring>
@@ -75,6 +76,7 @@ namespace vba
         {
             std::uint64_t trailer;
             std::uint64_t startTicks;
+            std::uint64_t tracerAtEntry;   // core::TracerTicks() when the entry was stamped
             std::uint64_t stmtsAtEntry;
             std::uint64_t sp;            // interpreter rsp when this frame was seen
             std::uint64_t span;          // pairs this frame's entry and exit rows
@@ -114,13 +116,11 @@ namespace vba
         // starts at 0 and g_generation at 1, so State() initialises the block on first use.
         struct ThreadState
         {
-            Frame  stack[kMaxDepth];
+            core::TlsStack<Frame, 256> stack;
             int    depth;
             std::uint64_t current;      // trailer of the running procedure
             std::uint64_t currentSp;    // and the rsp we last saw it at
             std::uint64_t statements;   // this thread's statement count
-            // Activations with no room on the shadow stack; depth + overflowDepth is the real depth.
-            int    overflowDepth;
             std::uint32_t generation;   // which arming session this belongs to
 
             // An error in flight, set when the thrower closes. A frame predating the throw that
@@ -151,11 +151,7 @@ namespace vba
         // when it sees a stale generation.
         volatile LONG g_generation = 1;
 
-        // One depth-capped row per arming session.
-        volatile LONG g_cappedNoted = 0;
-
-        // Rows for depth-1 frames only. The totals still count every frame, and the
-        // depth-capped row is never filtered: a truncation must not be hidden by a mode.
+        // Rows for depth-1 frames only. The totals still count every frame.
         volatile LONG g_topLevelOnly = 0;
         // Argument capture follows pointers and walks bytecode, the largest fault surface, so it
         // can be turned off; a disabled decode is counted, never silently blank.
@@ -212,7 +208,7 @@ namespace vba
             // The only part that touches a file; with it closed the hooks and totals still
             // run, which rules the emitter in or out of a crash.
             if (!emit::csv::IsOpen()) return;
-            char spanb[24], tidb[16], qpcb[24], trailerb[32], ticksb[24];
+            char spanb[24], tidb[16], qpcb[24], trailerb[32], ticksb[24], tracerb[24] = {};
             char parentb[24], depthb[16];
             _snprintf_s(spanb, _TRUNCATE, "%llu",
                         static_cast<unsigned long long>(f.span));
@@ -235,6 +231,9 @@ namespace vba
                 _snprintf_s(ticksb, _TRUNCATE, "%llu",
                             static_cast<unsigned long long>(durationTicks));
                 trustText = (closedBy && closedBy[0]) ? closedBy : "backstop";
+                // Read at the exit's stamp: this hook's own time is added only when it returns.
+                _snprintf_s(tracerb, _TRUNCATE, "%llu",
+                            static_cast<unsigned long long>(core::TracerTicks() - f.tracerAtEntry));
             }
             else
                 ticksb[0] = 0;
@@ -277,7 +276,7 @@ namespace vba
             // Exit row only: an entry row is written before the activation has an outcome.
             row.outcome = (std::strcmp(kind, "exit") == 0) ? OutcomeName(f.outcome) : "";
             row.ret = retText;  row.rettype = retType;
-            row.ticks = ticksb;  row.trust = trustText;
+            row.ticks = ticksb;  row.tracerticks = tracerb;  row.trust = trustText;
             // The breakpoint count belongs with the duration it explains, so the exit row alone.
             char breaksb[16] = {};
             if (emit::csv::HasBreaksColumn() && std::strcmp(kind, "exit") == 0)
@@ -378,7 +377,6 @@ namespace vba
             if (s->generation != gen)
             {
                 s->depth = 0; s->current = 0; s->currentSp = 0; s->statements = 0;
-                s->overflowDepth = 0;
                 s->errActive = false;
                 s->errSpan = 0;
                 s->doEventsMarks = 0;
@@ -712,6 +710,7 @@ namespace vba
         void OnBreakpointBody(std::uint64_t dispatchSp, std::uint64_t savedRegs);
         void OnStopBody(std::uint64_t dispatchSp, std::uint64_t savedRegs);
         void OnExitBody(std::uint64_t dispatchSp, std::uint64_t savedRegs);
+        void CloseAtExit(std::uint64_t dispatchSp, std::uint64_t savedRegs, std::uint64_t now);
         void OnEndBody();
     }
 
@@ -813,16 +812,11 @@ namespace vba
             Bump(g_totals.sameTrailerShallower);
     }
 
-    // The stack grows down, so a frame whose stack was released has a smaller sp. Past the cap
-    // only a shallower rsp shows an end, which undercounts a multi-level unwind; hence
-    // `deepestSeen` is a floor.
+    // The stack grows down, so a frame whose stack was released has a smaller sp.
     void CloseFramesThatReturned(ThreadState* s, std::uint64_t dispatchSp, std::uint64_t now)
     {
         while (s->depth > 0 && s->stack[s->depth - 1].sp < dispatchSp)
             CloseFrame(s, now);
-
-        if (s->overflowDepth > 0 && s->currentSp != 0 && dispatchSp > s->currentSp)
-            --s->overflowDepth;
     }
 
     // A VBA call keeps its caller's cell, so a cell that differs from the frame beneath's is a
@@ -916,26 +910,12 @@ namespace vba
             CloseFrame(s, now);
         }
 
-        if (s->depth >= kMaxDepth)
+        // A frame that cannot be pushed would leave every later exit mismatched, so the tracer
+        // stands down rather than trace a partial tree.
+        if (!s->stack.Reserve(s->depth))
         {
-            Bump(g_totals.overflows);
-
-            // No frame, but the depth is still counted, or the totals report the cap for a
-            // deeper recursion.
-            ++s->overflowDepth;
-            RaiseMax32(&g_totals.deepestSeen,
-                       static_cast<std::uint32_t>(s->depth + s->overflowDepth));
-
-            // In the trace too: there a call tree stopping at the cap looks exactly like a
-            // recursion that ended there.
-            if (InterlockedCompareExchange(&g_cappedNoted, 1, 0) == 0)
-            {
-                Frame m{};
-                m.trailer = trailer;
-                m.span    = 0;
-                m.parent  = (s->depth > 0) ? s->stack[s->depth - 1].span : 0;
-                EmitRow("depth-capped", m, Now(), 0, s->depth, nullptr);
-            }
+            Bump(g_totals.stackGrowFailures);
+            if (InterlockedExchange(&g_breaker.tripped, 1) == 0) g_totals.tripped = true;
             return;
         }
 
@@ -954,6 +934,7 @@ namespace vba
         Frame& f = s->stack[s->depth++];
         f.trailer      = trailer;
         f.startTicks   = now;
+        f.tracerAtEntry = core::TracerTicks();
         // -1 because the statement that opened this frame is already counted; otherwise the
         // callee's first statement is billed to its caller.
         f.stmtsAtEntry = s->statements - 1;
@@ -1061,6 +1042,7 @@ namespace vba
 
         s->current   = trailer;
         s->currentSp = dispatchSp;
+        core::TracerTicks() += Now() - now;
     }
 
     // A breakpointed statement is a statement first: it opens or continues its frame exactly as
@@ -1091,6 +1073,14 @@ namespace vba
     // The exit opcode fires exactly once per activation; rsp stays the backstop, since an error
     // unwind and `End` fire none. Matching both trailer and sp prevents a double close.
     void OnExitBody(std::uint64_t dispatchSp, std::uint64_t savedRegs)
+    {
+        // Stamped first, so the hook's own reads fall outside the activation it ends.
+        const std::uint64_t now = Now();
+        CloseAtExit(dispatchSp, savedRegs, now);
+        core::TracerTicks() += Now() - now;
+    }
+
+    void CloseAtExit(std::uint64_t dispatchSp, std::uint64_t savedRegs, std::uint64_t now)
     {
         Bump(g_totals.exits);
 
@@ -1130,7 +1120,7 @@ namespace vba
             std::int32_t exitOperand = 0;
             if (ExitReturnKind(exitOp) == RetKind::RecordInFrame && !ExitOperand(savedRegs, exitOperand))
                 exitOperand = 0;   // refused downstream
-            CloseFrame(s, Now(), r14, exitOp, exitOperand, "exit");
+            CloseFrame(s, now, r14, exitOp, exitOperand, "exit");
             // Forget the fast-path cache, or the next activation of the same procedure at
             // the same rsp matches it and never opens a frame.
             s->current   = 0;
@@ -1156,7 +1146,6 @@ namespace vba
                 CloseFrame(s, now, 0, 0, 0, "end");
             }
             // Nothing of the dead chain may be matched against the next one.
-            s->overflowDepth = 0;
             s->current = 0; s->currentSp = 0;
             s->errActive = false; s->errSpan = 0;
         }
@@ -1179,6 +1168,8 @@ namespace vba
         ThreadState* s = State();
         if (s->doEventsMarks > 0) --s->doEventsMarks;
     }
+
+    void ReleaseThreadState() { t_state.stack.Release(); }
 
     void FlushOpenFrames()
     {
@@ -1249,8 +1240,6 @@ namespace vba
     {
         g_procs.Reset();
         g_totals = Totals{};
-        // Or a run that capped after an earlier one would emit no marker and read clean.
-        InterlockedExchange(&g_cappedNoted, 0);
         ResetIdentityCounts();
         ResetArgCounts();
         // Or p-code declines, including `Desynced`, accumulate for the life of the process.

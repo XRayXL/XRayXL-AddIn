@@ -47,7 +47,7 @@ check would be vacuous.
 Byte-for-byte, the first line is:
 
 ```
-seq,input,kind,source,span,parent,depth,thread,qpc,module,function,proc,typetext,caller,callerref,argcount,args,ret,rettype,outcome,ticks,trust
+seq,input,kind,source,span,parent,depth,thread,qpc,module,function,proc,typetext,caller,callerref,argcount,args,ret,rettype,outcome,ticks,tracerticks,trust
 ```
 
 Encoding: UTF-8, CRLF line endings, minimal RFC 4180 quoting — a field is
@@ -60,7 +60,7 @@ two value columns at their limit; a row larger than that is dropped whole, and
 its `input` value is a hole.
 
 **One optional column.** With `XRayXL_SetTraceParam "VBA", "BREAKPOINTS", TRUE`
-set when tracing arms (and VBA traced), the header ends `...,ticks,trust,breaks`
+set when tracing arms (and VBA traced), the header ends `...,ticks,tracerticks,trust,breaks`
 instead, and every row of that file has the extra field. Nothing else ever
 changes the header: a reader accepts exactly these two, and refuses any other.
 In JSON Lines the key simply appears on the rows that carry a count.
@@ -76,7 +76,6 @@ wildcard match.
 |---|---|---|
 | `entry` / `exit` | `XLL` | A hooked add-in function activated / returned |
 | `entry` / `exit` | `VBA` | An interpreter frame opened / closed |
-| `depth-capped` | `VBA` | The shadow stack hit its cap: the call tree below this point is *truncated*, not ended. At most one per arming session |
 
 There is **no drop-marker row**: the CSV holds
 only real events. A `BUFFERWHENFULL=DROP` run that lost rows reports the count OUT OF
@@ -92,8 +91,7 @@ value refuses loudly rather than mis-filtering silently.
 
 Which rows *appear* is mode-dependent:
 `XRayXL_SetTraceParam "VBA","DEPTH","TOP"` emits only depth-1 VBA frames
-(`"ALL"` emits every frame; the totals count everything either way, and
-`depth-capped` is never filtered), and `XRayXL_SetTraceParam "XLL","DEPTH","OFF"`
+(`"ALL"` emits every frame; the totals count everything either way), and `XRayXL_SetTraceParam "XLL","DEPTH","OFF"`
 means no XLL rows because nothing was hooked. The row *shapes* above are
 mode-independent.
 
@@ -103,7 +101,7 @@ mode-independent.
 |---|---|---|
 | `seq` | int64 ≥ 1 | Stamped by the **writer** (the drain, or the sync producer under the lock): seq order **is** file order, across both sources. Strictly increasing and **dense** — every written row gets the next number, so a lossy file still reads `1..N` (which is why drops are not visible from `seq`) |
 | `input` | int64 ≥ 1 | Stamped by the **producer** at emit: unique, but **not** contiguous and **not** in file order. A dropped row consumes an `input` value that never lands, so its **holes show where, and how much, data was dropped**. Sort by `qpc` (then `input`) for event order; the holes are the in-file record of loss that replaced the `gap` row |
-| `kind` | enum | `entry`, `exit`, `depth-capped` -- see above |
+| `kind` | enum | `entry`, `exit` -- see above |
 | `source` | enum | `XLL` or `VBA` -- which tracer wrote the row |
 | `span` | uint64 | Pairs an entry with its exit. **One sequence for both sources**, increasing in the order calls started, and unique for the life of the Excel process. It does not restart when tracing is armed again, so a later trace file's spans need not begin at 1 — a call still running across a re-arm can never reuse a number |
 | `parent` | uint64 | **Every row, never empty.** The `span` of the activation of the same source that called this one; `0` at the top of a chain, which is a value and not an absence |
@@ -121,6 +119,7 @@ mode-independent.
 | `ret`, `rettype` | text | **Exit** rows only. XLL: the decoded return value, and in `rettype` the registered return code followed by any registration flags — `Q`, `Q$` (thread-safe), `Q!` (volatile), `Q#` (macro-sheet equivalent), `Q&` (cluster-safe). `ret` is empty for a function registered with no return value (`>`, or a modify-in-place digit) and for an async call, whose answer arrives later. VBA: every **Function** exit at any depth, `rettype` naming the kind the exit opcode declared — `Double` (also Date), `Single`, `Byte`, `Integer` (also Boolean, as −1/0), `Long`, `LongLong`, `Currency`, `String` (quoted), `Object`, `Variant`, `Elem()` for a typed array, or `Udt` for a user-defined `Type`, whose `ret` is its address, `udt@0x…`, as a record argument reads. An array, a Variant and an object read as they do in `args`, by the rules in *Values* — `Long[1..3]{3,6,9}`, `Double[0..1,0..1]{{1234.5,2},{3,4}}`, `Long(777)` for a Variant holding a Long — so one object can be followed from argument to result. **Empty** for a Sub (no result exists) and anything whose descriptor fails validation |
 | `outcome` | text | **Exit rows only, and never empty on one.** How the activation ended, from a closed set: `returned`, `threw`, `unwound`, `handled`, `abandoned`, `unhandled`. An XLL exit row always reads `returned` — see below. Empty on every other row |
 | `ticks` | uint64 | **Exit rows only.** The duration in QPC ticks, spelled the same by both sources. Empty on the one exit that has no duration — an async XLL call, where the span measured the dispatch and the work has not finished |
+| `tracerticks` | uint64 | **Exit rows only, beside `ticks`.** How many of `ticks` the tracer's own hooks spent inside this activation: reading arguments, asking Excel for the calling cell, writing rows, and waiting on a full buffer under `PAUSE`, for this call and every call it made, on both sources. `ticks` minus `tracerticks` is the call's own time. The per-statement VBA check is too small to time and is not included. Empty whenever `ticks` is |
 | `trust` | text | **Exit rows only, and never empty on one.** What ended the measurement, and so whether `ticks` is a reading or a ceiling: `exit`, `end`, `backstop`, `flush`, `async`. `exit` means the same thing on both sources — the return path fired. **`async` is NOT SUPPORTED** — see below |
 | `breaks` | uint32 | **Optional — only in a file traced with `BREAKPOINTS` on.** On every VBA exit row, how many times that activation paused in the VBA editor -- at a breakpoint, or at a `Stop` statement in the code; `0` when it did not. A non-zero count means `ticks` includes time spent in the debugger, not running. Its callers' `ticks` include that time too, though their own count is `0`. Empty on every other row |
 
@@ -299,8 +298,7 @@ than 256 characters is cut there, and ends with `...` after the closing quote.
 
 **`parent` and `depth` — where a call sits in the chain.** Both are columns of
 their own, beside `span`, because `parent` *is* a span: the three call-tree
-fields read together. Both are on every row — entry, exit, and the
-`depth-capped` marker — on both sources.
+fields read together. Both are on every row, entry and exit, on both sources.
 
 - **`depth`** is how far down the call chain this activation was. `depth=1`
   means no other frame of the same source was open on that thread — this call
@@ -344,14 +342,9 @@ one procedure produce three rows with the same `function` and the same `proc`;
 only `parent` says which of them called which.
 
 Going the other way, `parent` alone would turn "how deep did this get" into a
-link-by-link walk of the whole file — and past the depth cap there are no links
-to walk, because activations deeper than the shadow stack emit no rows at all.
-`depth` is a property of the row itself, so it survives both a gap and the cap.
-
-**The one place `depth` is not the truth** is the `depth-capped` marker row,
-where it reads the cap (256) rather than how deep the recursion actually went.
-The real figure is in the disarm totals as `deepestSeen`, reported as a floor
-(`>=`).
+link-by-link walk of the whole file. `depth` is a property of the row itself, so
+it survives a gap. There is no depth limit: each thread's frame stack grows as
+the calls nest.
 
 **`trust` — whether `ticks` is a measurement or an upper bound.** It names
 **what ended the measurement**, not a verdict on it, so the cause survives and

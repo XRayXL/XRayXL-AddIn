@@ -709,7 +709,9 @@ Inside the hook, on the traced thread:
   asks for it.** One-off per-thread setup on first use is permitted: the 64 KB
   argument render buffer (`vba/vbatrace.cpp`) and the row scratch
   (`emit/csv.cpp`), each taken on a thread's first use, reused after, and never
-  freed on a path that might be inside a hook. The settings that do cost a call
+  freed on a path that might be inside a hook. Each tracer's frame stack
+  (`core/tlsstack.h`) is the same, and also doubles when a call nests deeper than
+  it holds, so no depth goes unrecorded; it is freed when its thread ends. The settings that do cost a call
   are stated: the calling cell is resolved on every call (`xlfCaller`, `xlSheetNm`)
   and is not a setting -- the VBA tracer needs it to attribute an error that escapes
   into a cell; `OBJECTS` calls the object model (`Address`, `Count`, `Value2`, `Name`) for an
@@ -803,7 +805,7 @@ question, and trying to make one do so is what stalled this for a long while.
 | Mechanism | Answers | Cost / risk |
 |---|---|---|
 | **Dispatch-table patch** — BoS, its breakpoint form, 25 exit slots and `End` | Which procedure is running; entry and exit edges | Fires per *statement*; patches a process-wide table |
-| **TLS shadow stack** — keyed on the p-code trailer | Call tree, nesting depth, recursion | O(1) per event, no allocation |
+| **TLS shadow stack** — keyed on the p-code trailer | Call tree, nesting depth, recursion | O(1) per event; allocates only to grow deeper |
 | **`xlfCaller`, from inside the hook** | The calling cell | A call into Excel, so taken per activation and never per statement |
 
 ## Why patch the table and not the code

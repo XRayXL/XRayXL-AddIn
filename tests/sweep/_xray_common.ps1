@@ -488,8 +488,7 @@ function ConvertFrom-XRayTotals([string]$Line) {
         statements = [int64]$t['statements']; exits = [int64]$t['exits']
         transitions = [int64]$t['transitions']; procedures = [int64]$t['procedures']
         maxDepth = [int64]$t['maxDepth']; recursions = [int64]$t['recursions']
-        deepestSeen = [int64]$t['deepestSeen']
-        faults = [int64]$t['faults']; overflows = [int64]$t['overflows']
+        faults = [int64]$t['faults']; stackGrowFailures = [int64]$t['stackGrowFailures']
         tableFull = [int64]$t['tableFull']; unmatchedExits = [int64]$t['unmatchedExits']
         named = [int64]$t['named']; unnamed = [int64]$t['unnamed']
         framesClosed = [int64]$t['framesClosed']; framesOpened = [int64]$t['framesOpened']
@@ -506,9 +505,9 @@ function ConvertFrom-XRayTotals([string]$Line) {
 
 # The trace-file contract (docs/TraceRowModel.md). The header is the version, so an old reader
 # meeting a new format refuses loudly rather than mis-filtering silently.
-$script:TraceHeader = 'seq,input,kind,source,span,parent,depth,thread,qpc,module,function,proc,typetext,caller,callerref,argcount,args,ret,rettype,outcome,ticks,trust'
+$script:TraceHeader = 'seq,input,kind,source,span,parent,depth,thread,qpc,module,function,proc,typetext,caller,callerref,argcount,args,ret,rettype,outcome,ticks,tracerticks,trust'
 # kind and source are separate columns so a filter on one need not spell out the other
-$script:TraceKinds   = @('entry', 'exit', 'depth-capped')
+$script:TraceKinds   = @('entry', 'exit')
 $script:TraceSources = @('XLL', 'VBA')
 
 # In .NET because a PowerShell character loop is too slow for traces of millions of rows.
@@ -754,9 +753,17 @@ function Test-RowInvariants($Rows) {
             if ($r.ticks -and $r.trust -eq 'async') {
                 $problems += "seq $($r.seq): trust='async' but ticks='$($r.ticks)' -- the work has not finished"
             }
+            # The tracer's share of a duration: present exactly when ticks is, and never more.
+            if ([bool]$r.ticks -ne [bool]$r.tracerticks) {
+                $problems += "seq $($r.seq): ticks='$($r.ticks)' but tracerticks='$($r.tracerticks)'"
+            }
+            elseif ($r.ticks -and [uint64]$r.tracerticks -gt [uint64]$r.ticks) {
+                $problems += "seq $($r.seq): tracerticks $($r.tracerticks) exceeds ticks $($r.ticks)"
+            }
         }
         else {
             if ($r.ticks) { $problems += "seq $($r.seq): $($r.kind) row carries ticks '$($r.ticks)'" }
+            if ($r.tracerticks) { $problems += "seq $($r.seq): $($r.kind) row carries tracerticks '$($r.tracerticks)'" }
             if ($r.trust) { $problems += "seq $($r.seq): $($r.kind) row carries trust '$($r.trust)'" }
         }
 

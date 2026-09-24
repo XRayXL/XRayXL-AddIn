@@ -204,6 +204,7 @@
     <ClInclude Include="core\valuewriter.h" />
     <ClInclude Include="core\text.h" />
     <ClInclude Include="core\safemem.h" />
+    <ClInclude Include="core\tlsstack.h" />
     <ClInclude Include="core\moduleid.h" />
     <ClInclude Include="app\session.h" />
     <ClInclude Include="app\exports.h" />

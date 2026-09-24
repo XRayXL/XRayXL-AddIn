@@ -3,13 +3,13 @@
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
-$hdr = 'seq,input,kind,source,span,parent,depth,thread,qpc,module,function,proc,typetext,caller,callerref,argcount,args,ret,rettype,outcome,ticks,trust'
+$hdr = 'seq,input,kind,source,span,parent,depth,thread,qpc,module,function,proc,typetext,caller,callerref,argcount,args,ret,rettype,outcome,ticks,tracerticks,trust'
 # `input` has a hole at 3: holes are drops, which the reader must accept while still requiring uniqueness.
 $good = @(
-    '1,1,entry,XLL,74079595921409,,,17248,2759222870812,TracedAddin64.xll,TxB,TxB,"B,B",cell,[XllCase_10020.xlsx]Sheet1!A1,2,a1:B=2 a2:B=3,,,,,'
-    '2,2,exit,XLL,74079595921409,,,17248,2759222871416,TracedAddin64.xll,TxB,TxB,,,,,,23,Q,returned,604,exit'
-    '3,4,entry,VBA,1,0,1,17212,2767391810634,[err-resume-next-1000.xlsm]M,Go,0x25E154EF3E4,,none,ref,0,,,,,,'
-    '4,5,exit,VBA,1,0,1,17212,2767391816836,[err-resume-next-1000.xlsm]M,Go,0x25E154EF3E4,,,,,,,,returned,4541,exit'
+    '1,1,entry,XLL,74079595921409,,,17248,2759222870812,TracedAddin64.xll,TxB,TxB,"B,B",cell,[XllCase_10020.xlsx]Sheet1!A1,2,a1:B=2 a2:B=3,,,,,,'
+    '2,2,exit,XLL,74079595921409,,,17248,2759222871416,TracedAddin64.xll,TxB,TxB,,,,,,23,Q,returned,604,97,exit'
+    '3,4,entry,VBA,1,0,1,17212,2767391810634,[err-resume-next-1000.xlsm]M,Go,0x25E154EF3E4,,none,ref,0,,,,,,,'
+    '4,5,exit,VBA,1,0,1,17212,2767391816836,[err-resume-next-1000.xlsm]M,Go,0x25E154EF3E4,,,,,,,,returned,4541,380,exit'
 )
 
 # No Excel is bound, so there is no $sx.WorkDir, but the files still belong with every test's output.
@@ -83,14 +83,14 @@ Expect-Refusal 'refuses-breaks-on-an-xll-row' 'on a XLL exit row' `
 Expect-Refusal 'refuses-breaks-missing-on-a-vba-exit' 'bad breaks' `
     (New-TraceFile 'breaks-missing.csv' (@("$hdr,breaks") + @(($good[0] + ','), ($good[1] + ','), ($good[2] + ','), ($good[3] + ','))))
 
-Expect-Refusal 'refuses-a-row-without-the-breaks-field' 'has 22 columns, the header names 23' `
+Expect-Refusal 'refuses-a-row-without-the-breaks-field' 'has 23 columns, the header names 24' `
     (New-TraceFile 'breaks-short.csv' (@("$hdr,breaks") + @(($good[0] + ','), ($good[1] + ','), ($good[2] + ','), $good[3])))
 
 Expect-Refusal 'refuses-unknown-kind' 'unknown kind' `
-    (New-TraceFile 'kind.csv' (@($hdr) + $good + @('6,6,entry2,XLL,9,,,17248,2759222880000,X.xll,F,F,Q,,,,,,,,,')))
+    (New-TraceFile 'kind.csv' (@($hdr) + $good + @('6,6,entry2,XLL,9,,,17248,2759222880000,X.xll,F,F,Q,,,,,,,,,,')))
 
 Expect-Refusal 'refuses-unknown-source' 'unknown source' `
-    (New-TraceFile 'source.csv' (@($hdr) + $good + @('6,6,entry,COM,9,,,17248,2759222880000,X.xll,F,F,Q,,,,,,,,,')))
+    (New-TraceFile 'source.csv' (@($hdr) + $good + @('6,6,entry,COM,9,,,17248,2759222880000,X.xll,F,F,Q,,,,,,,,,,')))
 
 Expect-Refusal 'refuses-seq-inversion' 'strictly increasing' `
     (New-TraceFile 'inversion.csv' (@($hdr) + $good[0], $good[2], $good[1]))
@@ -99,7 +99,7 @@ Expect-Refusal 'refuses-duplicate-seq' 'strictly increasing' `
     (New-TraceFile 'dupe.csv' (@($hdr) + $good[0], $good[0]))
 
 Expect-Refusal 'refuses-nonnumeric-qpc' 'non-numeric qpc' `
-    (New-TraceFile 'qpc.csv' (@($hdr) + @('1,1,entry,XLL,9,,,17248,soon,X.xll,F,F,Q,,,,,,,,,')))
+    (New-TraceFile 'qpc.csv' (@($hdr) + @('1,1,entry,XLL,9,,,17248,soon,X.xll,F,F,Q,,,,,,,,,,')))
 
 Expect-Refusal 'refuses-torn-row' 'columns|non-numeric|unknown kind|bad input' `
     (New-TraceFile 'torn.csv' (@($hdr) + $good[0], '2,ex'))
@@ -107,13 +107,13 @@ Expect-Refusal 'refuses-torn-row' 'columns|non-numeric|unknown kind|bad input' `
 # A row short by exactly one column gets through everything else: Import-Csv pads it with nulls, so
 # every later value is off by one and the row looks merely blank.
 Expect-Refusal 'refuses-row-short-by-one' 'columns' `
-    (New-TraceFile 'short.csv' (@($hdr) + ($good[1] -replace ',604,exit$', ',604')))
+    (New-TraceFile 'short.csv' (@($hdr) + ($good[1] -replace ',97,exit$', ',97')))
 
 Expect-Refusal 'refuses-row-long-by-one' 'columns' `
     (New-TraceFile 'long.csv' (@($hdr) + ($good[1] + ',spare')))
 
 Expect-Refusal 'refuses-duplicate-input' 'input .* used twice' `
-    (New-TraceFile 'dupein.csv' (@($hdr) + $good[0] + @('2,1,exit,XLL,9,,,17248,2759222880000,X.xll,F,F,Q,,,,,,,,,')))
+    (New-TraceFile 'dupein.csv' (@($hdr) + $good[0] + @('2,1,exit,XLL,9,,,17248,2759222880000,X.xll,F,F,Q,,,,,,,,,,')))
 
 Expect-Refusal 'refuses-unknown-format' 'no reader' `
     (New-TraceFile 'trace.json' @('{"traceEvents":[]}'))

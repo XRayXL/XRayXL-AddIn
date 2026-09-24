@@ -14,14 +14,14 @@ namespace csv
     // only kind..trust.
     const char* const kHeader =
         "seq,input,kind,source,span,parent,depth,thread,qpc,module,function,proc,typetext,"
-        "caller,callerref,argcount,args,ret,rettype,outcome,ticks,trust\r\n";
+        "caller,callerref,argcount,args,ret,rettype,outcome,ticks,tracerticks,trust\r\n";
     const char* const kHeaderBreaks =
         "seq,input,kind,source,span,parent,depth,thread,qpc,module,function,proc,typetext,"
-        "caller,callerref,argcount,args,ret,rettype,outcome,ticks,trust,breaks\r\n";
+        "caller,callerref,argcount,args,ret,rettype,outcome,ticks,tracerticks,trust,breaks\r\n";
 
     namespace
     {
-        constexpr int kColumns = 21;    // fragment fields, after the seq/input prefixes; the last is optional
+        constexpr int kColumns = 22;    // fragment fields, after the seq/input prefixes; the last is optional
         void InOrder(const Row& r, const char* (&f)[kColumns])
         {
             f[0]  = r.kind;     f[1]  = r.source;   f[2]  = r.span;     f[3]  = r.parent;
@@ -29,7 +29,7 @@ namespace csv
             f[8]  = r.function; f[9]  = r.proc;     f[10] = r.typetext; f[11] = r.caller;
             f[12] = r.callerref; f[13] = r.argcount; f[14] = r.args;    f[15] = r.ret;
             f[16] = r.rettype;  f[17] = r.outcome;  f[18] = r.ticks;
-            f[19] = r.trust;    f[20] = r.breaks;
+            f[19] = r.tracerticks; f[20] = r.trust;  f[21] = r.breaks;
         }
 
         bool NeedsQuote(const char* src)

@@ -269,9 +269,8 @@ handles deliberately, each covered by a test.
 
 - **Recursion.** Handled by identifying a *call* rather than a *procedure*, so a
   function calling itself pushes a new frame each level.
-- **Very deep nesting.** The shadow stack has a fixed size. Past it, calls are
-  counted but not individually recorded, and the trace emits a single marker so a
-  reader knows the tree was capped rather than that it truly ended there.
+- **Very deep nesting.** The shadow stack grows as calls nest, so every level of a
+  deep recursion is recorded.
 - **The `End` statement.** `End` stops all VBA immediately, running no endings at
   all. We intercept it directly and mark every still-open call `abandoned`, because
   they neither returned nor threw.

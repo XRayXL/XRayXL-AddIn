@@ -75,13 +75,13 @@ int main()
         const std::string h = emit::csv::kHeader;
         Check(h.rfind("seq,input,kind,source,", 0) == 0, "header starts seq,input,kind,source");
         Check(h.size() >= 2 && h.substr(h.size() - 2) == "\r\n", "header ends CRLF");
-        // header columns = 2 prefixes + 20 fragment fields = 22
+        // header columns = 2 prefixes + 21 fragment fields = 23
         std::string body = h.substr(0, h.size() - 2);
         int commas = 0; for (char c : body) if (c == ',') ++commas;
-        Check(commas == 21, "header has 22 columns (21 commas)");
+        Check(commas == 22, "header has 23 columns (22 commas)");
     }
 
-    // ---- a plain row: 20 fields, in order, CRLF-terminated --------------------
+    // ---- a plain row: 21 fields, in order, CRLF-terminated --------------------
     {
         Row r;
         r.kind = "entry"; r.source = "XLL"; r.span = "5"; r.thread = "7"; r.qpc = "99";
@@ -89,11 +89,11 @@ int main()
         r.module = "Lib.xll"; r.function = "F"; r.proc = "F"; r.typetext = "QBB";
         r.caller = "cell"; r.callerref = "[B.xlsm]S1!A1"; r.argcount = "2";
         r.args = "1 2"; r.ret = "3"; r.rettype = "Q"; r.outcome = "returned";
-        r.ticks = "604"; r.trust = "exit";
+        r.ticks = "604"; r.tracerticks = "97"; r.trust = "exit";
         const int n = Frag(r); const char* buf = g_buf.data();
         Check(n >= 2 && buf[n - 2] == '\r' && buf[n - 1] == '\n', "fragment ends CRLF");
         auto f = Fields(buf, n);
-        Check(f.size() == 20, "fragment has 20 fields");
+        Check(f.size() == 21, "fragment has 21 fields");
         Check(f[0] == "entry" && f[1] == "XLL" && f[8] == "F" && f[18] == "604",
               "fields land in column order");
         // Pinned by position here and by name in the header check above: a field that slides one
@@ -101,7 +101,7 @@ int main()
         Check(f[3] == "4" && f[4] == "2", "parent and depth are 4 and 5, beside span");
         Check(f[11] == "cell" && f[12] == "[B.xlsm]S1!A1", "caller and callerref are 12 and 13");
         Check(f[17] == "returned", "outcome is column 18, after rettype");
-        Check(f[18] == "604" && f[19] == "exit", "ticks and trust are the last two columns");
+        Check(f[18] == "604" && f[19] == "97" && f[20] == "exit", "ticks, tracerticks and trust are the last three columns");
     }
 
     // ---- the optional breaks column: absent unless the file has it -----------
@@ -115,20 +115,20 @@ int main()
         g_buf.assign(plainSize + 1, 0);
         const int n = static_cast<int>(emit::csv::Fragment(r, g_buf.data()));
         auto f = Fields(g_buf.data(), n);
-        Check(f.size() == 20 && f[19] == "exit", "without the column a row is unchanged, whatever it carries");
+        Check(f.size() == 21 && f[20] == "exit", "without the column a row is unchanged, whatever it carries");
 
         const std::size_t size = emit::csv::FragmentSize(r, true);
         g_buf.assign(size + 1, 0);
         const int nb = static_cast<int>(emit::csv::Fragment(r, g_buf.data(), true));
         Check(static_cast<std::size_t>(nb) == size, "FragmentSize with the column is exactly what Fragment writes");
         auto fb = Fields(g_buf.data(), nb);
-        Check(fb.size() == 21 && fb[19] == "exit" && fb[20] == "2", "with it, breaks is one more field, last");
+        Check(fb.size() == 22 && fb[20] == "exit" && fb[21] == "2", "with it, breaks is one more field, last");
 
         Row x; x.kind = "entry"; x.source = "XLL";
         const std::size_t xs = emit::csv::FragmentSize(x, true);
         g_buf.assign(xs + 1, 0);
         auto fx = Fields(g_buf.data(), static_cast<int>(emit::csv::Fragment(x, g_buf.data(), true)));
-        Check(fx.size() == 21 && fx[20].empty(), "a row that has no count still has the field, empty");
+        Check(fx.size() == 22 && fx[21].empty(), "a row that has no count still has the field, empty");
     }
 
     // ---- escaping: a field with commas/quotes/newlines round-trips -----------
@@ -139,11 +139,11 @@ int main()
         r.trust = "x\r\ny";                    // the LAST column, so a stray newline would also break the row count
         const int n = Frag(r); const char* buf = g_buf.data();
         auto f = Fields(buf, n);
-        Check(f.size() == 20, "escaped row still has 20 fields");
+        Check(f.size() == 21, "escaped row still has 21 fields");
         Check(f[14] == "a,b,\"c\",line", "comma+quote field round-trips through the reader");
         // the raw fragment must have quoted the args field
         Check(strstr(buf, "\"a,b,\"\"c\"\",line\"") != nullptr, "args field is quoted with doubled quotes");
-        Check(f[19].find('\r') == std::string::npos && f[19].find('\n') == std::string::npos,
+        Check(f[20].find('\r') == std::string::npos && f[20].find('\n') == std::string::npos,
               "newlines in a field are neutralised");
     }
 
@@ -155,8 +155,8 @@ int main()
         Row r; r.kind = "entry"; r.source = "VBA"; r.args = longArgs.c_str(); r.trust = "exit";
         const int n = Frag(r); const char* buf = g_buf.data();
         auto f = Fields(buf, n);
-        Check(f.size() == 20, "a long field with a newline still has 20 fields");
-        Check(f.size() == 20 && f[14].find('\r') == std::string::npos && f[14].find('\n') == std::string::npos,
+        Check(f.size() == 21, "a long field with a newline still has 21 fields");
+        Check(f.size() == 21 && f[14].find('\r') == std::string::npos && f[14].find('\n') == std::string::npos,
               "a newline past the 40th character of a field is neutralised");
         int crlf = 0; for (int i = 0; i + 1 < n; ++i) if (buf[i] == '\r' && buf[i + 1] == '\n') ++crlf;
         Check(crlf == 1, "the fragment holds exactly one CRLF, its own terminator");
@@ -169,9 +169,9 @@ int main()
         r.ret = "42"; r.rettype = "Long"; r.outcome = "returned"; r.ticks = "604"; r.trust = "exit";
         const int n = Frag(r); const char* buf = g_buf.data();
         auto f = Fields(buf, n);
-        Check(f.size() == 20 && f[14] == big, "a 1 MB field is written whole");
-        Check(f.size() == 20 && f[15] == "42" && f[16] == "Long" && f[17] == "returned" &&
-              f[18] == "604" && f[19] == "exit",
+        Check(f.size() == 21 && f[14] == big, "a 1 MB field is written whole");
+        Check(f.size() == 21 && f[15] == "42" && f[16] == "Long" && f[17] == "returned" &&
+              f[18] == "604" && f[20] == "exit",
               "a big args value keeps ret, rettype, outcome, ticks and trust");
     }
 
@@ -181,7 +181,7 @@ int main()
         Row r; r.kind = "exit"; r.source = "VBA"; r.trust = quotes.c_str();
         const int n = Frag(r); const char* buf = g_buf.data();
         auto f = Fields(buf, n);
-        Check(f.size() == 20 && f[19] == quotes, "a last column of quotes round-trips whole");
+        Check(f.size() == 21 && f[20] == quotes, "a last column of quotes round-trips whole");
     }
 
     // ---- JSON Lines: the same row as one object, after the writer's prefixes ----
@@ -190,7 +190,7 @@ int main()
         r.kind = "exit"; r.source = "VBA"; r.span = "5"; r.parent = "0"; r.depth = "1";
         r.thread = "7"; r.qpc = "99"; r.module = "Mod\"1"; r.function = "F";
         r.ret = "{\"t\":\"Long\",\"v\":5}"; r.rettype = "Long"; r.outcome = "returned";
-        r.ticks = "604"; r.trust = "exit";
+        r.ticks = "604"; r.tracerticks = "97"; r.trust = "exit";
         core::TextBuf out;
         out.Append("{\"seq\":1,\"input\":1,");
         emit::json::AppendRow(r, out);
@@ -199,17 +199,17 @@ int main()
               "{\"seq\":1,\"input\":1,\"kind\":\"exit\",\"source\":\"VBA\",\"span\":5,\"parent\":0,"
               "\"depth\":1,\"thread\":7,\"qpc\":99,\"module\":\"Mod\\\"1\",\"function\":\"F\","
               "\"ret\":{\"t\":\"Long\",\"v\":5},\"rettype\":\"Long\",\"outcome\":\"returned\","
-              "\"ticks\":604,\"trust\":\"exit\"}\r\n",
+              "\"ticks\":604,\"tracerticks\":97,\"trust\":\"exit\"}\r\n",
               "a JSON row: integers as numbers, ret as JSON, empty fields omitted, one line");
         out.Release();
     }
 
-    // ---- empty row: all fields empty, still 20 of them -----------------------
+    // ---- empty row: all fields empty, still 21 of them -----------------------
     {
         Row r;
         const int n = Frag(r); const char* buf = g_buf.data();
         auto f = Fields(buf, n);
-        Check(f.size() == 20, "an all-empty row is 20 empty fields");
+        Check(f.size() == 21, "an all-empty row is 21 empty fields");
         bool allEmpty = true; for (auto& s : f) if (!s.empty()) allEmpty = false;
         Check(allEmpty, "empty row's fields are all empty");
     }
