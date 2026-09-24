@@ -1,11 +1,11 @@
-XRayXL 0.2.0
+XRayXL 0.3.0
 
-tag        : v0.2.0  (on the commit that adds this folder)
-commit     : 3c4e5fed5addb1cc3f034bbab9d7702cf1288cf6
+tag        : v0.3.0  (on the commit that adds this folder)
+commit     : d79603bbd6d32b4f11f14deed6e92077503b0e98
              the SOURCE commit this was built and swept from. The commit that
              ADDS this folder is its child, and the tag is on that child.
-built      : 2026-09-20 09:20:45 +01:00
-sweep      : PASS (XRayXL-release-0.2.0-20260920-090921)
+built      : 2026-09-24 10:53:24 +01:00
+sweep      : PASS (XRayXL-release-0.3.0-20260924-104359)
 verified   : the sweep's recorded SHA256 for XRayXL64.xll matches the file shipped here
 
 This folder is assembled only by tools\release.ps1. A normal build does
@@ -16,16 +16,16 @@ SHA256:
   72010bb00dc3f1c88bbce6d340950a67704e21ade033a591483bf90d341a9852  demo\02_Values.xlsm
   ae1dbb3bc27703bd08dc8260bfe1359732e5ae7d3e4cd01f011f2c2e3f3f09ef  demo\03_Callers.xlsm
   17aeef21447b6afdf480804fd36a7c0fb991bc801ea66ed7787c599da8fa3fd1  demo\04_Errors.xlsm
-  4f58bf507a6ee6b2b0d3c256e57c428c4532dded0c5f5e2ca6ce717c7213ee9e  demo\05_VBACurves.xlsm
+  8d8022b4d2d01b0cc0f3872da2855f8daef1ac283f3b0d697795ed0a0899778a  demo\05_VBACurves.xlsm
   6dfedb1e5c19779de9e574260b67e74975c8fdf97a4f47ed523fb3c4d3683531  demo\06_Objects.xlsm
   6a2098171d633060ede445638bde7e5f2a4f139c30c34a3a12e698b80579e7ed  demo\07_CallTree.xlsm
   66ac159eb489d9547c4cd78dd7593ffa01236c2a43704d6f988af3883dcaa976  demo\08_Threads.xlsm
   0089ae2a1e1c8beefe6c4188ecb60c06571d47a7c659a6f01c0ceccbd0bebb0e  demo\09_XLLPricing.xlsm
-  a62eca20ea1484263d468d529f981314ccecb4828be741b35fc0fc666488fb40  demo\DemoBehaviors64.xll
-  f856c566e806ec07f8eda32afbae661a1fdaaf01e7b5be3d5322c2cc940c2d7b  demo\DemoFinance64.xll
+  bf429a9b53b29ec5475b689d6ed8d73649591ee0414ff03f596e3ddd3302fc52  demo\DemoBehaviors64.xll
+  b2e6347558e0125e4fbb2d6d196b554892c1d0c86e3230be673c1848804fbb97  demo\DemoFinance64.xll
   cd75b4880ff565ba08ae300e15dc844f7f73168c1b4fdf7686bc19a051fe09b5  demo\images\options-capture.png
-  899eba91d10b9a96c510861b3f7abb4b9751ead6aee27d3f491c440618e26bf3  demo\images\ribbon.png
-  c474c0d21395aa141a5b12b20997a7d82ce4039c80cabfe6d108d2a9dec1ffcd  demo\README.md
+  9a829f8fb2e92c164e40f582530fd461f20c45ff35481ae6126e5b2b1bc01a24  demo\images\ribbon.png
+  0a330d6d82e57cd20a5eb9da118a4675a9ba4b382ca886f4276f7fdfab0fc2b8  demo\README.md
   3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986  LICENSE
   fba1df046e7c9cfc437af363c41f7fe563023bee2346cec5a0a8b8d05b4cc7ef  THIRD-PARTY-NOTICES.txt
-  2624ef5a340b4fe4250f1cc44ce49d6e48217edeba39e2f5f020e1eab5192b28  XRayXL64.xll
+  6b4c7bcc42144ad4234844967f7a25e1e1ab8aa3ce39bca02b4f17c023a7a18c  XRayXL64.xll

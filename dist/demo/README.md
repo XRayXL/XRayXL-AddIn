@@ -39,10 +39,10 @@ point the tracer at.
    and tick *Developer*. XRayXL's group is on that tab.
 3. **Open a workbook** and enable macros.
 
-The **XRayXL** group on the Developer tab has three buttons:
+The **XRayXL** group on the Developer tab has four buttons:
 
-![The XRayXL group at the far right of Excel's Developer tab, with Arm, Disarm and
-Options buttons](images/ribbon.png)
+![The XRayXL group at the far right of Excel's Developer tab, with Arm, Disarm,
+Options and Diagnostics buttons](images/ribbon.png)
 
 *`Disarm` is greyed until a recording is running.*
 
@@ -51,6 +51,7 @@ Options buttons](images/ribbon.png)
 | **Arm** | Starts a recording. Every XLL function and VBA procedure that runs from now on writes rows to a new trace file |
 | **Disarm** | Stops the recording and closes the file |
 | **Options** | The settings: what to capture, where the trace goes and in what format, the buffer and the log |
+| **Diagnostics** | What is loaded into this Excel: its modules and their versions, the environment and the process. Read-only |
 
 The buttons appear once a workbook is open. Expect your antivirus to take an interest in
 `XRayXL64.xll`: it hooks Excel's internals, which is what it is for.
