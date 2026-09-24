@@ -27,9 +27,22 @@ $ErrorActionPreference = "Stop"
 
 function Write-Step($n, $what) { Write-Host "`n[$n] $what" -ForegroundColor Cyan }
 
+# Runs git or gh the same way on Windows PowerShell 5.1 and PowerShell 7: stderr is shown,
+# never thrown, and stdout is returned. Both write progress to stderr ("To https://..."),
+# which 5.1 throws on under Stop once output is redirected; $LASTEXITCODE is the verdict.
+function Invoke-Tool {
+    $ErrorActionPreference = 'Continue'
+    $PSNativeCommandUseErrorActionPreference = $false
+    $exe, $rest = $args
+    & $exe @rest 2>&1 | ForEach-Object {
+        # TargetObject is the line itself; a blank line's message is the exception's type name
+        if ($_ -is [System.Management.Automation.ErrorRecord]) { Write-Host "$($_.TargetObject)" } else { $_ }
+    }
+}
+
 # Where a publish goes: the remote's URL, and the GitHub owner/repo that gh must target too.
 function Resolve-XRayRemote([string]$Name) {
-    $url = & git -C $Root config --get "remote.$Name.url"
+    $url = Invoke-Tool git -C $Root config --get "remote.$Name.url"
     if ($LASTEXITCODE -ne 0 -or -not $url) { throw "no git remote named '$Name' in $Root" }
     $url = "$url".Trim()
     if ($url -notmatch 'github\.com[:/](?<repo>[^/]+/[^/]+?)(\.git)?/?$') {
@@ -47,7 +60,7 @@ $built   = Join-Path $Root 'build\x64\Release'
 # Uncompiled files count too: LICENSE and README ship, and the .sln decides what builds.
 $srcPaths = @('src', 'StretchXL', 'tests', 'tools',
               'docs', 'version.props', 'LICENSE', 'THIRD-PARTY-NOTICES.txt', 'README.md', 'XRayXL.sln')
-function Test-TreeDirty { [bool](& git -C $Root status --porcelain -- @srcPaths) }
+function Test-TreeDirty { [bool](Invoke-Tool git -C $Root status --porcelain -- @srcPaths) }
 
 # ---------------------------------------------------------------------------
 # 1. Version. version.props is the single source; the binary must agree with it.
@@ -73,10 +86,10 @@ if ($Publish) {
     Write-Host ("  publishing to: {0}  ({1})" -f $dest.Url, $dest.Repo)
     if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { throw "gh CLI not found" }
     # A tag that already exists would publish a release pointing at OLD code.
-    if ((& git -C $Root tag --list $tag)) {
+    if ((Invoke-Tool git -C $Root tag --list $tag)) {
         throw "tag $tag already exists -- bump version.props before publishing again"
     }
-    $remoteTag = & git -C $Root ls-remote --tags $Remote "refs/tags/$tag"
+    $remoteTag = Invoke-Tool git -C $Root ls-remote --tags $Remote "refs/tags/$tag"
     if ($LASTEXITCODE -ne 0) { throw "could not reach remote '$Remote' ($($dest.Url))" }
     if ($remoteTag) { throw "tag $tag already exists on $($dest.Repo) -- bump version.props before publishing again" }
     if ($SymbolArchive -and (Test-Path -LiteralPath (Join-Path $SymbolArchive $tag))) {
@@ -90,7 +103,7 @@ if ($Publish) {
     if (Test-TreeDirty) {
         throw ("refusing to publish from a modified working tree -- commit first, " +
                "then re-run. Uncommitted:" + [Environment]::NewLine +
-               ((& git -C $Root status --porcelain -- @srcPaths) -join [Environment]::NewLine))
+               ((Invoke-Tool git -C $Root status --porcelain -- @srcPaths) -join [Environment]::NewLine))
     }
 }
 
@@ -254,7 +267,7 @@ if (-not $noticesText.Contains($minhookText)) {
 # ---------------------------------------------------------------------------
 Write-Step 6 "Manifest"
 # the source commit: the commit that adds this file cannot know its own sha
-$commit = (& git -C $Root rev-parse HEAD).Trim()
+$commit = (Invoke-Tool git -C $Root rev-parse HEAD).Trim()
 $dirty  = Test-TreeDirty
 $lines = @()
 $lines += "XRayXL $version"
@@ -338,18 +351,19 @@ $msg += ""
 $msg += "dist\ is assembled only by tools\release.ps1 and only after that sweep"
 $msg += "passes. MANIFEST.txt carries the SHA256 of every file in it."
 
-& git -C $Root add -- dist
-& git -C $Root commit -m ($msg -join [Environment]::NewLine)
+Invoke-Tool git -C $Root add -- dist
+if ($LASTEXITCODE -ne 0) { throw "git add failed" }
+Invoke-Tool git -C $Root commit -m ($msg -join [Environment]::NewLine)
 if ($LASTEXITCODE -ne 0) { throw "commit failed" }
 # without a tag, "gh release create" would invent one at the remote branch tip
-& git -C $Root tag -a $tag -m "XRayXL $version"
+Invoke-Tool git -C $Root tag -a $tag -m "XRayXL $version"
 if ($LASTEXITCODE -ne 0) { throw "tag $tag failed -- dist\ is committed but nothing is tagged or pushed" }
-& git -C $Root push $Remote HEAD --follow-tags
+Invoke-Tool git -C $Root push $Remote HEAD --follow-tags
 if ($LASTEXITCODE -ne 0) { throw "push failed" }
 
 # No assets: dist\ is in the tree, so GitHub's generated source archives already
 # contain the built tool and a runnable demo.
-& gh release create $tag --repo $($dest.Repo) --title "XRayXL $version" --generate-notes
+Invoke-Tool gh release create $tag --repo $($dest.Repo) --title "XRayXL $version" --generate-notes
 if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }
 
 Write-Host "`npublished $tag" -ForegroundColor Green
