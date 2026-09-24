@@ -3,25 +3,18 @@
     # modules whose presence on a parked thread's stack is the question.
     ModulesOfInterest = @('xrayxl', 'vbe7')
 
-    # THE DEPLOYED ADD-IN MUST NOT BE OLDER THAN THE BUILD IT COMES FROM.
-    # Every suite here registers ..\..\..\build\addin\XRayXL64.xll, which only
-    # tools\deploy.ps1 writes. Skipping that step fails nothing -- the run
-    # simply certifies the previous binary, in green -- so the run refuses to start.
+    # Only tools\deploy.ps1 writes build\addin\XRayXL64.xll; skipping it would certify the
+    # previous binary in green, so a stale copy stops the run.
     RequireNotOlderThan = @{
         '..\..\build\addin\XRayXL64.xll' = '..\..\build\x64\Release\XRayXL\XRayXL64.xll'
-        # ...and the BUILD must not be older than the SOURCE it came from, or a
-        # build that FAILED leaves the previous binary for the deploy to copy,
-        # the two timestamps agree, and the run certifies code never compiled.
+        # A failed build leaves the previous binary for the deploy to copy.
         '..\..\build\x64\Release\XRayXL\XRayXL64.xll' = '..\..\src'
         # The add-in the XLL suites trace: built from its own folder and the shared XLL header.
         '..\..\build\x64\Release\TracedAddin\TracedAddin64.xll' = @('..\fixtures\TracedAddin', '..\fixtures\xll_common')
     }
 
-    # EVERY SESSION WRITES INTO ITS OWN DIRECTORY, beside the run. The XLL
-    # takes its output root from XRAYXL_OUTPUT_DIR (logs, trace files, the
-    # DIAG corpus all go under it); without this they pile up in %TEMP%\XRayXL
-    # keyed by pid, and a reused pid reads an old log. The suites' helpers (Get-XRayPaths, Get-XRayTraceCsv)
-    # follow the same variable.
+    # Each session writes its logs and traces into its own directory: in the shared %TEMP%\XRayXL,
+    # keyed by pid, a reused pid would read an old log. The suites' helpers follow the same variable.
     SessionEnvironment = @{
         XRAYXL_OUTPUT_DIR = '{SessionDir}'
     }

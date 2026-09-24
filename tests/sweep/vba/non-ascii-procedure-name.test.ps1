@@ -1,8 +1,5 @@
-# A PROCEDURE NAMED OUTSIDE ASCII READS AS ITSELF.
-#
-# VBA keeps identifiers in the ANSI code page and the trace file is UTF-8, so a
-# name copied across byte for byte is not valid UTF-8 and reads as replacement
-# characters. The summary grid Excel displays must agree with the file.
+# A procedure named outside ASCII reads as itself, in the file and in the summary grid: VBA keeps
+# identifiers in the ANSI code page, so copied byte for byte into the UTF-8 file it would not be.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

@@ -379,7 +379,7 @@ int main()
         Check(names == L"Modules,Environment,Process", "the categories are Modules, Environment, Process", names);
         Check(List(dlg) != nullptr, "the list control was created");
 
-        // ---- Modules, and the search that the issue asks for ----
+        // ---- Modules, and the search ----
         const int all = ui::grid::RowCount(List(dlg));
         Check(all > 5, "Modules opens showing every loaded module");
 

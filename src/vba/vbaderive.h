@@ -1,11 +1,7 @@
-// Finds VBE7's p-code dispatch table and the slots to patch. Derives and verifies; patches
-// nothing. Pure static analysis of a module image: no probe executed and no stack walked.
-//
-// Slot indices are constants: the dispatch table is an interface, and index N means the same
-// opcode on every build. Every address is derived.
-//
-// An Image abstraction, so a harness can read VBE7 as a file through the same derivation the
-// add-in runs on the loaded module.
+// Finds VBE7's p-code dispatch table and the slots to patch, by static analysis alone;
+// patches nothing. Slot indices are constants (index N is the same opcode on every build);
+// every address is derived. The Image abstraction lets a harness run the same derivation on
+// VBE7 read as a file.
 #pragma once
 #include <cstdint>
 #include <cstddef>
@@ -14,8 +10,7 @@
 
 namespace vba
 {
-    // Counted, never merged: an instrument that cannot tell "never looked" from
-    // "looked and found nothing" reports the second as the first.
+    // Counted separately, so "never looked" is not reported as "found nothing".
     enum class Decline
     {
         ModuleNotLoaded,
@@ -46,10 +41,7 @@ namespace vba
         virtual std::uint32_t        CodeHiRva() const = 0;
         virtual bool                 Ok() const = 0;
 
-        // WHY it is not usable, when Ok() is false. Without it the caller could
-        // only say "VBE7 is not loaded", which is a lie when the module IS
-        // loaded and merely failed to parse -- and sends the user to the VB
-        // editor, which cannot help.
+        // Why Ok() is false, so a module that failed to parse is not reported as not loaded.
         virtual Decline              WhyNotOk() const { return Decline::ModuleNotLoaded; }
     };
 
@@ -71,27 +63,21 @@ namespace vba
         std::uint32_t distinctHandlers = 0;
         std::uint32_t runnerUpSlots = 0;  // longest rival run -- the margin
         std::uint32_t bosHandlerRva = 0;
-        // THE SHARED INVALID-OPCODE HANDLER. Slots pointing at it are not instructions, so a walk that LANDS on one is
-        // not meeting an unknown opcode: it is already lost, and the step that
-        // got there used a WRONG length -- a much sharper signal than "an opcode
-        // with no length".
+        // Slots on the shared invalid-opcode handler are not instructions: a walk that lands on
+        // one used a wrong length to get there.
         std::uint32_t invalidHandlerRva = 0;
         std::uint32_t invalidSlots = 0;   // how many point at it
-        // The opcode set's fingerprint: for every slot, the index of the lowest slot sharing
-        // its handler, hashed. It names no address, so it is the same wherever VBE7 loaded, and
-        // it says the table is the opcode set kSigLength describes.
+        // For every slot, the lowest slot sharing its handler, hashed. Address-free, so it says
+        // whether this is the opcode set kSigLength describes.
         std::uint64_t partitionHash = 0;
         bool          partitionOk = false;   // ...and it matched the pinned one
-        // The `End` slot and whether it verified. `End` fires no exit opcode, and this is the
-        // only signal that its frames are dead; a failed check degrades that one feature, the
-        // depth and parentage of whatever runs after an `End`, rather than refusing the arm.
+        // `End` fires no exit opcode, so this slot is the only sign its frames are dead. A
+        // failure costs depth and parentage after an `End`, not the arm.
         bool          endOk = false;
-        // The `Stop` slot, verified on its own fingerprint like `End`. A failure costs the
-        // break-in-the-editor count and nothing else.
+        // A failure costs the break-in-the-editor count and nothing else.
         bool          stopOk = false;
-        // The breakpoint form of BoS. A breakpointed statement never reaches the BoS handler,
-        // so without it a call whose first statements have breakpoints opens late; a failed
-        // check costs that and the breakpoint count, not the arm.
+        // A breakpointed statement never reaches the BoS handler. A failure makes such a call
+        // open late and loses the breakpoint count, not the arm.
         bool          bosBpOk = false;
         std::uint32_t bosBpHandlerRva = 0;
         int           exitGroups = 0;
@@ -103,22 +89,17 @@ namespace vba
     // Derive and verify. Never writes to the image.
     SlotSet Derive(const Image& img);
 
-    // One of the procedure-exit opcodes? Exposed so a p-code walk can treat
-    // the end of a procedure as a clean stop, not a failure to decode.
+    // Any member of the exit family, including ones that do not end the procedure.
     bool IsExitSlot(std::uint32_t slot);
 
-    // THE SAME QUESTION, ASKED PROPERLY: does this opcode END the procedure?
-    // Not every member of the exit family does: GoSub `Return` and the pre-exit
-    // cleanups (vbaslots.h) do not, and a walk that stops on one reads nothing.
+    // Does this opcode end the procedure? GoSub `Return` and the pre-exit cleanups (vbaslots.h)
+    // do not, and a walk that stopped on one would read nothing more.
     bool IsProcTerminatorSlot(std::uint32_t slot);
 
-    // Does leaving through this exit mean the LAST argument slot is the
-    // function's result rather than a parameter? True for the class/form
-    // `[out, retval]` exits.
+    // True for the class/form `[out, retval]` exits, where the last argument slot is the result.
     bool ExitHasTrailingResultSlot(std::uint32_t slot);
 
-    // Every VBA statement starts with one, which makes it a known-good
-    // instruction boundary -- the anchor a walk resynchronises on. True for
+    // Every statement starts with one, so it is the anchor a walk resynchronises on. True for
     // the breakpoint form too, which has the same operand and length.
     bool IsBosSlot(std::uint32_t slot);
 

@@ -1,5 +1,4 @@
-// A VBA Function's result: what kind it is, where it lives, and how to say it in one trace
-// cell.
+// A VBA Function's result: what kind it is, where it lives, and how to render it.
 //
 //    1. The exit opcode names the return kind:
 //
@@ -16,11 +15,9 @@
 //    3. A Variant result is a live VARIANT at [R14-0x18]: vt at -0x18, value at -0x10. The
 //       caller's own result VARIANT (argument slot 1) is still empty at the exit opcode.
 //
-//    4. An array of Variants is VT_ARRAY|VT_VARIANT with 24-byte elements, so the decoder
-//       recurses to a bounded depth. An object renders as in the argument column.
+//    4. An array of Variants has 24-byte elements, so the decoder recurses to a bounded depth.
 //
-// Nothing here guesses; what fails validation writes nothing and returns false. Values go to a
-// core::ValueWriter, which owns the spelling.
+// Nothing here guesses: what fails validation writes nothing and returns false.
 #pragma once
 #include "vbaoleaut.h"
 #include <cstdint>
@@ -43,43 +40,32 @@ namespace vba
                         // the record is in the frame at R14 + the exit's operand
     };
 
-    // The declared return kind from the exit opcode the activation ended on.
     RetKind ExitReturnKind(std::uint16_t exitOp);
 
-    // The kind implied by the instruction that stored the result, for exits carrying no type of
-    // their own (1664). Anything unrecognised is Unknown and counted.
+    // For exits carrying no type of their own (1664). Unrecognised is Unknown.
     RetKind StoreReturnKind(std::uint16_t storeOp);
     const char* RetKindName(RetKind k);
 
-    // The result of the activation whose frame base is `r14`, with the kind supplied by the
-    // caller. `storeOp` is the opcode that wrote [R14-8] when known, needed only to split slot
-    // 634. `exitOperand` is the exit instruction's operand, needed only by RecordInFrame. False,
-    // having written nothing, when nothing can be said truthfully; `typeOut` receives the name
-    // to publish in `rettype`.
+    // The kind is the caller's. `storeOp` (the opcode that wrote [R14-8]) is needed only to split
+    // slot 634, `exitOperand` only by RecordInFrame. False, having written nothing, when nothing
+    // can be said truthfully; `typeOut` receives the `rettype` name.
     bool DescribeReturnKind(std::uint64_t r14, RetKind k, std::uint16_t storeOp,
                             std::int32_t exitOperand, core::ValueWriter& w, const char** typeOut);
 
-    // One decoder for both columns: a ByVal Variant parameter's first two frame slots are, byte
-    // for byte, a VARIANT. The held value is written inside BeginVariant/EndVariant, so a
-    // number other than Double is named wherever the Variant lands.
+    // Shared with the argument column: a ByVal Variant parameter's slots are a VARIANT.
     bool DescribeVariantValue(std::uint64_t at, core::ValueWriter& w);
 
-    // The one array renderer, for a SAFEARRAY whose header ReadSafeArrayHeader has already
-    // validated. Both columns render through this, so an array reads the same wherever it lands.
+    // For a header ReadSafeArrayHeader already validated. Both columns render arrays through
+    // this, so an array reads the same wherever it lands.
     bool RenderSafeArrayValue(const SaInfo& sa, core::ValueWriter& w);
 
     // One value of VARTYPE `vt` at `at`: an array element, or a declared scalar argument.
     bool DescribeArrayElement(std::uint16_t vt, std::uint64_t at, core::ValueWriter& w);
 
-    // Latched at arm from the OBJECTS setting. Off, an object renders as its
-    // address, exactly as it did before the setting existed.
+    // Latched at arm from the OBJECTS setting; off, an object renders as its address.
     void SetDescribeObjects(bool on);
 
-    // A BSTR AT `p`, OR NOTHING -- the ONE reader, shared by both columns.
-    // `told`: something else already says this is a string (a VARIANT tag, an
-    // exit opcode). Only then is a ZERO length a value.
+    // The one BSTR reader, for both columns. `told`: something else (a VARIANT tag, an exit
+    // opcode) already says it is a string; only then is a zero length a value.
     bool DescribeBstrValue(std::uint64_t p, core::ValueWriter& w, bool told = false);
-
-    // `VtName` and the VARIANT tag constants live in vbaoleaut.h, included
-    // above: they are facts about the type, not about decoding a return value.
 }

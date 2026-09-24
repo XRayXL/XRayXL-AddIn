@@ -1,8 +1,5 @@
-# A FUNCTION REGISTERED AFTER ARMING BY AN ADD-IN THAT ASKS FOR NO RESULT.
-#
-# Excel12(xlfRegister, 0, ...) is how the SDK's own sample registers, so no
-# register id comes back to the watch. The registration still happened, and the
-# function must be hooked rather than dismissed as one Excel refused.
+# A function registered after arming with Excel12(xlfRegister, 0, ...), as the SDK's sample does,
+# gets no register id back, but must still be hooked rather than dismissed as refused.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

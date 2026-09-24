@@ -4,26 +4,20 @@
 namespace emit
 {
 
-// THE ROW-TO-CSV FORMATTER -- column order, escaping, header -- as a pure
-// transformation touching no Windows, file, lock or global, so the format can be
-// unit-tested apart from the ring and the drain. It owns the same contract the
-// suites' reader test checks from the outside (docs/TraceRowModel.md).
+// The row-to-CSV formatter (column order, escaping, header) as a pure transformation, so the
+// format can be unit-tested apart from the ring and the drain (docs/TraceRowModel.md).
 
 namespace csv
 {
-    // THE HEADER LINE, CRLF-terminated. `seq` and `input` lead, both prefixes
-    // added by the writer/producer rather than by Fragment. Change it and the
-    // column order in rowcsv.cpp -- the one place that knows it -- and
-    // docs/TraceRowModel.md change with it.
+    // CRLF-terminated. `seq` and `input` lead, prefixes added by the writer and producer rather
+    // than by Fragment. Change it with the column order in rowcsv.cpp and docs/TraceRowModel.md.
     extern const char* const kHeader;
     // The same with the optional `breaks` column after `trust`, when VBA BREAKPOINTS is on for
     // the file. Every row of that file then has it, empty where it does not apply.
     extern const char* const kHeaderBreaks;
 
-    // ONE ROW, NAMED, so neither source counts positions
-    // (docs/TraceRowModel.md). Pointers, not copies: a row is formatted
-    // synchronously from the frame that built its text, so nothing here
-    // outlives the call.
+    // Named fields, so neither source counts positions. Pointers, not copies: a row is formatted
+    // synchronously from the frame that built its text.
     struct Row
     {
         const char* kind     = "";      // entry | exit | depth-capped
@@ -64,10 +58,8 @@ namespace csv
     // is how the caller sizes its buffer.
     std::size_t FragmentSize(const Row& row, bool breaks = false);
 
-    // Escape every field, comma-join them in column order, and end with CRLF --
-    // WITHOUT the seq/input prefixes, which the writer/producer prepend. `out`
-    // must hold FragmentSize(row) + 1 bytes. Returns the number of bytes written. `breaks` adds
-    // the optional column, as kHeaderBreaks does.
+    // Every field escaped and comma-joined, ending in CRLF, without the seq/input prefixes. `out`
+    // must hold FragmentSize(row) + 1 bytes. `breaks` adds the optional column, as kHeaderBreaks does.
     std::size_t Fragment(const Row& row, char* out, bool breaks = false);
 }
 }   // namespace emit

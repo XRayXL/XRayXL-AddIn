@@ -1,15 +1,6 @@
-# The rarer opcodes walk cleanly on this build. pcode-table-fits-this-build runs everyday VBA;
-# this runs the constructs that reach opcodes ordinary code seldom does, each confirmed at its
-# length by real compiled code: a variable held As IUnknown stored into a local, a record field,
-# an array element, another module's Variant, a ByRef Variant and a ParamArray element -- not a
-# class's own member, where VBA itself loses a reference and Excel can crash -- an Excel property assigned with named arguments, ParamArray element stores, Put
-# of a fixed-length string, the file Lock and Unlock statements, Static procedures, Implements,
-# Def* typing and Option Base 1 -- and a ByRef record parameter first touched through an object or
-# Variant member, which the type table once could not name.
-#
-# Three facts: every procedure walks from offset 0 to a clean exit; no p-code warning; and the
-# disarm report names no length that real code has never confirmed, so each of these opcodes is
-# one the shipped table has seen walked.
+# Constructs that reach opcodes ordinary code seldom does walk cleanly, with no p-code warning,
+# at lengths real code has confirmed. No IUnknown store into a class's own member: VBA itself
+# loses a reference there and Excel can crash.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -181,22 +172,21 @@ try {
     if ($walkLine) {
         $m = [regex]::Match([string]$walkLine.Line, '(\d+) of (\d+) procedure\(s\) walked cleanly')
         $clean = [int]$m.Groups[1].Value; $walks = [int]$m.Groups[2].Value
-        # Drive, the four callers, their helpers, the class members and the other modules.
+        # Drive, the four callers, their helpers, the class members and the other modules
         Check 'the-vba-was-actually-walked' ($walks -ge 12) "walks=$walks"
         Check 'every-procedure-walked-cleanly' ($clean -eq $walks -and $walks -gt 0) `
               "$clean of $walks walked cleanly (offset 0 to a clean exit, no resynchronisation)"
     }
     $pcodeWarnings = @($after | Select-String ' WARNING - VBA p-code:')
     Check 'no-p-code-warning' ($pcodeWarnings.Count -eq 0) (($pcodeWarnings | ForEach-Object { $_.Line }) -join ' | ')
-    # A parameter written by an opcode the type table does not know is typed `?opNNN`.
+    # a parameter written by an opcode the type table does not know is typed `?opNNN`
     $untyped = @($after | Select-String ' WARNING - VBA args:')
     Check 'every-parameter-typed' ($untyped.Count -eq 0) (($untyped | ForEach-Object { $_.Line }) -join ' | ')
     $proven = @($after | Select-String 'LENGTHS PROVEN WRONG')
     Check 'no-length-was-proven-wrong' ($proven.Count -eq 0) (($proven | ForEach-Object { $_.Line }) -join ' | ')
 
     # ---- and every length it used is one real code has confirmed ---------------
-    # The disarm report names any opcode walked this session that the shipped
-    # walked table has never seen. These constructs are why those bits are set.
+    # the disarm report names any opcode walked here that the shipped table has never seen walked
     $unconfirmed = @($after | Select-String 'NO RUNNING CODE HAS EVER CONFIRMED')
     Check 'every-length-used-is-confirmed' ($unconfirmed.Count -eq 0) `
           (($unconfirmed | ForEach-Object { $_.Line }) -join ' | ')

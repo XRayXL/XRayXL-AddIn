@@ -8,10 +8,7 @@ End Sub
 '@
      Invoke=@{ Name='T_Rec'; Args=@(8) }
      Expect={ param($t)
-        # T_Rec(8) makes 8 recursive calls, so 9 activations of ONE procedure.
-        # The trailer alone cannot see this -- every activation shares it. The
-        # interpreter's rsp at the dispatch falls one step per call, so
-        # (trailer, sp) identifies the ACTIVATION and the count is exact.
+        # every activation shares the trailer; the interpreter's rsp is what tells them apart
         if ($t.procedures -ne 1) { return "expected exactly 1 procedure, got $($t.procedures)" }
         if ($t.recursions -ne 8) { return "expected exactly 8 recursions, got $($t.recursions)" }
         if ($t.maxDepth   -ne 9) { return "expected depth 9 (9 activations), got $($t.maxDepth)" }

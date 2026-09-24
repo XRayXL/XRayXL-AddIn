@@ -6,7 +6,7 @@
 namespace core
 {
 
-// The Excel Application IDispatch for THIS process.
+// The Excel Application IDispatch for this process.
 namespace excelom
 {
     // xlGetHwnd, then the XLMAIN window in our own process, then AccessibleObjectFromWindow on its

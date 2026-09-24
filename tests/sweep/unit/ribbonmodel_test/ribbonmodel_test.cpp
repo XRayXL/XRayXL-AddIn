@@ -207,7 +207,7 @@ int main()
         Check("buffer-lower-case", M::SetBufferText(L"8mb"));
         Check("buffer-lower-case-took-effect", core::modes::GetBufferBytes() == 8ull * 1024 * 1024);
 
-        // 0 is synchronous, and is the ONLY value below the ring floor.
+        // 0 is synchronous, and is the only value below the ring floor.
         Check("buffer-zero-is-synchronous", M::SetBufferText(L"0"));
         Check("buffer-zero-took-effect", core::modes::GetBufferBytes() == 0);
         M::BufferText(buf, 32);

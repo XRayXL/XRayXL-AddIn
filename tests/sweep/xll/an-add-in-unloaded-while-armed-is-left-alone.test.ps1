@@ -1,9 +1,5 @@
-# AN ADD-IN UNLOADED WHILE ARMED IS LEFT ALONE, AND TRACED AGAIN WHEN IT RETURNS.
-#
-# Disarm puts each hooked function's first bytes back. For an add-in unloaded
-# while armed there is nothing of its to restore, or another module now sits at
-# that address and must not be written to, so its detours are left untouched. When
-# the same add-in loads again later, arming patches it afresh.
+# An add-in unloaded while armed is left alone at disarm, since another module may now sit at that
+# address, and is traced again when it loads again and arming patches it afresh.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

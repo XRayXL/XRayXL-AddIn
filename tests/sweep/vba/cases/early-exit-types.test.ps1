@@ -1,15 +1,6 @@
-# An early `Exit` must not truncate the signature, in any kind of procedure.
-#
-# `Exit Sub`, `Exit Function` and `Exit Property` emit the same opcode as the real end of the
-# procedure, so a walk that stops at the first terminator leaves every parameter first used
-# after it as `?unseen`.
-#
-# The exit opcode is chosen by return type: a Sub leaves by 635, a Double or Date by 627, Long
-# 625, Boolean 624, String 630, Object 631, an array 634, Variant 952, and a class member by
-# 1664 when it returns a value or 504 when it does not. Hence a table of return types.
-#
-# Every procedure takes `a` (tested before the exit) and `b` (used only after it), so a
-# truncated walk shows up as `b` unresolved while `a` is typed.
+# An early `Exit` must not truncate the signature: it emits the procedure's own terminator, so
+# a walk stopping there leaves `b`, used only after it, unresolved. The terminator depends on the
+# return type, hence every kind of procedure.
 $case = @{ Name='early-exit-types'
      ClassSetup=@'
 Public Val As Double
@@ -139,10 +130,7 @@ End Sub
         if ($t.framesOpened -ne $t.framesClosed) {
             return "LEAK: opened $($t.framesOpened), closed $($t.framesClosed)" }
         $entry = Get-FirstEntryByName $t.rows
-        # `b` is the LAST parameter of every one of these, and it is used only
-        # after the early exit. If the walk stopped at that exit, `b` is the one
-        # that goes unresolved -- so the last position carrying a '?' is the
-        # signal, and naming it makes a regression say which shape broke.
+        # naming each procedure makes a failure say which shape broke
         $truncated = @(); $missing = @()
         foreach ($fn in @('X_Sub','X_Dbl','X_Lng','X_Bool','X_Str','X_Var',
                           'X_Obj','X_Date','X_Arr','X_Prop','X_Colon',

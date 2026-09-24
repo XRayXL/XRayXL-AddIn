@@ -1,12 +1,6 @@
-# What the return type does to the arguments.
-#
-# A Function returning `Variant` is handed the address of the caller's result VARIANT in an
-# argument slot, which arrives first and is not an argument. An omitted `Optional` is itself a
-# VARIANT carrying VT_ERROR / DISP_E_PARAMNOTFOUND, and must read `Missing` even when the p-code
-# declares the slot a Variant.
-#
-# So this asserts the same parameter list behind three different return types. The arguments
-# must read identically in all three.
+# The same parameters read identically behind five return types: a Variant-returning Function
+# gets its result's address in the first slot, which is not an argument. An omitted Optional
+# reads `Missing` even where the p-code types the slot.
 $case = @{ Name='frame-returns'
      Setup=@'
 Public Function T_RetVar(ByVal a As Long, Optional b As Variant) As Variant
@@ -58,8 +52,7 @@ End Sub
      Invoke=@{ Name='T_RetDrive'; Args=@() }
      Expect={ param($t)
         if ($t.faults -gt 0) { return "$($t.faults) guarded reads faulted" }
-        # Entry rows per procedure, in order -- T_RetVar and T_RetSub are each
-        # called twice, supplied then omitted, and both calls are asserted.
+        # T_RetVar and T_RetSub are each called twice, supplied then omitted
         $e = @{}
         foreach ($r in $t.rows) {
             if ($r.kind -eq 'entry' -and $r.source -eq 'VBA' -and $r.function -like 'T_Ret*') {
@@ -69,9 +62,7 @@ End Sub
         foreach ($fn in @('T_RetVar','T_RetLong','T_RetStr','T_RetObj','T_RetSub')) {
             if (-not $e.ContainsKey($fn)) { return "$fn never entered" }
         }
-        # ONE PARAMETER LIST, FIVE RETURN TYPES, ONE ANSWER. The Variant-
-        # returning Function is the one that misreads as (?,Long,Variant&) with
-        # argcount 3 when the result slot is counted as a parameter.
+        # counting the result slot would read the Variant Function as (?,Long,Variant&)
         $supplied = 'a1:Long=287454020 a2:Variant&=Integer(42)'
         foreach ($fn in @('T_RetVar','T_RetLong','T_RetStr','T_RetObj','T_RetSub')) {
             $r = $e[$fn][0]
@@ -82,7 +73,7 @@ End Sub
             if ($r.args -ne $supplied) {
                 return "$fn args were [$($r.args)], expected [$supplied]" }
         }
-        # AN OMITTED Optional READS `Missing`, INCLUDING WHEN THE SLOT IS TYPED.
+        # an omitted Optional reads `Missing`, including when the slot is typed
         $omitted = 'a1:Long=287454020 a2:Variant&=Missing'
         foreach ($fn in @('T_RetVar','T_RetSub')) {
             if ($e[$fn].Count -lt 2) { return "$fn was entered $($e[$fn].Count) time(s), expected 2" }

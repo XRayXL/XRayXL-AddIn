@@ -1,8 +1,5 @@
-# ONE EXPORT, TWO REGISTRATIONS.
-#
-# TracedAddin registers TxB a second time, as TxBAgain. Both names reach the same
-# code, so arming hooks it once; the second registration is not a detour that
-# failed.
+# TracedAddin registers TxB a second time, as TxBAgain: both reach the same code, so arming hooks it
+# once, and the second registration is not a detour that failed.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

@@ -1,8 +1,5 @@
-# The demo add-in's ReverseText reverses characters, not UTF-16 units.
-#
-# An emoji is two UTF-16 units, a surrogate pair. Reversed unit by unit it came back as the low
-# half before the high half, which Excel shows as two replacement characters, and the trace
-# faithfully recorded "\uDE00\uD83D". The trace must show the pair in order.
+# The demo add-in's ReverseText reverses characters, not UTF-16 units: reversed unit by unit, an
+# emoji's surrogate pair shows as two replacement characters. The trace must show the pair in order.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

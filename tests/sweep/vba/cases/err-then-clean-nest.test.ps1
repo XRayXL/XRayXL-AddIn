@@ -22,10 +22,8 @@ End Sub
 '@
      Invoke=@{ Name='T_DriftTop'; Args=@() }
      Expect={ param($t)
-        # THE DRIFT DETECTOR. After the unwind the same session runs a call
-        # chain of known shape. If the unwound frames were never popped, the
-        # later chain sits on top of them and the depth comes out too big.
-        # Deepest legitimate point is T_DriftTop > T_DriftMid > T_DriftRaise = 3.
+        # Unwound frames never popped would push the later known-shape chain deeper than its
+        # legitimate 3.
         if ($t.framesOpened -ne $t.framesClosed) {
             return "LEAK: opened $($t.framesOpened), closed $($t.framesClosed)" }
         if ($t.maxDepth -gt 4) {

@@ -1,8 +1,5 @@
-# An Excel object passed to a VBA method must not look like Excel starting the frame.
-#
-# A Sub with a handler calls a class method, passing Range("A1"), and the method raises. The
-# error must cross back to the Sub: the method reads `threw` and the Sub `handled`, never
-# `unhandled`.
+# An Excel object passed to a VBA method must not look like Excel starting the frame: the
+# method's error crosses back, reading `threw` then `handled`, never `unhandled`.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

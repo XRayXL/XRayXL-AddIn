@@ -1,7 +1,5 @@
-# The XLL regression driver: one formula in A1, and what the trace says about
-# that call -- the decoded arguments and return value -- against answers
-# derivable by hand. Each numbered case file carries its own data; several
-# share a function, so the file is the case's identity.
+# The XLL regression driver: one formula in A1, and what the trace says about that call against
+# answers derivable by hand. Several cases share a function, so the file is the case's identity.
 #
 #   Value    what A1 must hold (proves tracing did not break the call)
 #   Args     every argument, in order, each matched whole: `a1:I=7` does not match `a1:I=70000`
@@ -10,7 +8,7 @@
 #            and rettype on the exit must match exactly
 #   Why      what the case defends, for the failure message
 #
-# An expected value ending in `{` is a PREFIX: the case pins an array's shape, not its elements.
+# An expected value ending in `{` is a prefix: the case pins an array's shape, not its elements.
 
 function Invoke-XllCase($Case) {
     . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
@@ -33,9 +31,9 @@ function Invoke-XllCase($Case) {
             Complete-Test -Fail -Detail "cell is '$now', expected '$($c.Value)' (defends: $($c.Why))"
         }
 
-        # ---- the trace: matched by the CELL it reports --------------------
-        # ONE CALL: the formula is calculated once while armed, so a second entry is a
-        # duplicate row, not a second call.
+        # ---- the trace: matched by the cell it reports --------------------
+        # One call: the formula is calculated once while armed, so a second entry is a duplicate
+        # row, not a second call.
         $entries = @($rows | Where-Object { ($_.kind -eq 'entry' -and $_.source -eq 'XLL') -and (Get-CallerCell $_) -eq 'A1' })
         if ($entries.Count -eq 0) {
             Complete-Test -Fail -Detail "no entry record naming cell A1 for $($c.Fn) (defends: $($c.Why))"

@@ -1,13 +1,5 @@
-# An error in a VBA activation Excel started with no calling cell reads `threw`.
-#
-# The escape boundary is a worksheet-function entry, identified by xlfCaller naming a calling
-# cell. A sheet event fired by a user edit and an Application.OnTime macro have no calling cell
-# (xlfCaller answers #REF!), so an unhandled error in one reaches the bottom of the shadow stack
-# and reads `threw`, never `unhandled` or `handled`, and the escape is counted. This is the one
-# documented gap: under-labelled, not wrong.
-#
-# The event is fired from outside VBA, by writing the cell over COM, so the handler runs as a
-# top-level activation, which a macro-driven write cannot reproduce.
+# An unhandled error in a user-fired sheet event or an OnTime macro reads `threw`, never
+# `unhandled`: with no calling cell it is not a cell escape. A known gap: under-labelled, not wrong.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -59,14 +51,12 @@ try {
 
     $dlgBefore = @(Get-SessionDialogs).Count
 
-    # ---- USER-TRIGGERED EVENT: the harness writes the cell over COM -------------
-    # This fires Worksheet_Change with no VBA frame beneath; the handler raises.
+    # ---- user-triggered event: the harness writes the cell over COM -------------
+    # a write from outside VBA leaves no VBA frame beneath, which a macro-driven write cannot
     try { $ws.Range('Z1').Value2 = 1 } catch {}
 
-    # ---- APPLICATION.ONTIME: Excel calls the macro on its own -------------------
-    # Schedule for one second out and leave Excel idle for ten -- long enough that its
-    # idle loop runs the macro. Like the event it has no calling cell, so its unhandled
-    # error reads `threw`, and it pops the modal dialog the watchdog dismisses.
+    # ---- Application.OnTime: Excel calls the macro on its own -------------------
+    # Excel's idle loop must run it; its error pops a modal dialog the watchdog dismisses.
     $app.OnTime((Get-Date).AddSeconds(1), "$leaf!OnTimeThrower") | Out-Null
     Start-Sleep -Seconds 10
 

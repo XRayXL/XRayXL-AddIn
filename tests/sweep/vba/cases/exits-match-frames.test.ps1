@@ -14,10 +14,8 @@ End Sub
 '@
      Invoke=@{ Name='T_X1'; Args=@() }
      Expect={ param($t)
-        # Two independent mechanisms count the same thing: the exit opcodes
-        # fire once per procedure exit, and the shadow stack closes one frame
-        # per return. They are computed from different signals -- opcode slots
-        # versus the stack pointer -- so agreement is real evidence.
+        # exits come from opcode slots and frame closes from the stack pointer, so agreement
+        # between them is real evidence
         if ($t.exits -lt 5) { return "expected >=5 exit opcodes, got $($t.exits)" }
         $closed = $t.framesClosed
         if ($closed -lt ($t.exits - 2) -or $closed -gt ($t.exits + 2)) {

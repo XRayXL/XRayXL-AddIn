@@ -1,6 +1,5 @@
-# Planted answers for the frame layout. Argument count varies 0..3 so the
-# argument-size field (bytes, not a count) shows itself; values are distinctive
-# positive Longs so a slot is identified, not just consistent.
+# Planted answers for the frame layout: argument counts 0..3 expose the argument-size field (bytes,
+# not a count), and distinctive Longs identify a slot rather than just agree with one.
 # No expression may overflow: an unhandled VBA error from Application.Run is a modal dialog.
 $case = @{ Name='frame-layout'
      Setup=@'
@@ -84,14 +83,12 @@ End Sub
         if ($t.framesOpened -ne $t.framesClosed) {
             return "LEAK: opened $($t.framesOpened), closed $($t.framesClosed)" }
 
-        # The decoded arguments, asserted against the signatures written above.
-        # This is the part that would have caught reading r15 as the frame
-        # base: totals looked perfect while every argument was rubbish.
+        # totals can look perfect while every argument is read from the wrong frame base
         $entry = Get-FirstEntryByName $t.rows
         foreach ($fn in @('T_FL0','T_FL1','T_FL2','T_FL3','T_FLStr','T_FLDbl','T_FLRef')) {
             if (-not $entry.ContainsKey($fn)) { return "no VBA entry row for $fn" }
         }
-        # Argument COUNT comes from argSz, which is the whole point of it.
+        # argument count comes from argSz
         $wantCount = @{ 'T_FL0'=0; 'T_FL1'=1; 'T_FL2'=2; 'T_FL3'=3;
                         'T_FLStr'=2; 'T_FLDbl'=2; 'T_FLRef'=2 }
         foreach ($fn in $wantCount.Keys) {
@@ -99,9 +96,7 @@ End Sub
             if ($got -ne $wantCount[$fn]) {
                 return "$fn argcount=$got, expected $($wantCount[$fn])" }
         }
-        # The SIGNATURE, recovered from each procedure's own p-code. This is
-        # the assertion that the typed-opcode walk stayed synchronised: a
-        # desynced walk yields plausible types for the wrong positions.
+        # a desynced p-code walk yields plausible types for the wrong positions
         $wantSig = @{ 'T_FL1'='Long'; 'T_FL2'='Long,Long';
                       'T_FL3'='Long,Long,Long'; 'T_FLStr'='String,?unseen';
                       'T_FLDbl'='Double,?unseen' }
@@ -112,28 +107,23 @@ End Sub
             if ($entry[$fn].typetext -ne $wantSig[$fn]) {
                 return "$fn signature was [$($entry[$fn].typetext)], expected $($wantSig[$fn])" }
         }
-        # A '?unseen' is a parameter the body never READS: no opcode touches
-        # its slot at all, so nothing was observed and there is genuinely no
-        # type to recover. Asserting it keeps that honest -- the tracer must say
-        # it does not know, and say WHICH not-knowing, rather than invent one.
+        # a parameter the body never reads has no type to recover; the tracer must say so
         if ($entry['T_FLStr'].typetext -notmatch '\?\w*$') {
             return "T_FLStr's unread second parameter should be unknown" }
 
-        # Argument VALUES, rendered USING the recovered type.
+        # values are rendered using the recovered type
         if ($entry['T_FL3'].args -ne 'a1:Long=287454020 a2:Long=1432778632 a3:Long=439041101') {
             return "T_FL3 args were [$($entry['T_FL3'].args)]" }
         if ($entry['T_FL1'].args -ne 'a1:Long=287454020') {
             return "T_FL1 args were [$($entry['T_FL1'].args)]" }
         if ($entry['T_FL0'].args -ne '') {
             return "T_FL0 takes no arguments but reported [$($entry['T_FL0'].args)]" }
-        # 2748.5 is exactly 0x40A5790000000000 as an IEEE double; knowing the
-        # type is what turns those bits back into the number that was passed.
+        # 2748.5 is exactly 0x40A5790000000000; only the type turns those bits back into it
         if ($entry['T_FLDbl'].args -ne 'a1:Double=2748.5 a2:?unseen=0x5D5D5D5D') {
             return "T_FLDbl args were [$($entry['T_FLDbl'].args)]" }
         if ($entry['T_FLStr'].args -ne 'a1:String="XRAYSENTINEL" a2:?unseen=0x2A2A2A2A') {
             return "T_FLStr args were [$($entry['T_FLStr'].args)]" }
-        # A ByRef slot holds a POINTER; knowing it is `Long&` is what licenses
-        # following it. 0x4C4C4C4C is what the caller had assigned.
+        # a ByRef slot holds a pointer, followed only because it is known to be `Long&`
         if ($entry['T_FLRef'].args -notmatch '^a1:Long&=1280068684 ') {
             return "T_FLRef ByRef arg was [$($entry['T_FLRef'].args)]" }
         $null }

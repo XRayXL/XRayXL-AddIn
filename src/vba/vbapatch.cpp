@@ -33,20 +33,14 @@ namespace vba
 {
     namespace
     {
-        // ---------------------------------------------------------------
-        // The per-slot stub, emitted at runtime because each slot needs its own original
-        // handler address and thunk pointer.
-        //
+        // The per-slot stub, emitted at runtime because each slot has its own original handler.
         //   +00  FF 15 <rip32>     call  qword ptr [rip+thunk]
         //   +06  FF 25 <rip32>     jmp   qword ptr [rip+original]
         //   +0C  CC...             padding
         //   +10  <u64 original>
         //   +18  <u64 shared thunk>
-        //
-        // A real call, matched by the thunk's own `ret`: pushing the original and `ret`-ing to
-        // it would forge a return address, which CET shadow stacks fast-fail on. Indirect
-        // through an embedded pointer, so the stub need not sit within 2 GB of the thunk.
-        // ---------------------------------------------------------------
+        // A real call matched by the thunk's `ret`: push-and-ret would forge a return address,
+        // which CET shadow stacks fast-fail on. Indirect, so no 2 GB reach is needed.
         constexpr std::size_t kStubSize = 0x20;
         constexpr std::size_t kOffOrig  = 0x10;
         constexpr std::size_t kOffThunk = 0x18;
@@ -79,9 +73,8 @@ namespace vba
 
         bool                 g_armed = false;
 
-        // Arm and Disarm both rewrite g_patched and the dispatch table; this makes
-        // the pair mutually exclusive. The owner is kept so a contained fault, which runs no
-        // destructor, can still let the gate go.
+        // Arm and Disarm are mutually exclusive. The owner is kept so a contained fault, which
+        // runs no destructor, can still let the gate go.
         volatile LONG g_armBusy = 0;
         volatile LONG g_armBusyOwner = 0;
 
@@ -103,12 +96,10 @@ namespace vba
         std::vector<Patched> g_patched;
         std::uint64_t        g_base = 0;
 
-        // ---- rtcDoEvents -----------------------------------------------------
-        // Excel runs timer macros and events from inside DoEvents, so a procedure that opens
-        // while a frame waits there is not that frame's callee. A detour on the export is
-        // what says so: the alternative, unwinding the stack at every entry, is the walk KB
-        // hazard B warns about. Four register arguments are passed straight through, so the
-        // real arity does not matter; rtcDoEvents takes no floating-point argument.
+        // ---- rtcDoEvents ----
+        // A procedure opening while a frame waits in DoEvents is not its callee; a detour says so
+        // without a stack walk at every entry. Four register arguments pass straight through, so
+        // the real arity does not matter; rtcDoEvents takes no floating-point argument.
         using DoEventsFn = INT_PTR(__stdcall*)(INT_PTR, INT_PTR, INT_PTR, INT_PTR);
         DoEventsFn g_doEventsOrig = nullptr;
         void*      g_doEventsTarget = nullptr;
@@ -156,10 +147,7 @@ namespace vba
         int                  g_bosSlots = 0, g_exitSlots = 0;
         int                  g_endSlots = 0, g_bosBpSlots = 0, g_stopSlots = 0;
 
-        // ROLES ARE MATCHED WHOLE, never by first letter. "end" and "exit"
-        // share one, so a first-letter test sends "end" down "exit"'s arm --
-        // the DEFAULT arm -- and it is silently patched with the exit thunk,
-        // reading the interpreter as though a procedure were returning.
+        // Matched whole: "end" and "exit" share a first letter, and exit is the default arm.
         bool IsRole(const char* role, const char* want)
         {
             return role && std::strcmp(role, want) == 0;
@@ -179,9 +167,6 @@ namespace vba
 
     bool IsVbaArmed() { return g_armed; }
 
-    // After a fault part-way through arm or disarm. Disarm restores only slots that still hold
-    // our stubs, so releasing the gate makes it safe to try again; holding it would refuse every
-    // arm and disarm for the life of the process.
     // XRAYXL_DIAG instrument: faults while holding the gate, as a fault part-way through
     // arm or disarm would.
     void FaultWhileArmGateHeldForProbe()
@@ -191,6 +176,9 @@ namespace vba
         *nowhere = gate.held ? 1 : 2;
     }
 
+    // After a fault part-way through arm or disarm. Disarm restores only slots that still hold
+    // our stubs, so releasing the gate makes it safe to try again; holding it would refuse every
+    // arm and disarm for the life of the process.
     bool ReleaseArmGateHeldByThisThread()
     {
         if (InterlockedCompareExchange(&g_armBusyOwner, 0, 0) != static_cast<LONG>(GetCurrentThreadId()))
@@ -226,9 +214,7 @@ namespace vba
 
         g_base = img.Base();
 
-        // Nothing may still be inside a hook when the procedure table, the
-        // totals and the p-code lengths are reset -- a lingering thread would
-        // keep writing into slots that have just been zeroed and re-claimed.
+        // A thread still inside a hook would write into slots about to be zeroed and re-claimed.
         if (!WaitForHooksQuiet(2000))
             return "VBA tracing: REFUSED -- a previous session's hooks are still running";
 
@@ -237,17 +223,13 @@ namespace vba
         // One stub per distinct original handler.
         std::map<std::uint64_t, std::uint8_t*> byOriginal;
         const std::size_t pageBytes = 0x1000;
-        // Anywhere will do: the stub reaches the thunk through an embedded
-        // absolute pointer, so there is no rel32 distance to satisfy and no scan
-        // for a nearby free page.
+        // Anywhere will do: the stub reaches the thunk through an absolute pointer.
         g_page = static_cast<std::uint8_t*>(
             VirtualAlloc(nullptr, pageBytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
         if (!g_page)
             return "VBA tracing: could not allocate the stub page";
 
-        // THE PAGE IS RELEASED ON EVERY REFUSAL, WITHOUT ANYONE REMEMBERING TO. The
-        // guard frees unless Keep() says the arm succeeded, so a refusal added later
-        // cannot forget.
+        // Frees the page unless Keep() says the arm succeeded, so a refusal added later cannot forget.
         struct PageGuard
         {
             bool keep = false;
@@ -271,20 +253,17 @@ namespace vba
             if (byOriginal.find(orig) != byOriginal.end()) continue;
             if (used + kStubSize > pageBytes) { outOfRoom = true; break; }
             const void* shared = ThunkForRole(site.role);
-            // Unknown role: refuse the arm.
             if (shared == nullptr)
             {
                 unknownRole = site.role ? site.role : "(null)";
                 break;
             }
             std::uint8_t* stub = g_page + used;
-            EmitStub(stub, shared, orig);   // indirect call: no distance to satisfy
+            EmitStub(stub, shared, orig);
             used += kStubSize;
             byOriginal[orig] = stub;
         }
-        // FAIL CLOSED IF ANY WANTED SLOT HAS NO STUB. That every stub fits in one page
-        // is a coincidence between two unrelated constants, so it is checked rather
-        // than relied upon.
+        // Fail closed if a wanted slot has no stub: one page fitting them all is a coincidence.
         if (outOfRoom)
         {
             return "VBA tracing: REFUSED -- stub page too small for every slot";
@@ -300,9 +279,7 @@ namespace vba
             return "VBA tracing: could not make the stub page executable";
         core::NoteExecPage(g_page, pageBytes, "VBA stub page", "PAGE_EXECUTE_READ");
 
-        // The stub page must be executable and NOT writable, and it is checked
-        // rather than assumed: "impossible by current structure" is exactly the kind
-        // of guarantee that quietly stops being true.
+        // Checked rather than assumed: the stub page must be executable and not writable.
         {
             MEMORY_BASIC_INFORMATION mbi{};
             if (!VirtualQuery(g_page, &mbi, sizeof(mbi)) ||
@@ -323,30 +300,22 @@ namespace vba
         SetArgTypeOpcodeDiagnostics(core::modes::DiagEnabled());
         ResetTracing();
 
-        // Latch the emit mode for this session: TOP emits only depth-1
-        // frames, ALL emits every frame. Read here, at arm, never on the hot
-        // path -- the setter refuses while armed for this reason.
+        // Latched here, never read on the hot path; the setter refuses while armed.
         SetEmitTopLevelOnly(core::modes::GetDepth(core::modes::Source::Vba) == core::modes::Depth::Top);
         SetCapture(core::modes::GetArgs(core::modes::Source::Vba),
                    core::modes::GetRetVal(core::modes::Source::Vba));
 
-        // OBJECTS. Nothing is derived here: QueryInterface validates itself in
-        // the hook, so an interface id that is wrong costs the detail for that
-        // class and can never produce a false claim. The counters say what
-        // actually happened.
+        // Nothing to derive for objects: QueryInterface validates itself, so a wrong interface id
+        // costs that class's detail and never makes a false claim.
         ResetObjectTotals();
         SetDescribeObjects(core::modes::GetObjects(core::modes::Source::Vba));
 
-        // From the same verified SlotSet the patching uses, because this is the
-        // PRODUCER half and the consumer must never re-derive. A failure is not
-        // fatal -- values still decode, types are simply absent -- but it is
-        // reported rather than silently skipped.
+        // From the same verified SlotSet the patching uses, so the consumer never re-derives.
+        // A failure costs types only, and is reported.
         {
             PcodeLengths pl;
-            // The lengths belong to an opcode set, not a table address, and the partition
-            // fingerprint says whether this is the set kSigLength describes. Without it the
-            // p-code walk is dropped rather than the arm refused: values and call timing are
-            // still true.
+            // The lengths belong to an opcode set, which the partition fingerprint identifies.
+            // On a mismatch the walk is dropped, not the arm: values and timing are still true.
             if (!s.partitionOk)
             {
                 ClearArmedLengths();
@@ -363,9 +332,7 @@ namespace vba
             else if (PinPcodeLengths(img, s, pl))
             {
                 SetArmedLengths(pl);
-                // `framedCount` 0 means the gate is OFF and attribution is
-                // running unfiltered -- a different session from one where the
-                // gate is on, and the two must not read alike in a log.
+                // `framedCount` 0 means attribution runs ungated, which must not read like gated.
                 char m[288];
                 _snprintf_s(m, sizeof m, _TRUNCATE,
                     "VBA p-code: %u length(s) pinned (%u never exercised by real "
@@ -379,10 +346,8 @@ namespace vba
             else                                ClearArmedLengths();
         }
 
-        // The VBA side may be the ONLY thing armed -- a workbook with macros and
-        // no XLL add-ins is ordinary -- so it cannot rely on the XLL half having
-        // opened the trace. Same file either way: one timeline, not two.
-        // Open and Close are counted in csv, so this side just opens and closes.
+        // VBA may be the only thing armed, so it opens the trace itself; csv counts opens, so
+        // both sides share one file and one timeline.
         emit::csv::Open(core::modes::GetBufferBytes(), core::modes::GetPauseOnFull(),
                         core::modes::GetFormat(), core::modes::BreaksColumn());
 
@@ -400,8 +365,7 @@ namespace vba
             const std::uint64_t orig = g_base + site.handlerRva;
             std::uint64_t* slot = table + site.slot;
             if (*slot != orig) continue;              // somebody else got here first
-            // find(), never operator[]: a miss must skip the slot, not invent a
-            // null function pointer for it.
+            // find(), never operator[]: a miss must skip the slot, not invent a null pointer.
             const auto it = byOriginal.find(orig);
             if (it == byOriginal.end() || !it->second) continue;
             const std::uint64_t stub = reinterpret_cast<std::uint64_t>(it->second);
@@ -440,39 +404,34 @@ namespace vba
         }
 
         g_armed = true;
-        pageGuard.Keep();      // armed: the page belongs to the session now
+        pageGuard.Keep();
         std::ostringstream o;
         o << "VBA tracing: ARMED [" << core::modes::DepthName(core::modes::GetDepth(core::modes::Source::Vba)) << "] -- "
           << g_patched.size() << " of " << s.sites.size() << " slots patched ("
           << g_bosSlots << " bos, " << g_bosBpSlots << " breakpoint, " << g_exitSlots << " exit, "
           << g_endSlots << " end, " << g_stopSlots << " stop; "
           << byOriginal.size() << " stubs), table +0x" << std::hex << s.tableRva << std::dec;
-        // SAY WHEN A FEATURE IS ABSENT. Without the `End` slot a chain killed by `End` is closed
-        // only by the stack-pointer backstop, so whatever runs next can nest
-        // under frames that are already dead -- the depth is inflated and the
-        // parentage invented, silently.
+        // Say when a feature is absent: without the `End` slot, what runs after an `End` can
+        // nest under dead frames, inflating depth and inventing parentage.
         if (!s.endOk)
             o << " -- NO `End` HANDLING: the End slot did not verify;"
                  " depth after an End may be overstated";
         if (!s.bosBpOk)
             o << " -- NO BREAKPOINT HANDLING: the BosBp pair did not verify;"
                  " a call whose first statements have breakpoints opens late";
-        // Narrower than the two above: nothing traces differently, the pause is
-        // just not counted, so a long `ticks` loses its explanation.
+        // Narrower: nothing traces differently, but a long `ticks` loses its explanation.
         if (!s.stopOk)
             o << " -- NO `Stop` COUNT: the Stop slot did not verify;"
                  " time paused at a `Stop` is in ticks but not in breaks";
         return o.str();
     }
 
-    // From the same counters the report prints, after the session, so nothing
-    // is added to the hot path.
+    // After the session, from the report's counters, so nothing is added to the hot path.
     std::vector<std::string> UnknownOpcodeWarnings()
     {
         std::vector<std::string> w;
         if (PcodeStopWarning()[0])        w.push_back(PcodeStopWarning());
-        // Kept separate from the stop warning: "no length" and "wrong length"
-        // are different defects with different fixes, and the second is worse.
+        // Apart from the stop warning: "no length" and "wrong length" have different fixes.
         if (PcodeSuspectWarning()[0])     w.push_back(PcodeSuspectWarning());
         if (PcodeClosureWarning()[0])     w.push_back(PcodeClosureWarning());
         if (ArgTypeUnknownWarning()[0])   w.push_back(ArgTypeUnknownWarning());
@@ -481,21 +440,16 @@ namespace vba
         return w;
     }
 
-    // THE P-CODE DIAGNOSTICS, logged at disarm from the counters the walk
-    // kept. The levels are deliberate: WARNING is the shape fuzzer's oracle,
-    // so only a defect goes there; coverage news is INFO; noise about noise
-    // is DEBUG.
+    // WARNING is the shape fuzzer's oracle, so only a defect goes there; coverage news is INFO,
+    // noise is DEBUG.
     void LogDisarmDiagnostics()
     {
-        // WHAT THE TRACER MET AND DID NOT UNDERSTAND. An unknown opcode does
-        // not make the trace wrong, it makes it QUIETLY INCOMPLETE: "(?)" and
-        // an empty ret read as findings rather than gaps. Silence is the
-        // assertable state.
+        // An unknown opcode makes the trace quietly incomplete: "(?)" and an empty ret read as
+        // findings rather than gaps.
         for (const std::string& w : UnknownOpcodeWarnings()) core::Log::Warning(w);
 
-        // The table's health. A correct table walks every procedure cleanly, so a shortfall is
-        // a defect. One wrong length in a common opcode drops the clean rate sharply while
-        // blaming nothing, because every break follows a resync.
+        // A correct table walks every procedure cleanly. One wrong length drops the clean rate
+        // sharply while blaming nothing, because every break follows a resync.
         long long walks = 0, clean = 0;
         PcodeHealth(walks, clean);
         // Always said, good news included, so the number can be trusted when it is good.
@@ -520,14 +474,11 @@ namespace vba
             core::Log::Error(m);
         }
 
-        // Lengths this session used that nothing has confirmed: coverage news,
-        // not a defect -- the walk did not break on them -- and the one channel
-        // through which a real workbook says which lengths to measure next.
+        // Unconfirmed lengths are coverage news, not a defect: the walk did not break on them.
         if (const char* uv = PcodeUnverifiedWarning())
             if (uv[0]) core::Log::Note(uv);
 
-        // The p-code corpus: it opens a file, so here and never in a hook. It
-        // is the evidence the length table is checked against.
+        // It opens a file, so here and never in a hook.
         if (core::modes::DiagEnabled())
         {
             wchar_t leaf[64];
@@ -535,8 +486,7 @@ namespace vba
             core::Log::Note(WritePcodeCorpus(core::EnsureAppSubdir(L"Logs") + leaf));
         }
 
-        // What the frame gate refused: noise on a healthy build, unless a
-        // NAMED LOAD was refused, which means the frame scan itself is wrong.
+        // Noise on a healthy build, unless a named load was refused: then the frame scan is wrong.
         if (const char* nf = PcodeNotFramedWarning())
         {
             if (nf[0])
@@ -594,15 +544,14 @@ namespace vba
             }
         }
 
-        // The stub page is leaked: a VBA thread may still be inside a stub.
-        // A thread past the slot load but before inHook++ is not seen by WaitForHooksQuiet.
+        // The stub page is leaked: a thread past the slot load but before inHook++ is not seen
+        // by WaitForHooksQuiet, and may still be inside a stub.
         const bool quiet = WaitForHooksQuiet(2000);
 
         if (quiet)
         {
-            FlushOpenFrames();      // no entry row is left without its exit
-            // NOT ClearArmedLengths() here: the report below asks whether a length
-            // table exists. Cleared after it.
+            FlushOpenFrames();
+            // Not ClearArmedLengths() yet: the report below asks whether a length table exists.
         }
         UnhookDoEvents();
         g_patched.clear();
@@ -624,9 +573,8 @@ namespace vba
           // may have been attributed to the wrong argument.
           << "    " << PcodeLine() << "\n"
           << "    " << PcodeStopLine() << "\n";
-        // The instruction stream of one procedure whose parameters did not all
-        // resolve -- whether an unrecovered type is a gap in the TABLES or the
-        // WALK. Developer evidence, gated behind XRAYXL_DIAG (core::modes::DiagEnabled).
+        // One untyped procedure's instruction stream, telling a table gap from a walk gap.
+
         if (core::modes::DiagEnabled())
         {
             if (PcodeUntypedDump()[0]) o << "    " << PcodeUntypedDump() << "\n";

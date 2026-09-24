@@ -39,7 +39,7 @@ End Property
      Trigger=@{ Kind='Run'; Name='Go' }
      Expect={ param($t)
         $e = Get-FirstEntryByName $t.rows
-        # A bracketed reserved type name IS the type -- same opcode, same value.
+        # A bracketed reserved type name is the type: same opcode, same value.
         if (-not $e.ContainsKey('BracketLong')) { return 'BracketLong was not traced' }
         if ($e['BracketLong'].typetext -ne 'Long') {
             return "BracketLong signature was [$($e['BracketLong'].typetext)], expected Long -- As [Long] must decode as As Long" }
@@ -47,15 +47,12 @@ End Property
             return "BracketLong args were [$($e['BracketLong'].args)]" }
         if ($e['BracketVariant'].typetext -ne 'Variant') {
             return "BracketVariant signature was [$($e['BracketVariant'].typetext)], expected Variant" }
-        # A class-module type is an Object, as a library class is: the class
-        # NAME is compile-time and is simply not present in the p-code.
+        # A class-module type is an Object, as a library class is: the class name is compile-time
+        # and not present in the p-code.
         if ($e['ClassParam'].typetext -ne 'Object') {
             return "ClassParam signature was [$($e['ClassParam'].typetext)], expected Object" }
-        # The Property Let value parameter, and the implicit `Me`. MS-VBAL gives every method an
-        # implicit ByVal `Me`; if it took an argument slot, every class method's arguments would
-        # be shifted by one. It does not: a class Property Let reports one parameter holding the
-        # assigned value, so declared parameters start at slot 1 as in a standard module.
-        # Asserted exactly.
+        # The Property Let value parameter: MS-VBAL gives every method an implicit ByVal `Me`, but it
+        # takes no argument slot, so declared parameters start at slot 1 as in a standard module.
         if (-not $e.ContainsKey('Val')) { return 'Property Let Val was not traced' }
         if ($e['Val'].typetext -ne 'Long') {
             return "Property Val signature was [$($e['Val'].typetext)], expected Long -- an implicit Me would shift it" }

@@ -1,7 +1,7 @@
-// WHAT GETS TRACED -- capture configuration, held per SOURCE (this codebase's
-// word for the XLL/VBA split, so the user-facing parameter uses it too).
+// Capture configuration, held per source: the XLL/VBA split, a word the user-facing parameter
+// uses too.
 //
-//   DEPTH   OFF | TOP | ALL   how much of the call tree EMITS rows. TOP is the
+//   DEPTH   OFF | TOP | ALL   how much of the call tree emits rows. TOP is the
 //                             outermost call only -- the one Excel itself
 //                             initiated. OFF: the source is not hooked at all.
 //   ARGS    TRUE | FALSE      decode parameters
@@ -29,10 +29,8 @@ namespace modes
     enum class Source { Xll = 0, Vba = 1 };
     enum class Depth  { Off = 0, Top = 1, All = 2 };
 
-    // Named Param, not Setting, so it reads as the function that sets it does.
-    // The calling cell (xlfCaller) is always resolved: the VBA tracer needs it to
-    // tell an error that escapes into a cell from one that propagates, so it is
-    // not a setting.
+    // The calling cell (xlfCaller) is not a setting: the VBA tracer always needs it to tell an error
+    // that escapes into a cell from one that propagates.
     enum class Param { Depth = 0, Args = 1, RetVal = 2, Objects = 3, Breakpoints = 4 };
 
     Depth GetDepth (Source s);
@@ -55,27 +53,23 @@ namespace modes
     const wchar_t* ParamNameW(Param p);
     const wchar_t* OnOffW(bool v);
 
-    // DEPTH != OFF, for the arming paths. One vocabulary for both sources, not
-    // two.
+    // DEPTH != OFF, for the arming paths.
     bool XllEnabled();
     bool VbaEnabled();
     // Whether a trace file opened now gets the `breaks` column: VBA traced, with BREAKPOINTS on.
     bool BreaksColumn();
 
-    // OUTPUT BUFFER, in BYTES -- a property of the FILE, not of a source, so no
-    // Source. 0 is the synchronous write; N is a byte ring of that budget
-    // drained off-thread. Bytes rather than MB so the command surface can
-    // accept a K/KB suffix for a sub-MB ring.
+    // The output buffer, a property of the file, so no Source. 0 writes synchronously; N is a byte
+    // ring drained off-thread. Bytes, not MB, so a K/KB suffix can ask for a sub-MB ring.
     std::size_t GetBufferBytes();
     void        SetBufferBytes(std::size_t bytes);
 
-    // WHEN THE RING FILLS: false = DROP the row (fast, lossy), true = PAUSE the
-    // traced thread until a slot frees (never loses, may throttle the calc).
-    // Ignored when BUFFERSIZE=0.
+    // When the ring fills: false drops the row (fast, lossy), true pauses the traced thread until a
+    // slot frees (never loses, may throttle the calc). Ignored when BUFFERSIZE=0.
     bool GetPauseOnFull();
     void SetPauseOnFull(bool pause);
 
-    // THE FILE'S FORMAT: CSV, one row a line with the values as text, or JSON Lines, one object
+    // The file's format: CSV, one row a line with the values as text, or JSON Lines, one object
     // a line with every value structured and typed. A property of the file, so no Source.
     enum class Format { Csv = 0, Jsonl = 1 };
     Format GetFormat();
@@ -83,10 +77,8 @@ namespace modes
     const char*    FormatName (Format f);
     const wchar_t* FormatNameW(Format f);
 
-    // Developer diagnostics in the disarm report -- raw opcode dumps, the
-    // identity struct-walk, the untyped-procedure p-code dump. Off so a
-    // ordinary report stays clean; XRAYXL_DIAG=1 when investigating why a
-    // procedure could not be named or a return typed.
+    // Developer diagnostics in the disarm report (opcode and p-code dumps), off so an ordinary
+    // report stays clean; XRAYXL_DIAG=1 to find why a procedure was not named or a return typed.
     bool DiagEnabled();
 }
 }   // namespace core

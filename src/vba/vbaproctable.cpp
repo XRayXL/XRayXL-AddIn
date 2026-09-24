@@ -28,7 +28,7 @@ namespace vba
             if (seen == trailer) return &p;
             if (seen == 0)
             {
-                // Claim it. A losing racer just probes on.
+                // A losing racer just probes on.
                 if (InterlockedCompareExchange64(
                         reinterpret_cast<volatile LONG64*>(&p.trailer),
                         static_cast<LONG64>(trailer), 0) == 0)
@@ -40,7 +40,8 @@ namespace vba
             }
             i = (i + 1) & (kSize - 1);
         }
-        return nullptr;   // full -- the caller counts it in the totals
+        return nullptr;   // full; the caller counts it
+
     }
 
     void ProcTable::Reset()

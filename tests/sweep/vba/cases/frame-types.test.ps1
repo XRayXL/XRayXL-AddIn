@@ -104,8 +104,7 @@ End Sub
             if ($e[$fn].args -ne $wantArgs[$fn]) {
                 return "$fn args were [$($e[$fn].args)], expected [$($wantArgs[$fn])]" }
         }
-        # A parameter the body never READS emits no load, so it has no
-        # recoverable type. Saying so is the honest answer.
+        # a parameter never read emits no load, so it has no recoverable type
         if ($e['T_TyUnused'].typetext -ne '?unseen,?unseen') {
             return "T_TyUnused should have no recoverable types, got [$($e['T_TyUnused'].typetext)]" }
         if ($t.framesOpened -ne $t.framesClosed) {

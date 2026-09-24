@@ -2,11 +2,7 @@
 #include <cstdint>
 #include "../core/safemem.h"
 
-// OLE Automation value types (VARIANT, SAFEARRAY, BSTR) and the facts about them both decoders
-// need, including the one SAFEARRAY header reader.
-//
-// cbElements is range-checked, not held to the scalar widths: a record array's element is
-// sizeof(the UDT). The element width is checked against the element type instead.
+// OLE Automation facts both decoders need, including the one SAFEARRAY header reader.
 //
 // Bounds are stored in raw rgsabound order, where rgsabound[0] is the last declared dimension;
 // renderers walk them backwards.
@@ -15,22 +11,18 @@ namespace vba
 {
     // ---- VARIANT ------------------------------------------------------------
 
-    // THE TAG BITS THAT CHANGE WHAT THE VALUE IS, rather than what type it is.
-    // Named once here because they were raw hex at each use.
+    // Tag bits that change what the value is, rather than what type it is.
     constexpr std::uint16_t kVT_ARRAY = 0x2000;   // the value is a SAFEARRAY*
-    constexpr std::uint16_t kVT_BYREF = 0x4000;   // the value is a POINTER to one
+    constexpr std::uint16_t kVT_BYREF = 0x4000;   // the value is a pointer to one
     constexpr std::uint16_t kVT_TYPEMASK = 0x0FFF;
 
-    // AN OMITTED Optional PARAMETER is materialised by the CALLER as a VARIANT
-    // carrying VT_ERROR and DISP_E_PARAMNOTFOUND. Both constants are EXACT,
-    // which is what makes the marker safe to recognise with no type information
-    // at all -- it is a tag, not a resemblance.
+    // An omitted Optional arrives as a VARIANT of exactly these two, so it is safe to recognise
+    // with no type information.
     constexpr std::uint16_t kVT_ERROR      = 10;
     constexpr std::uint32_t kParamNotFound = 0x80020004u;
 
-    // The VBA name for a VARTYPE; nullptr for one it cannot name. VT_ARRAY and VT_BYREF are not
-    // masked off: those bits change what the value is. 9 and 13 both say "Object", as VBA draws
-    // no distinction a user can see.
+    // nullptr for one it cannot name. VT_ARRAY and VT_BYREF are not masked off: those bits
+    // change what the value is. 9 and 13 are both "Object", as VBA shows no difference.
     inline const char* VtName(std::uint16_t vt)
     {
         switch (vt)
@@ -44,9 +36,8 @@ namespace vba
         case 12: return "Variant"; case 13: return "Object";
         case 14: return "Decimal"; case 17: return "Byte";
         case 20: return "LongLong";
-        // No VBA declaration produces these; a COM property can. Named by
-        // width, since inventing a VBA name would claim a declaration that
-        // does not exist. 36 is a user-defined Type carried in a Variant.
+        // Only a COM property produces these, so named by width rather than an invented VBA
+        // name. 36 is a user-defined Type carried in a Variant.
         case 16: return "Int8";    case 18: return "UInt16";
         case 19: return "UInt32";  case 21: return "UInt64";
         case 22: return "Int";     case 23: return "UInt";
@@ -79,8 +70,7 @@ namespace vba
 
     // ---- SAFEARRAY ----------------------------------------------------------
 
-    // Every documented FADF_ bit. Anything else set is not a SAFEARRAY, and
-    // saying so is the whole point of checking.
+    // Every documented FADF_ bit; anything else set means it is not a SAFEARRAY.
     constexpr std::uint16_t kFadfKnown    = 0x0FF7;
     constexpr std::uint16_t kFadf_Record  = 0x0020, kFadf_HaveVt   = 0x0080,
                             kFadf_BSTR    = 0x0100, kFadf_Unknown  = 0x0200,
@@ -96,14 +86,11 @@ namespace vba
         std::uint64_t total = 0;
     };
 
-    // The element type the descriptor itself states. A feature bit is the more
-    // specific statement and overrides the VARTYPE, which is why they are applied
-    // after it. 0 means nothing named the element kind.
+    // A feature bit is more specific than the VARTYPE, so it overrides it. 0: nothing named one.
     inline std::uint16_t EffectiveElemVt(const SaInfo& s)
     {
         std::uint16_t vt = s.vt & kVT_TYPEMASK;
-        // An Enum array says VT_USERDEFINED and stores Longs; VBA's own TypeName
-        // says Long() too. The declared Enum name is not in the descriptor.
+        // An Enum array says VT_USERDEFINED and stores Longs; TypeName says Long() too.
         if (vt == 29 && s.cbElem == 4) vt = 3;
         if (s.fFeat & kFadf_Unknown)  vt = 13;   // IUnknown*
         if (s.fFeat & kFadf_Dispatch) vt = 9;    // IDispatch*
@@ -132,9 +119,9 @@ namespace vba
         if (cDims == 0 || cDims > 8)              return false;
         // No feature bits is legal when the holder already names the element type.
         if ((fFeat & ~kFadfKnown) || (fFeat == 0 && vtHint == 0)) return false;
+        // Range-checked, not held to scalar widths: a record array's element is sizeof(the UDT).
         if (cbElem == 0 || cbElem > 0x10000)      return false;
-        // A lock count is a small runtime counter; a large one is a stale
-        // structure. The ceiling is a sanity bound, not a documented limit.
+        // A large lock count means a stale structure; a sanity bound, not a documented limit.
         if (cLocks > 0x1000)                      return false;
 
         s.cDims = cDims; s.fFeat = fFeat; s.cbElem = cbElem; s.pvData = pv;
@@ -144,12 +131,9 @@ namespace vba
             std::uint32_t n = 0, lb = 0;
             if (!core::RdU32(psa + 0x18 + static_cast<std::uint64_t>(d) * 8,     n))  return false;
             if (!core::RdU32(psa + 0x18 + static_cast<std::uint64_t>(d) * 8 + 4, lb)) return false;
-            // A ZERO COUNT IS A VALID ARRAY: `Array()` makes one, and VBA reports
-            // its bounds as 0..-1.
+            // A zero count is valid: `Array()` makes one, with bounds 0..-1.
             if (n > 0x4000000) return false;                       // 64M per dimension
-            // lLbound is signed and read from memory, so a stale 0x7FFFFF00 makes
-            // "lower + count - 1" overflow -- undefined, and in practice a wildly
-            // wrong bound printed as though it were real.
+            // Or a stale lLbound makes "lower + count - 1" overflow.
             const std::int32_t low = static_cast<std::int32_t>(lb);
             if (low < -0x10000000 || low > 0x10000000) return false;
             s.cElems[d] = n;
@@ -158,14 +142,11 @@ namespace vba
             if (s.total > 0x8000000ull) return false;               // 128M total
         }
 
-        // pvData is only needed if an element is read through it: an EMPTY array
-        // is a real array, with bounds 0..-1 and possibly a null data pointer.
+        // An empty array may have a null data pointer.
         if (s.total > 0 && !core::InUserRange(pv)) return false;
 
-        // THE VARTYPE SITS IN THE DWORD BEFORE THE DESCRIPTOR when
-        // FADF_HAVEVARTYPE says so -- documented, and what SafeArrayGetVartype
-        // reads. Otherwise fall back to what the caller knew.
-        // Fall back to the hint when the array's own vartype is missing or unreadable.
+        // With FADF_HAVEVARTYPE the vartype is the DWORD before the descriptor, as
+        // SafeArrayGetVartype reads it; the hint stands when that is missing or unreadable.
         s.vt = vtHint;
         if (fFeat & kFadf_HaveVt)
         {
@@ -174,16 +155,11 @@ namespace vba
                 s.vt = static_cast<std::uint16_t>(vt);
         }
 
-        // IT MUST NAME ITS ELEMENT KIND. Everything above is plausibility --
-        // dimensions in range, known bits, sane sizes -- and bits that merely look
-        // like that are a guess. A VBA array always carries its element type, and
-        // one that does not is not evidence enough.
+        // Everything above is only plausibility; a VBA array always names its element type.
         const std::uint16_t evt = EffectiveElemVt(s);
         if (evt == 0) return false;
 
-        // THE ONE REAL CROSS-CHECK: the declared element width must match the
-        // width the element type implies. This is what a shape test cannot do,
-        // and it is why the width range above is safe.
+        // The one real cross-check, and why the loose width range above is safe.
         std::uint32_t want = 0;
         switch (evt & kVT_TYPEMASK)
         {

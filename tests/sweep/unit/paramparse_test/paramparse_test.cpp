@@ -110,9 +110,8 @@ int main()
 
     // ---- IsWord is case-insensitive -----------------------------------------
     {
-        // The full word in the wrong case. A PREFIX must not match: IsWord is
-        // an exact compare, or "buffer" would name BUFFERSIZE and BUFFERWHENFULL
-        // alike.
+        // The full word in the wrong case. A prefix must not match, or "buffer" would name
+        // BUFFERSIZE and BUFFERWHENFULL alike.
         auto w = Str(s0, L"buffersize");
         Check(IsWord(&w, L"BUFFERSIZE"), "IsWord matches case-insensitively");
         auto wp = Str(s0, L"buffer");

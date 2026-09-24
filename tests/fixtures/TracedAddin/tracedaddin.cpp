@@ -87,16 +87,13 @@ namespace
     }
 }
 
-// ============================================================================
-// ARGUMENT SHAPES -- one exported function per type code.
-// Each answer is a pure function of the inputs so a test can assert the value.
-// ============================================================================
+// ---- argument shapes: one exported function per type code, each a pure function of its inputs ----
 
-// B: double, in XMM by position. Two of them, so ORDER is observable.
+// B: double, in XMM by position. Two of them, so order is observable.
 extern "C" __declspec(dllexport) LPXLOPER12 __stdcall TxB(double a, double b)
 { return RetNum(a * 10.0 + b); }
 
-// Five doubles: the fifth is the first STACK argument, which is the case a
+// Five doubles: the fifth is the first stack argument, which is the case a
 // register-only decoder gets wrong.
 extern "C" __declspec(dllexport) LPXLOPER12 __stdcall TxStackArgs(
     double a, double b, double c, double d, double e)
@@ -112,10 +109,9 @@ extern "C" __declspec(dllexport) LPXLOPER12 __stdcall TxTwoShapes(
 extern "C" __declspec(dllexport) LPXLOPER12 __stdcall TxA(short flag)
 { return RetNum(flag ? 1 : 0); }
 
-// Exported, and never registered by this XLL, so a test can register it under a different
-// display name: the Excel-DNA shape, where the exports are f0, f1, f2. Re-registering an
-// already registered function does not reproduce it, because Excel keeps one registration per
-// (module, procedure) and adds the second name to the same id.
+// Exported but never registered here, so a test can register it under another display name: the
+// Excel-DNA shape, exports f0, f1, f2. Re-registering a registered function would not do, as Excel
+// keeps one registration per (module, procedure) and adds the second name to the same id.
 extern "C" __declspec(dllexport) LPXLOPER12 __stdcall TxUnregistered(short flag)
 { return RetNum(flag ? 4242 : -1); }
 
@@ -159,7 +155,7 @@ extern "C" __declspec(dllexport) LPXLOPER12 __stdcall TxKw(FP12* a)
     return RetNum(t);
 }
 
-// O%: ONE type code, THREE ABI slots -- rows*, columns*, array. The shape a
+// O%: one type code, three ABI slots -- rows*, columns*, array. The shape a
 // per-character parser miscounts most badly.
 extern "C" __declspec(dllexport) LPXLOPER12 __stdcall TxOw(int* rows, int* cols, double* arr)
 {
@@ -181,8 +177,8 @@ extern "C" __declspec(dllexport) LPXLOPER12 __stdcall TxP(LPXLOPER v)
     return RetNum(9);
 }
 
-// Any value at all, reported as a code, so a test can confirm the ARGUMENT
-// TYPE survived: 1 num, 2 str, 3 bool, 4 error, 5 array, 6 missing.
+// Any value at all, reported as a code, so a test can confirm the argument
+// type survived: 1 num, 2 str, 3 bool, 4 error, 5 array, 6 missing.
 extern "C" __declspec(dllexport) LPXLOPER12 __stdcall TxQ(LPXLOPER12 v)
 {
     if (!v) return RetNum(0);
@@ -196,8 +192,7 @@ extern "C" __declspec(dllexport) LPXLOPER12 __stdcall TxQ(LPXLOPER12 v)
     return RetNum(9);
 }
 
-// A mixed signature: the shape where a
-// per-character walk reports five arguments instead of three.
+// A mixed signature: the shape where a per-character walk reports five arguments instead of three.
 extern "C" __declspec(dllexport) LPXLOPER12 __stdcall TxMixed(
     const XCHAR* name, FP12* values, double* factor)
 {
@@ -222,12 +217,10 @@ extern "C" LPXLOPER12 __stdcall TxJumpAddImpl(double a, double b)
 extern "C" LPXLOPER12 __stdcall TxJumpStrImpl(const XCHAR* s)
 { return RetNum(s ? static_cast<double>(s[0]) * 100.0 : -1.0); }
 
-// ---- nesting: an add-in function that calls another THROUGH Excel ------------
+// ---- nesting: an add-in function that calls another through Excel ------------
 //
-// Cell nesting like =TxB(TxB(1,2),3) is NOT nesting at the ABI level: Excel
-// evaluates the inner call, then the outer, one after the other. To get our
-// hook for one function genuinely on the stack while the hook for another
-// fires, the add-in has to re-enter Excel. xlUDF does that.
+// =TxB(TxB(1,2),3) is not nesting at the ABI level: Excel finishes the inner call first. Only an
+// add-in re-entering Excel, through xlUDF, has one hook genuinely on the stack while another fires.
 extern "C" __declspec(dllexport) LPXLOPER12 __stdcall TxCallsBack(double x)
 {
     PascalStr fn; fn.Set(L"TxB");
@@ -254,7 +247,7 @@ extern "C" __declspec(dllexport) LPXLOPER12 __stdcall TxCallsBack2(double x)
     return RetNum(v * 2.0);
 }
 
-// ---- high arity: twelve doubles, so EIGHT of them are on the stack -----------
+// ---- high arity: twelve doubles, so eight of them are on the stack -----------
 extern "C" __declspec(dllexport) LPXLOPER12 __stdcall TxMany(
     double a1, double a2, double a3, double a4, double a5, double a6,
     double a7, double a8, double a9, double a10, double a11, double a12)
@@ -265,10 +258,9 @@ extern "C" __declspec(dllexport) LPXLOPER12 __stdcall TxMany(
                   a7*7 + a8*8 + a9*9 + a10*10 + a11*11 + a12*12);
 }
 
-// ---- a COMMAND (macro), not a worksheet function -----------------------------
-// Registered with macro_type 2. Excel calls it through Application.Run, with no
-// calling cell at all -- which the trace must report as no cell rather than a
-// confident A1.
+// ---- a command (macro), not a worksheet function -----------------------------
+// Registered with macro_type 2 and run through Application.Run with no calling cell, which the
+// trace must report as no cell rather than a confident A1.
 static volatile LONG64 g_macroCalls = 0;
 extern "C" __declspec(dllexport) int __stdcall TxMacro()
 {
@@ -334,9 +326,7 @@ extern "C" __declspec(dllexport) LPXLOPER12 __stdcall TxSlow(double x)
     return RetNum(x + acc - acc);
 }
 
-// ============================================================================
-// RETURN SHAPES -- one exported function per return code.
-// ============================================================================
+// ---- return shapes: one exported function per return code ----------------------
 
 extern "C" __declspec(dllexport) double __stdcall TxRetB(double x) { return x * 3.0; }
 
@@ -377,8 +367,7 @@ extern "C" __declspec(dllexport) FP12* __stdcall TxRetKw(double x)
     return f;
 }
 
-// P: returns the NARROW XLOPER. The case the shipped decoder read one byte
-// past the end of.
+// P: returns the narrow XLOPER, 24 bytes, so a decoder reading it as an XLOPER12 reads past its end.
 extern "C" __declspec(dllexport) LPXLOPER __stdcall TxRetP(double x)
 {
     static __declspec(thread) XLOPER r;
@@ -494,13 +483,13 @@ extern "C" __declspec(dllexport) int __stdcall TxRegisterNoResult()
     return calls;
 }
 
-// TxTwoShapes again, under a WIDER type text: five arguments where arming saw two.
+// TxTwoShapes again, under a wider type text: five arguments where arming saw two.
 extern "C" __declspec(dllexport) int __stdcall TxRegisterReshape()
 {
     XLOPER12 xDLL; ZeroMemory(&xDLL, sizeof(xDLL));
     Excel12(xlGetName, &xDLL, 0);
     // A unique name per call would not make this repeatable: the test needs TxTwoShapes still
-    // bound NARROW at arm, and one reshape leaves it wide for the life of the process.
+    // bound narrow at arm, and one reshape leaves it wide for the life of the process.
     Register(xDLL, L"TxTwoShapes", L"QBBBBB", L"TxShapeWide");
     Excel12(xlFree, nullptr, 1, &xDLL);
     return 1;
@@ -610,7 +599,7 @@ extern "C" __declspec(dllexport) int __stdcall xlAutoOpen()
     Register(xDLL, L"TxDivZero",    L"QB");
     Register(xDLL, L"TxSlow",       L"QB$");   // thread-safe: engages MTC
 
-    // A COMMAND, not a function: macro_type 2 is the sixth xlfRegister
+    // A command, not a function: macro_type 2 is the sixth xlfRegister
     // argument, so this one cannot go through Register() above.
     {
         PascalStr proc; proc.Set(L"TxMacro");

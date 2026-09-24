@@ -1,19 +1,9 @@
-# Shared plumbing for the XRayXL suites -- everything a driver needs to talk
-# to the XRayXL XLL inside the session StretchXL hands it. Dot-sourced by
-# each suite's _driver.ps1; the underscore keeps it out of test discovery.
-#
-# PRODUCT KNOWLEDGE LIVES HERE, NOT IN THE HARNESS: log and trace paths are
-# keyed by the session's pid, arming is Application.Run('XRayXL_Arm') -- an XLL
-# command, no COM object, no window, no focus -- and the totals line format is
-# the tracer's own. StretchXL knows none of this.
+# Shared plumbing for talking to the XRayXL XLL in a StretchXL session; the underscore keeps it
+# out of test discovery. Product knowledge lives here so StretchXL stays product-agnostic.
 
 function Clear-XRayStaleTraces([int]$ExcelPid) {
-    # A trace file for our own pid that predates this session is a leftover, and must go before
-    # we arm: the OS reuses pids, and the file is created lazily, so a test that traces nothing
-    # would otherwise read the stale one.
-    #
-    # Moved aside, not deleted: under -SessionMode Reuse the same-pid file is an earlier test's
-    # in this process. TraceFiles\earlier\ keeps it, and Get-XRayTraceCsv does not recurse.
+    # Pids are reused and the trace file is created lazily, so a test that traces nothing would
+    # read a stale same-pid file. Moved aside, not deleted: under Reuse it is an earlier test's.
     if ($ExcelPid -le 0) { return }
     $dir = Join-Path (Get-XRayRoot) 'TraceFiles'
     $stale = @(foreach ($ext in 'csv', 'jsonl') {
@@ -25,11 +15,8 @@ function Clear-XRayStaleTraces([int]$ExcelPid) {
 }
 
 function Set-XRaySessionDefaults($Sx) {
-    # The settings every driver applies before driving. Visible is the manager's.
-    #
-    # A session an earlier test left armed is disarmed first: every setter below refuses while
-    # armed, so under -SessionMode Reuse one failed test would fail every later one. With no
-    # add-in in the session the call throws, which reads as not armed.
+    # Disarm a session an earlier test left armed: every setter below refuses while armed, so
+    # under Reuse one failed test would fail every later one. No add-in throws: not armed.
     $armedNow = $false
     try { $armedNow = [bool]$Sx.App.Run('XRayXL_IsArmed') } catch {}
     if ($armedNow) {
@@ -41,40 +28,26 @@ function Set-XRaySessionDefaults($Sx) {
     Clear-XRayStaleTraces $Sx.ProcId
     $app = $Sx.App
     $app.DisplayAlerts = $false
-    # Events on, the default, restored for every test: under -SessionMode Reuse a prior test can
-    # leave Application.EnableEvents False. The timeline driver disables them after this, in its
-    # own set-up.
+    # a prior test in a reused session can leave EnableEvents False
     try { $app.EnableEvents = $true } catch {}
-    # NO AUTORECOVER: a crashing run otherwise leaves recovery prompts --
-    # blocked-macro banners from %TEMP% -- in front of whoever next opens
-    # Excel for real work. Re-applied per WORKBOOK by drivers, because the
-    # save-and-reopen produces a NEW workbook object each time.
+    # a crashing run otherwise leaves recovery prompts for whoever next opens Excel; drivers
+    # re-apply it per workbook, since each reopen makes a new workbook object
     try { $app.AutoRecover.Enabled = $false } catch {}
     # DisplayAlerts does not cover the external-link prompt.
     try { $app.AskToUpdateLinks = $false } catch {}
-    # Trace modes are PROCESS state inside the XLL and a reused session keeps
-    # them -- reset to the defaults every test starts from. A test that
-    # wants otherwise sets its own AFTER this, before arming.
+    # Trace settings are process state a reused session keeps, so each is reset to the default
+    # every test starts from; a test wanting otherwise sets its own after this, before arming.
     try { [void]$app.Run('XRayXL_SetTraceParam', 'XLL', 'DEPTH', 'ALL') } catch {}
     try { [void]$app.Run('XRayXL_SetTraceParam', 'VBA', 'DEPTH', 'ALL') } catch {}
-    # ARGS and RETVAL default ON for both sources: that is what the tracer
-    # did before they were switchable, and a new switch must not quietly
-    # change what an existing test gets. A test wanting otherwise sets its
-    # own AFTER this, before arming.
     try { [void]$app.Run('XRayXL_SetTraceParam', [Type]::Missing, 'ARGS', $true) } catch {}
     try { [void]$app.Run('XRayXL_SetTraceParam', [Type]::Missing, 'RETVAL', $true) } catch {}
-    # The OUTPUT BUFFER is process state too, and the suites run the SHIPPED config
-    # -- the ring -- so it is reset to the shipped default here, not to 0.
-    # A test wanting a different size (the ring suite) sets its own after this.
+    # the suites run the shipped ring, not an unbuffered 0
     try { [void]$app.Run('XRayXL_SetTraceParam', 'BUFFERSIZE', 64) } catch {}
-    # BUFFERWHENFULL is process state too. Shipped default is PAUSE; a test
-    # wanting DROP sets its own after this, before arming.
     try { [void]$app.Run('XRayXL_SetTraceParam', 'BUFFERWHENFULL', 'PAUSE') } catch {}
-    # FORMAT is process state too, and every reader here but the JSONL test's reads CSV.
+    # every reader here but the JSONL test's reads CSV
     try { [void]$app.Run('XRayXL_SetTraceParam', 'FORMAT', 'CSV') } catch {}
-    # OBJECTS, BREAKPOINTS and LOGLEVEL are process state too. Tests rely on this reset instead
-    # of restoring what they changed on the way out. The first two are VBA's alone, and refused
-    # without a Source.
+    # tests rely on this reset instead of restoring what they changed; OBJECTS and BREAKPOINTS
+    # are VBA's alone, and refused without a Source
     try { [void]$app.Run('XRayXL_SetTraceParam', 'VBA', 'OBJECTS', $true) } catch {}
     try { [void]$app.Run('XRayXL_SetTraceParam', 'VBA', 'BREAKPOINTS', $false) } catch {}
     $level = if ($env:XRAYXL_LOGLEVEL) { $env:XRAYXL_LOGLEVEL } else { 'INFO' }
@@ -84,28 +57,22 @@ function Set-XRaySessionDefaults($Sx) {
 }
 
 function Get-XRayRoot {
-    # The XLL's output root: XRAYXL_OUTPUT_DIR when set (the manager sets it per
-    # session from suite.psd1, so each Excel's files sit beside the run), else
-    # the XLL's own default under %TEMP%.
+    # The manager sets XRAYXL_OUTPUT_DIR per session so each Excel's files sit beside the run.
     if ($env:XRAYXL_OUTPUT_DIR) { return $env:XRAYXL_OUTPUT_DIR }
     return (Join-Path $env:TEMP 'XRayXL')
 }
 
 function Get-XRayPaths([int]$ExcelPid) {
-    # Where the XLL writes, keyed by the pid it runs in. The TRACE file is NOT
-    # here: its name carries an ever-rising id (XRayXL_Trace_<id>_<pid>.csv)
-    # so a re-arm never overwrites the last trace, and the id cannot be predicted.
-    # Resolve it at READ time with Get-XRayTraceCsv, not here.
+    # No trace path here: its name carries an unpredictable rising id, so Get-XRayTraceCsv
+    # resolves it at read time.
     @{
         Log    = Join-Path (Get-XRayRoot) ("Logs\XRayXL_{0}.log" -f $ExcelPid)
     }
 }
 
 function Get-XRayTraceCsv([int]$ExcelPid) {
-    # The newest trace file for this pid -- i.e. what the most recent arm wrote.
-    # The file is created LAZILY, on the first traced record, so a session
-    # that traced nothing has none; returns a non-existent path then, which
-    # Read-TraceFile treats as "no rows". Resolve at read time (after disarm).
+    # The file is created on the first traced row, so a session that traced nothing gets a
+    # non-existent path, which Read-TraceFile reads as no rows.
     $dir = Join-Path (Get-XRayRoot) 'TraceFiles'
     $f = @(Get-ChildItem (Join-Path $dir ("XRayXL_Trace_*_{0}.csv" -f $ExcelPid)) -ErrorAction SilentlyContinue |
            Sort-Object LastWriteTime) | Select-Object -Last 1
@@ -118,8 +85,7 @@ function Get-LogLength([string]$LogPath) {
 }
 
 function Wait-LogLine([string]$LogPath, [string]$Pattern, [int]$Mark, [int]$Seconds = 60) {
-    # Poll for a line matching $Pattern that arrived after $Mark, rather than sleeping a guessed
-    # interval: arming can take several seconds.
+    # polls rather than sleeping a guessed interval: arming can take several seconds
     $dl = (Get-Date).AddSeconds($Seconds)
     while ((Get-Date) -lt $dl) {
         $all = @(Get-Content $LogPath -ErrorAction SilentlyContinue)
@@ -133,7 +99,7 @@ function Wait-LogLine([string]$LogPath, [string]$Pattern, [int]$Mark, [int]$Seco
 }
 
 function Wait-XRayCondition([scriptblock]$Until, [int]$Seconds = 30, [int]$PollMs = 100) {
-    # Polls until $Until is true or time runs out; a probe that throws counts as not yet.
+    # a probe that throws counts as not yet
     $deadline = (Get-Date).AddSeconds($Seconds)
     while ($true) {
         try { if (& $Until) { return $true } } catch {}
@@ -161,11 +127,8 @@ function Wait-XRayTraceClosed([int]$ExcelPid, [int]$Seconds = 10) {
 }
 
 function Invoke-XRayCommand($Sx, [string]$Command) {
-    # Arm/Disarm are XLL COMMANDS (Application.Run) -- the ribbon and the COM
-    # server are gone from the product. Arm returns 1 (ok) / 0 (a contained SEH
-    # fault). Disarm returns the number of rows the run DROPPED (>= 0), or -1 on
-    # a contained fault -- so 0 is a clean disarm, NOT a fault. Fail only on
-    # the fault sentinel, which differs by command.
+    # The fault sentinel differs: Arm returns 0 on a contained fault, while Disarm returns its
+    # dropped-row count, so its 0 is a clean disarm and -1 the fault.
     try {
         $rc = $Sx.App.Run($Command)
         $faulted = if ($Command -eq 'XRayXL_Disarm') { $rc -eq -1 } else { $rc -eq 0 }
@@ -175,9 +138,8 @@ function Invoke-XRayCommand($Sx, [string]$Command) {
 }
 
 function Invoke-XRayDisarm($Sx) {
-    # Disarm and return the DROP COUNT the command reports (>= 0), or -1 on a
-    # contained fault. The trace file carries no drop marker, so
-    # this is how a caller learns whether the trace it just took is complete.
+    # Returns the drop count, or -1 on a contained fault; the trace file carries no drop
+    # marker, so this is how a caller learns the trace is complete.
     $drops = -1
     try { $drops = [int]$Sx.App.Run('XRayXL_Disarm') } catch {}
     [void](Wait-XRayTraceClosed $Sx.ProcId)
@@ -185,12 +147,9 @@ function Invoke-XRayDisarm($Sx) {
 }
 
 function Stop-XRayTrace($Sx) {
-    # Returns '' or a problem string. A dropped row would otherwise fail a later
-    # assertion as if the tracer were wrong; tests that want drops use Invoke-XRayDisarm.
-    #
-    # So is a value the tracer could not type, or a walk the length table could not account for:
-    # the disarm report warns of both, and every test that traces VBA should fail on them, not
-    # only the ones that think to look.
+    # Returns '' or a problem string, so drops, untyped values and p-code walk warnings fail
+    # every test rather than a later assertion blaming the tracer. Tests wanting drops use
+    # Invoke-XRayDisarm.
     $log  = (Get-XRayPaths $Sx.ProcId).Log
     $mark = Get-LogLength $log
     $drops = Invoke-XRayDisarm $Sx
@@ -286,11 +245,8 @@ function Get-XRaySummaryCalls($Summary, [string]$Function) {
 }
 
 function Close-OwnLeftover($App, [string]$Leaf) {
-    # A test that builds, saves and reopens a workbook leaves it open when it finishes, which is
-    # the realism -SessionMode Reuse exists for. The workbook's name is keyed by Excel's pid, so
-    # in a reused session the next test of the same family finds its own file name already open
-    # and SaveAs throws. So a test closes its own earlier leftover, by leaf, before it saves,
-    # and touches nothing else.
+    # Tests leave their books open, and names are keyed by pid, so under Reuse SaveAs would meet
+    # our own earlier book; close that one, by leaf, and touch nothing else.
     if (-not $App -or -not $Leaf) { return }
     try {
         $prev = $App.Workbooks.Item($Leaf)
@@ -377,10 +333,7 @@ function New-XRayMacroBook {
     foreach ($addr in $Cells.Keys) { $ws.Range($addr).Formula = $Cells[$addr] }
     if ($Prepare) { & $Prepare $ws }
 
-    # Excel refuses SaveAs past 218 characters, and says only "Unable to get the
-    # SaveAs property of the Workbook class" -- which points at everything except
-    # the path. The suite's own names are fixed, so -OutDir is the part a caller
-    # controls.
+    # Excel refuses SaveAs past 218 characters with an error that never mentions the path.
     if ($bookPath.Length -gt 218) {
         Complete-Test -Fail -Detail (
             ("workbook path is {0} characters and Excel refuses SaveAs past 218, " +
@@ -470,8 +423,7 @@ function Invoke-XRayArmedSession {
         [array]$Settings = @(),
         [scriptblock]$Body = $null,
         [string]$Leaf = '',
-        # 'XLL tracing: OFF' is the last line an arm writes when the XLL side is off; without
-        # it the wait has nothing to match and times out.
+        # 'XLL tracing: OFF' is the last line an arm writes when the XLL side is off
         [string]$ArmWait = 'armed \d+ of|nothing armed|could not|XLL tracing: OFF'
     )
     foreach ($xrSetting in $Settings) { [void](Set-XRayTraceParam $Sx $xrSetting[0] $xrSetting[1] $xrSetting[2]) }
@@ -494,26 +446,19 @@ function Invoke-XRayArmedSession {
 }
 
 function Set-XRayTraceParam($Sx, $Source, [string]$Name, $Value) {
-    # XRayXL_SetTraceParam(Source, Name, Value) -- ONE setting per call.
-    # Pass $null for Source to address BOTH sources: an XLL argument that is
-    # not supplied arrives as xltypeMissing whatever its position, so the
-    # LEADING argument can be omitted without a placeholder. Callers assert
-    # the echo, because a setter that records a value and changes nothing
-    # reads exactly like one that works.
+    # $null Source means both: an omitted XLL argument arrives as xltypeMissing in any position.
+    # Callers assert the echo: a setter that records a value and changes nothing looks the same.
     $s = if ($null -eq $Source) { [Type]::Missing } else { $Source }
     try { return [string]$Sx.App.Run('XRayXL_SetTraceParam', $s, $Name, $Value) }
     catch { return "Application.Run('XRayXL_SetTraceParam') failed: $($_.Exception.Message)" }
 }
 
 function ConvertTo-XRayGrid($Value) {
-    # XRayXL_GetTraceParam answers with a scalar or a 2-D array depending on
-    # what was asked. Excel hands a COM array back 1-BASED, so the bounds are
-    # read rather than assumed -- indexing from 0 silently drops a row.
+    # Excel hands a COM array back 1-based, so the bounds are read: indexing from 0 drops a row.
     if ($null -eq $Value) { return @() }
     if ($Value -isnot [array]) { return @(,@([string]$Value)) }
-    # Application.Run flattens an XLL array to a 1-D object[] in row-major order, so the content
-    # is intact and only the shape is lost. The shape is asserted through a spilled cell
-    # instead.
+    # Application.Run flattens an XLL array row-major, losing only the shape; tests assert the
+    # shape through a spilled cell.
     if ($Value.Rank -eq 1) { return ,@($Value | ForEach-Object { [string]$_ }) }
     $rows = @()
     for ($r = $Value.GetLowerBound(0); $r -le $Value.GetUpperBound(0); $r++) {
@@ -523,14 +468,12 @@ function ConvertTo-XRayGrid($Value) {
         }
         $rows += ,$row
     }
-    # ,$rows -- PowerShell unrolls one level on return, so a bare $rows
-    # hands the caller the FIRST row instead of the grid.
+    # PowerShell unrolls one level on return; a bare $rows would hand back the first row
     return ,$rows
 }
 
 function Get-XRayTraceParam($Sx, $Source, $Name) {
-    # Scalar when BOTH Source and Name are given; otherwise a 2-D array --
-    # four shapes. $null means 'not supplied'.
+    # Scalar when both Source and Name are given, otherwise a 2-D array; $null means not supplied.
     $s = if ($null -eq $Source) { [Type]::Missing } else { $Source }
     $n = if ($null -eq $Name)   { [Type]::Missing } else { $Name }
     try { return $Sx.App.Run('XRayXL_GetTraceParam', $s, $n) }
@@ -538,8 +481,7 @@ function Get-XRayTraceParam($Sx, $Source, $Name) {
 }
 
 function ConvertFrom-XRayTotals([string]$Line) {
-    # "VBA trace: statements=N exits=N ..." -> object. Every field any driver
-    # asks for; absent keys read as 0.
+    # "VBA trace: statements=N exits=N ..." -> object; absent keys read as 0.
     $t = @{}
     foreach ($m in [regex]::Matches($Line, '(\w+)=(\d+)')) { $t[$m.Groups[1].Value] = [int64]$m.Groups[2].Value }
     return [pscustomobject]@{
@@ -562,21 +504,15 @@ function ConvertFrom-XRayTotals([string]$Line) {
     }
 }
 
-# THE TRACE-FILE CONTRACT (docs/TraceRowModel.md). The header is the
-# version: change the format and this string, the doc, this reader and the
-# reader-contract test move in the same change. An old reader meeting a new
-# file refuses loudly here rather than mis-filtering silently.
+# The trace-file contract (docs/TraceRowModel.md). The header is the version, so an old reader
+# meeting a new format refuses loudly rather than mis-filtering silently.
 $script:TraceHeader = 'seq,input,kind,source,span,parent,depth,thread,qpc,module,function,proc,typetext,caller,callerref,argcount,args,ret,rettype,outcome,ticks,trust'
-# WHAT happened and WHO it happened in are two columns. One column carrying
-# both (`vba-entry`) forces every filter on one to spell out the other.
+# kind and source are separate columns so a filter on one need not spell out the other
 $script:TraceKinds   = @('entry', 'exit', 'depth-capped')
 $script:TraceSources = @('XLL', 'VBA')
 
-# The shape check, in .NET: a PowerShell loop over every character costs about twice what
-# Import-Csv does, and the soak reads traces with millions of rows.
-#
-# One row is one line: the writer turns CR and LF inside a field into spaces (rowcsv.cpp
-# Escape). A doubled quote inside a quoted field flips the state twice, which is correct.
+# In .NET because a PowerShell character loop is too slow for traces of millions of rows.
+# One row is one line: the writer turns CR and LF inside a field into spaces.
 if (-not ('XRayCsvShape' -as [type])) {
     Add-Type -TypeDefinition @'
 public static class XRayCsvShape
@@ -618,25 +554,20 @@ function Read-TraceFile([string]$Path) {
     # format.
     if (-not (Test-Path $Path)) { return @() }
 
-    # Format dispatch. CSV is the only shipped format; a second format
-    # adds a branch HERE when it lands, not a new reader.
+    # CSV is the only format this reader knows; a new one adds a branch here, not a new reader.
     if ($Path -notmatch '\.csv$') {
         throw "trace contract: no reader for '$Path' -- formats are added to docs/TraceRowModel.md and Read-TraceFile in the same change"
     }
 
-    # The header is this one, or this one with the optional `breaks` column last (VBA
-    # BREAKPOINTS); nothing else.
+    # an optional `breaks` column may follow, under VBA BREAKPOINTS
     $first = Get-Content $Path -TotalCount 1
     $hasBreaks = ($first -ceq "$script:TraceHeader,breaks")
     if ($first -cne $script:TraceHeader -and -not $hasBreaks) {
         throw ("trace contract violated at {0}`n  expected: {1}`n  found:    {2}" -f $Path, $script:TraceHeader, $first)
     }
 
-    # EVERY ROW MUST CARRY EVERY COLUMN. Import-Csv pads a short row with
-    # $nulls that are indistinguishable from empty fields, so a row that lost a
-    # column reads as a row full of blanks -- silently lossy, and the exact
-    # shape this contract exists to refuse. Counting top-level commas is the
-    # only place that distinction still survives.
+    # Import-Csv pads a short row with nulls that look like empty fields, so only counting
+    # commas catches a row that lost a column.
     $bad = Test-TraceColumnCount $Path ($first.Split(',')).Count
     if ($bad) { throw "trace contract: $bad, in $Path" }
 
@@ -648,17 +579,14 @@ function Read-TraceFile([string]$Path) {
         if (-not [int64]::TryParse($r.seq, [ref]$seq)) { throw "trace contract: non-numeric seq '$($r.seq)' in $Path" }
         if ($seq -le $prev) { throw "trace contract: seq $seq after $prev -- not strictly increasing in $Path" }
         $prev = $seq
-        # `input` is the PRODUCER's emit sequence: unique and >= 1, but NOT
-        # necessarily contiguous -- a HOLE marks a dropped row -- and not
-        # necessarily increasing in file order (concurrent producers). Uniqueness
-        # is the integrity check; the holes are where data went missing.
+        # `input` is the producer's emit sequence: a hole is a dropped row, and concurrent
+        # producers reorder it, so only uniqueness is checked.
         $in = [int64]0
         if (-not [int64]::TryParse($r.input, [ref]$in) -or $in -lt 1) { throw "trace contract: bad input '$($r.input)' at seq $seq in $Path" }
         if ($inSeen.ContainsKey($in)) { throw "trace contract: input $in used twice (at seq $seq) in $Path" }
         $inSeen[$in] = $true
         if ($script:TraceKinds -notcontains $r.kind) { throw "trace contract: unknown kind '$($r.kind)' at seq $seq in $Path" }
-        # Every row names its source. Loss is reported by XRayXL_Disarm, the
-        # summary and the log, never as a row, so the CSV holds only real events.
+        # loss is reported by Disarm and the log, never as a row
         if ($script:TraceSources -notcontains $r.source) { throw "trace contract: unknown source '$($r.source)' at seq $seq in $Path" }
         $u = [uint64]0
         if (-not [uint64]::TryParse($r.span,   [ref]$u)) { throw "trace contract: non-numeric span '$($r.span)' at seq $seq in $Path" }
@@ -677,10 +605,8 @@ function Read-TraceFile([string]$Path) {
 }
 
 function Get-MaxNestDepth($Rows) {
-    # How deeply did calls nest? Reconstructed from the entry/exit interleaving, independently
-    # of the `depth` column, so the two can be checked against each other. Span B is inside span
-    # A when A opens before B and closes after it on the same thread. Without this a genuinely
-    # nested call emitted as two sequential ones satisfies every other assertion.
+    # XLL nesting from the entry/exit interleaving, independent of the `depth` column, so a
+    # nested call written as two sequential ones is caught.
     $spans = @{}
     foreach ($r in $Rows) {
         if (-not $r.span) { continue }
@@ -692,8 +618,7 @@ function Get-MaxNestDepth($Rows) {
         if ($r.kind -eq 'entry') { $spans[$r.span].Enter = [long]$r.seq }
         else                     { $spans[$r.span].Exit  = [long]$r.seq }
     }
-    # A span with no exit cannot be contained or contain: the orphan check
-    # owns that failure, and guessing here would report it twice.
+    # an unclosed span is the orphan check's failure; guessing here would report it twice
     $iv = @($spans.Values | Where-Object { $null -ne $_.Enter -and $null -ne $_.Exit })
     $max = 0
     foreach ($a in $iv) {
@@ -708,14 +633,9 @@ function Get-MaxNestDepth($Rows) {
 }
 
 function Select-BookRows($Rows, [string]$BookLeaf) {
-    # Scope a row set to one workbook. Under -SessionMode Reuse an armed CalculateFull
-    # recalculates every workbook still open, so a leftover book contributes rows whose cells
-    # and function names collide with this test's.
-    #
-    # Scoped by span, which both rows of an activation carry: a row belongs to this book if its
-    # `cell` caller names it or it shares a span with a row that does. A row sharing a span with
-    # no book is a genuine cell-less activation (a macro, an event, Run) and is kept. A trace
-    # with no rows arrives as $null, which a pipeline passes on as one empty row.
+    # Under Reuse, CalculateFull recalculates leftover books whose rows collide with this test's.
+    # Scoped by span, so an exit follows its entry; rows tied to no book (a macro, an event) stay.
+    # An empty trace arrives as $null, which a pipeline would pass on as one empty row.
     $Rows = @($Rows | Where-Object { $null -ne $_ })
     $mine = @{}; $theirs = @{}
     foreach ($r in $Rows) {
@@ -738,10 +658,8 @@ function Read-TraceRows([int]$ExcelPid) {
     Read-TraceFile (Get-XRayTraceCsv $ExcelPid)
 }
 
-# The kinds `caller` may take, and whether `callerref` must describe it. The
-# list is closed on purpose: a kind nobody has seen is a decoder change, and
-# should fail here loudly rather than pass as a string the reader never
-# examined.
+# The kinds `caller` may take, and whether `callerref` must describe it. Closed on purpose: a new
+# kind is a decoder change and should fail here loudly.
 $script:CallerKinds = @{
     'cell'        = $true     # "[Book1]Sheet1!B2", or a whole CSE range
     'name'        = $true     # a shape's name, or an Auto_* macro's sheet name
@@ -754,16 +672,11 @@ $script:CallerKinds = @{
     'unknown'     = $true     # an XLOPER type we have not seen
 }
 
-# The two halves of a `cell` description. callerref is one external address,
-# "[Book1]Sheet1!B2:D4", which is what Range.Address(,,,True) returns. Excel quotes the
-# `[Book]Sheet` prefix when either name needs it (a hyphen, a space, a sheet name starting with
-# a digit) and doubles any apostrophe inside, so both forms are accepted. Defined once, for
-# every test that needs only the reference or only the book and sheet.
+# A `cell` callerref is an external address as Range.Address(,,,True) gives it. Excel quotes the
+# `[Book]Sheet` prefix when a name needs it and doubles apostrophes, so both forms are accepted.
 $script:ExternalAddress = "^(?:\[[^\]]+\][^!]+|'\[[^\]]+\](?:[^']|'')*')!"
 
-# The two accessors do not need to know about quoting at all: an address has
-# exactly ONE `!`, separating the prefix from the reference, and neither part
-# can contain another.
+# No quoting logic needed: an address has exactly one `!`.
 function Get-CallerCell($Row) {
     if ($Row.caller -ne 'cell') { return '' }
     if ($Row.callerref -match '^(.+)!([^!]+)$') { return $Matches[2] }
@@ -776,22 +689,15 @@ function Get-CallerSheet($Row) {
     return ''
 }
 
-# HOW AN ACTIVATION ENDED, as a closed set. VBA ONLY: the column reports the
-# fate of an activation the shadow stack followed, and the XLL side has none --
-# so an XLL row carrying any of these would mean the writers had crossed.
+# How an activation ended; an XLL exit can only be `returned`.
 $script:Outcomes = @('returned', 'threw', 'unwound', 'handled', 'abandoned', 'unhandled')
 
-# WHAT ENDED THE MEASUREMENT -- not a verdict on it, so nothing is discarded.
-# `exit` and `end` are readings; `backstop` and `flush` are upper bounds, and
-# `async` means no duration of the work exists yet. `exit` means the same thing
-# on both sources: the return path fired.
+# What ended the measurement, not a verdict on it: `exit` and `end` are readings, `backstop` and
+# `flush` upper bounds, and `async` means no duration exists yet.
 $script:Trusts = @('exit', 'end', 'backstop', 'flush', 'async')
 
 function Test-RowInvariants($Rows) {
-    # The caller invariants, assertable on any correct trace (docs/TraceRowModel.md). An entry
-    # row always names its caller; the kind is one of the closed set; a description is present
-    # exactly when the kind says one should be; an exit row carries neither. Returns problem
-    # strings; empty means the invariants hold. Every driver runs this.
+    # Invariants that hold on any correct trace (docs/TraceRowModel.md); returns problem strings.
     $problems = @()
     foreach ($r in $Rows) {
         if ($r.kind -eq 'entry') {
@@ -807,9 +713,7 @@ function Test-RowInvariants($Rows) {
             $has   = [bool]$r.callerref
             if ($wants -and -not $has) { $problems += "seq $($r.seq): caller='$($r.caller)' but callerref is empty" }
             if (-not $wants -and $has) { $problems += "seq $($r.seq): caller='$($r.caller)' must carry no callerref, has '$($r.callerref)'" }
-            # A cell description is an EXTERNAL address -- "[Book]Sheet!Ref".
-            # Anything else in that field is a cell reference that lost its
-            # book or sheet.
+            # anything but an external address has lost its book or sheet
             if ($r.caller -eq 'cell' -and $r.callerref -notmatch $script:ExternalAddress) {
                 $problems += "seq $($r.seq): caller='cell' but callerref '$($r.callerref)' is not an external address"
             }
@@ -823,8 +727,7 @@ function Test-RowInvariants($Rows) {
             $problems += "seq $($r.seq): $($r.source) args '$($r.args)' is not a<N>:<type>=<value>"
         }
 
-        # OUTCOME is on every exit row and no other. An XLL exit row exists only
-        # because the call returned, so `returned` is the one value it can hold.
+        # an XLL exit row exists only because the call returned
         if ($r.kind -eq 'exit') {
             if (-not $r.outcome) { $problems += "seq $($r.seq): $($r.source) exit with EMPTY outcome" }
             elseif ($script:Outcomes -notcontains $r.outcome) {
@@ -838,10 +741,8 @@ function Test-RowInvariants($Rows) {
             $problems += "seq $($r.seq): $($r.source) $($r.kind) row carries outcome '$($r.outcome)'"
         }
 
-        # THE DURATION AND WHETHER IT CAN BE BELIEVED. Exit rows carry both or
-        # neither: an async XLL call is the one exit with no number, and it says
-        # so in `trust` rather than leaving both blank. An entry row has no
-        # duration at all, so a value in either is a writer that invented one.
+        # An async XLL call is the one exit with no ticks, and says so in `trust`. An entry row
+        # has no duration, so a value in either is one the writer invented.
         if ($r.kind -eq 'exit') {
             if (-not $r.trust) { $problems += "seq $($r.seq): exit with no trust" }
             elseif ($script:Trusts -notcontains $r.trust) {
@@ -859,9 +760,7 @@ function Test-RowInvariants($Rows) {
             if ($r.trust) { $problems += "seq $($r.seq): $($r.kind) row carries trust '$($r.trust)'" }
         }
 
-        # WHERE IT SAT IN THE CHAIN. Every row carries both, on both sources -- entry,
-        # exit and the depth-capped marker alike. `parent` is 0 at the top of a chain,
-        # which is a VALUE and not an absence, so only an EMPTY field is a fault.
+        # `parent` 0 is the top of a chain, a value; only an empty field is a fault
         if ('' -eq [string]$r.depth)  { $problems += "seq $($r.seq): $($r.source) row with no depth" }
         elseif ([int]$r.depth -lt 1)  { $problems += "seq $($r.seq): depth '$($r.depth)' is below 1" }
         if ('' -eq [string]$r.parent) { $problems += "seq $($r.seq): $($r.source) row with no parent" }
@@ -873,7 +772,7 @@ function Test-RowInvariants($Rows) {
         }
     }
 
-    # ONE ENTRY AND ONE EXIT PER SPAN: a row written twice reuses its span.
+    # a row written twice reuses its span
     $spanSeen = @{}
     foreach ($r in $Rows) {
         if (-not $r.span -or ($r.kind -ne 'entry' -and $r.kind -ne 'exit')) { continue }
@@ -882,8 +781,7 @@ function Test-RowInvariants($Rows) {
         else { $spanSeen[$key] = $true }
     }
 
-    # EVERY ENTRY HAS ITS EXIT, AND EVERY EXIT ITS ENTRY. A missing exit reads as a
-    # hang. Callers that filter keep both rows of a span (Select-BookRows).
+    # A missing exit reads as a hang. Callers that filter keep both rows of a span.
     foreach ($r in $Rows) {
         if (-not $r.span) { continue }
         if ($r.kind -eq 'entry' -and -not $spanSeen.ContainsKey("exit|$($r.span)")) {
@@ -894,16 +792,14 @@ function Test-RowInvariants($Rows) {
         }
     }
 
-    # A ROW NAMES WHAT RAN: function always, module on the XLL side (VBA writes it
-    # empty when unresolvable, by design).
+    # VBA leaves module empty when it cannot resolve it, by design
     foreach ($r in $Rows) {
         if ($r.kind -ne 'entry' -and $r.kind -ne 'exit') { continue }
         if (-not $r.function) { $problems += "seq $($r.seq): $($r.source) $($r.kind) with no function" }
         if ($r.source -eq 'XLL' -and -not $r.module) { $problems += "seq $($r.seq): XLL $($r.kind) with no module" }
     }
 
-    # A PARENT IS ONE LEVEL UP. Depth is counted per source, so only a parent from the
-    # same source is compared, and only when its entry is among the rows given.
+    # A parent is one level up. Depth is per source, so only a same-source parent is compared.
     $entryBySpan = @{}
     foreach ($r in $Rows) { if ($r.kind -eq 'entry' -and $r.span) { $entryBySpan[[string]$r.span] = $r } }
     foreach ($r in $Rows) {
@@ -914,9 +810,7 @@ function Test-RowInvariants($Rows) {
         }
     }
 
-    # TICKS IS THE EXIT'S QPC LESS ITS ENTRY'S, on both sources: the entry is stamped
-    # with the start and the exit with the time the duration was taken. Checked only
-    # where the entry is among the rows given, since callers filter.
+    # ticks is the exit's qpc less its entry's; checked only where the entry survived filtering
     $entryQpc = @{}
     foreach ($r in $Rows) { if ($r.kind -eq 'entry' -and $r.span) { $entryQpc[[string]$r.span] = [string]$r.qpc } }
     foreach ($r in $Rows) {
@@ -934,8 +828,7 @@ function Test-RowInvariants($Rows) {
     return $problems
 }
 
-# Per-procedure row readers. A missing row reads '(no row)', not $null, so it
-# shows in a failure message instead of comparing quietly equal to nothing.
+# A missing row reads '(no row)', not $null, so it shows in a failure message.
 
 function EntryRowOf($Rows, [string]$Fn) {
     $r = @($Rows | Where-Object { $_.kind -eq 'entry' -and $_.source -eq 'VBA' -and $_.function -eq $Fn })
@@ -1010,12 +903,9 @@ function Get-CallMismatches($Want, $Entry, $Exit) {
 }
 
 function Test-ExpectedTrace($Rows, [array]$Expected, [string]$Source, [switch]$AnyOrder) {
-    # THE CALLS THE TEST KNOWS IT MADE, AND NO OTHERS. $Expected lists every $Source call
-    # in entry order: Function, and optionally Args, Ret, RetType, Outcome, Depth, Caller,
-    # Cell, and Parent -- the index in $Expected of the call it ran inside, or -1 for none.
-    # -AnyOrder: for top-level calls whose order Excel decides (a sheet of cells); each expected
-    # call must match a different entry, and Parent is not used.
-    # Returns problem strings; the count is checked first, since nothing else lines up without it.
+    # The calls the test knows it made, and no others. $Expected lists every $Source call in entry
+    # order; Parent is the index of the enclosing call, or -1. -AnyOrder is for calls whose order
+    # Excel decides, and ignores Parent. The count is checked first: nothing lines up without it.
     $entries = @($Rows | Where-Object { $_.kind -eq 'entry' -and $_.source -eq $Source })
     $want = @($Expected)
     if ($entries.Count -ne $want.Count) {
@@ -1053,11 +943,8 @@ function Test-ExpectedTrace($Rows, [array]$Expected, [string]$Source, [switch]$A
 }
 
 function Test-TracedCallsMatchCounters($Totals) {
-    # WHERE EXCEL DECIDES HOW MANY TIMES SOMETHING RUNS -- a recalculation, an event
-    # cascade -- the case counts its own calls in VBA and this compares the trace against
-    # that tally. VBA's count is independent of the tracer, so agreement means the rows are
-    # all there; comparing against the tracer's own counters would prove only self-consistency.
-    # $null when every counted function matches, otherwise the first that does not.
+    # Where Excel decides the call count, VBA counts its own calls: a tally independent of the
+    # tracer, where the tracer's own counters would prove only self-consistency.
     if (-not $Totals.counters -or -not $Totals.counters.Count) { return 'the case declared no counters' }
     foreach ($fn in ($Totals.counters.Keys | Sort-Object)) {
         $traced = @($Totals.rows | Where-Object { $_.kind -eq 'entry' -and $_.source -eq 'VBA' -and $_.function -eq $fn }).Count
@@ -1080,9 +967,7 @@ function Get-FirstEntryByName($Rows, [string]$Source = 'VBA') {
 }
 
 function Read-XRayNames([string]$LogPath, [int]$Mark) {
-    # The report block after the totals line carries the RESOLVED procedure
-    # names -- the only way to tell "we produced a name" from "we produced the
-    # RIGHT name".
+    # the report's resolved names are the only way to tell a name from the right name
     $names = @()
     $all = @(Get-Content $LogPath -ErrorAction SilentlyContinue)
     if ($all.Count -gt $Mark) {

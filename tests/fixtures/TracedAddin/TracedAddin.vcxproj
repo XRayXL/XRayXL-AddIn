@@ -1,9 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <!-- Release only. The add-in stands in for third-party XLLs, which ship Release, and Debug
-       defaults LinkIncremental to true, which routes every export through an E9 thunk and
-       removes the direct-prologue case from the suite. XRayXL.sln maps this project's Debug
-       slot onto Release. No version resource: nothing reads one. -->
+  <!-- Release only: it stands in for third-party XLLs, which ship Release, and Debug's
+       incremental linking would lose the direct-prologue case. XRayXL.sln maps Debug here. -->
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Release|x64">
       <Configuration>Release</Configuration>
@@ -29,8 +27,7 @@
     <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.props" />
   </ImportGroup>
   <PropertyGroup>
-    <!-- Three levels up from tests\fixtures\TracedAddin is the repo root; see the note in
-         XRayXL.vcxproj about why this is not $(SolutionDir). -->
+    <!-- Not $(SolutionDir): see XRayXL.vcxproj. -->
     <XRayRoot>$(MSBuildProjectDirectory)\..\..\..\</XRayRoot>
     <OutDir>$(XRayRoot)build\$(Platform)\$(Configuration)\TracedAddin\</OutDir>
     <IntDir>$(XRayRoot)build\obj\$(Platform)\$(Configuration)\TracedAddin\</IntDir>
@@ -39,9 +36,8 @@
     <AddinBits Condition="'$(Platform)'!='Win32'">64</AddinBits>
     <TargetName>TracedAddin$(AddinBits)</TargetName>
     <TargetExt>.xll</TargetExt>
-    <!-- Incremental linking routes every export through an E9 rel32 thunk. Off, so exports point
-         straight at code, as in a normally built release XLL; jumptable.asm supplies the
-         indirect shape. (LinkIncremental is a property, not Link metadata.) -->
+    <!-- Incremental linking routes every export through an E9 thunk; off, exports point straight
+         at code as in a release XLL, and jumptable.asm supplies the indirect shape. -->
     <LinkIncremental>false</LinkIncremental>
   </PropertyGroup>
   <ItemDefinitionGroup>

@@ -12,8 +12,7 @@ namespace vba
 {
     namespace
     {
-        // Slot indices, not addresses: byte offsets divided by 8, because the slot is the
-        // portable unit.
+        // Slot indices, not addresses, because the slot is the portable unit.
         constexpr std::uint32_t kBosSlot[2] = { 0x1338 / 8, 0x3368 / 8 };   // 615, 1645
         // The same statement with a breakpoint set on it: the editor rewrites the opcode in
         // place, so the operand and the length are a BoS's.
@@ -27,19 +26,15 @@ namespace vba
             0x0FC0/8, 0x1380/8, 0x1388/8, 0x1390/8, 0x1398/8,
             0x1378/8, 0x1360/8, 0x33F0/8, 0x33F8/8,
         };
-        // How the exit slots group into runs that must share one handler; only multi-slot groups can fail.
+        // Runs of exit slots that must share one handler.
         constexpr int kExitGroup[] = { 1,3,1,1,1,1,5,1,1,1,1,1,1,1,1,1,1,1,1 };
 
-        // The `End` opcode, which tears the whole VBA session down. Microsoft's PDB names slot
-        // 619 `lblEX_End`. It holds a handler of its own, which kPartitionHash already pins;
-        // the check below is still made.
+        // `End` (`lblEX_End` in Microsoft's PDB), which tears the whole VBA session down.
         constexpr std::uint32_t kEndSlot = 619;
 
         constexpr std::uint32_t kExpectedSlots = 1700;
 
-        // FNV-1a 64 over the dispatch table's equivalence partition (for every slot, the lowest
-        // slot sharing its handler). A mismatch means the opcode set is not the one kSigLength
-        // describes, so the lengths do not apply.
+        // A mismatch means the opcode set is not the one kSigLength describes.
         constexpr std::uint64_t kPartitionHash = 0x077934407C79A117ULL;
         constexpr std::uint32_t kMinRun        = 256;   // a run shorter than this is noise
 
@@ -101,8 +96,6 @@ namespace vba
         return false;
     }
 
-    // Exit-family slots that fire mid-procedure, so the type walk must not stop there:
-    // GoSub `Return` and the pre-exit cleanups do not end a procedure (vbaslots.h).
     // Keep in step with ProcedureEnd in vbaboundary.cpp.
     bool IsProcTerminatorSlot(std::uint32_t slot)
     {
@@ -111,19 +104,13 @@ namespace vba
         return IsExitSlot(slot);
     }
 
-    // A class or form Function returns its value through a trailing argument slot, the COM
-    // `[out, retval]` convention, and leaves through ExitProcCbHresult (0x3400/8) or
-    // ExitProcFrameCbHresult (0x3408/8), whose operand is the byte offset of that slot. A class
-    // Sub leaves through ExitProcHresult and has no such slot.
+    // These exits' operand is the result slot's offset; a class Sub leaves through ExitProcHresult.
     bool ExitHasTrailingResultSlot(std::uint32_t slot)
     {
         return slot == kSlot_ExitProcCbHresult || slot == kSlot_ExitProcFrameCbHresult;
     }
 
-    // -------------------------------------------------------------------
-    // Derivation, in the order the checks run. Everything after the pick can
-    // only REFUSE; nothing reaches back to retry or fall back.
-    // -------------------------------------------------------------------
+    // Everything after the pick can only refuse; nothing retries or falls back.
     namespace
     {
         void Note(SlotSet& s, Decline d) { s.declines[static_cast<int>(d)]++; }
@@ -133,14 +120,10 @@ namespace vba
             return img.Read(tableRva + slot * 8, &out, 8);
         }
 
-        // Runs of qwords that all point into executable code: the table's SHAPE,
-        // which survives a build where every address in it does not.
+        // Runs of code pointers: the table's shape survives builds where its addresses do not.
         struct Run { std::uint32_t rva, len; };
 
-        // ---- 1. THE SHAPE: every run of >= kMinRun code pointers, longest
-        // first. `runnerUp` is the longest rival's length, the margin the
-        // report prints. An unreadable page is counted once and skipped whole,
-        // rather than taking an exception for every qword in it.
+        // 1. Longest first. An unreadable page is skipped whole rather than faulting per qword.
         std::vector<Run> ScanCodePointerRuns(const Image& img, SlotSet& s, std::uint32_t& runnerUp)
         {
             const std::uint64_t base   = img.Base();
@@ -190,9 +173,7 @@ namespace vba
             return runs;
         }
 
-        // ---- 2. THE CANDIDATE: the run whose two beginning-of-statement slots
-        // hold the same handler. Two loads, no symbol, and it disambiguated
-        // correctly on every build in the corpus.
+        // 2. The run whose two beginning-of-statement slots hold the same handler.
         const Run* PickByBosPair(const Image& img, const std::vector<Run>& runs,
                                  std::uint64_t& bos0, std::uint64_t& bos1)
         {
@@ -207,20 +188,15 @@ namespace vba
             return nullptr;
         }
 
-        // 3. The fingerprint: the equivalence partition, hashed. Addresses differ between
-        // builds and this sequence does not, because it records only which slots agree.
-        // kSigLength is keyed by slot index, so a build that renumbered the slots must be
-        // refused.
-        //
-        // The same pass counts distinct handlers for the report and finds the most frequent
-        // one, the shared invalid-opcode handler.
+        // 3. The partition records only which slots agree, so it is the same across builds;
+        // kSigLength is keyed by slot index, so a renumbered set must be refused. The most
+        // frequent handler is the shared invalid-opcode one.
         void FingerprintTable(const Image& img, SlotSet& s)
         {
             std::vector<std::uint64_t> handlers(s.slots, 0);
             for (std::uint32_t i = 0; i < s.slots; ++i) ReadSlot(img, s.tableRva, i, handlers[i]);
 
-            // Lowest slot per handler, found by sorting (handler, slot) rather
-            // than by 1700^2 comparisons -- this runs in the user's arm.
+            // Sorted rather than 1700^2 comparisons: this runs in the user's arm.
             std::vector<std::pair<std::uint64_t, std::uint32_t>> hs;
             hs.reserve(s.slots);
             for (std::uint32_t i = 0; i < s.slots; ++i) hs.push_back({ handlers[i], i });
@@ -243,9 +219,7 @@ namespace vba
                 for (int k = 0; k < 4; ++k)
                     h64 = core::Fnv1aByte(h64, static_cast<std::uint8_t>(v >> (k * 8)));
             s.partitionHash = h64;
-            // The length table is PINNED, not derived, so arming has to verify
-            // it rather than trust it: the partition hash says the slot indices
-            // mean what the table thinks.
+            // The length table is pinned, so arming verifies the slot indices mean what it thinks.
             s.partitionOk       = (h64 == kPartitionHash);
             s.distinctHandlers  = distinct;
             if (invalidVa && invalidCount >= s.slots / 8)
@@ -255,9 +229,7 @@ namespace vba
             }
         }
 
-        // ---- 4. THE EXIT SLOTS: every repeat-group must hold exactly one
-        // handler. Records each as a patch site; false when any group is not
-        // uniform, and that is counted.
+        // 4. Every exit repeat-group must hold exactly one handler.
         bool VerifyExitGroups(const Image& img, SlotSet& s)
         {
             const std::uint64_t base = img.Base();
@@ -287,9 +259,7 @@ namespace vba
             return ok;
         }
 
-        // 5. A singleton slot. The End slot is not part of `verified`: a slot that fails costs
-        // its one feature, not the arm, and is reported. The check is
-        // that the slot holds a handler of its own, and not the BoS handler.
+        // 5. Not part of `verified`: a failure costs one feature, not the arm.
         void VerifySingletonSlot(const Image& img, SlotSet& s, std::uint32_t slot,
                                  const char* role, bool& okOut)
         {
@@ -317,8 +287,6 @@ namespace vba
 
     namespace
     {
-        // The BoS pair's breakpoint twins: both slots hold one handler that nothing else holds,
-        // neither BoS's nor the invalid one.
         void VerifyBosBpPair(const Image& img, SlotSet& s)
         {
             std::uint64_t a = 0, b = 0;
@@ -388,7 +356,7 @@ namespace vba
         s.slots         = chosen->len;
         s.bosHandlerRva = static_cast<std::uint32_t>(bos0 - img.Base());
 
-        // ---- verification. Everything below can only REFUSE. ----
+        // ---- verification: everything below can only refuse ----
         bool ok = true;
         if (bos0 != bos1) { Note(s, Decline::BosSlotsDiffer); ok = false; }   // belt and braces
         if (s.slots != kExpectedSlots) { Note(s, Decline::WrongSlotCount); ok = false; }
@@ -498,8 +466,7 @@ namespace vba
             return true;
         }
 
-        // SEH-only wrappers. Kept free of C++ objects on purpose: __try may not
-        // share a frame with anything that requires unwinding.
+        // Free of C++ objects: __try may not share a frame with anything that requires unwinding.
         bool GuardedParseLoaded(const std::uint8_t* p,
                                 std::uint32_t& size, std::uint32_t& lo, std::uint32_t& hi,
                                 Decline* why)
@@ -507,9 +474,7 @@ namespace vba
             __try { return ParseHeaders(p, 0x1000, size, lo, hi, why); }
             __except (EXCEPTION_EXECUTE_HANDLER)
             {
-                // The header itself faulted -- the module is mapped but the
-                // first page is not readable. That is "unreadable", not
-                // "absent", and the two must not be reported as the same thing.
+                // Mapped but unreadable, which must not be reported as absent.
                 if (why) *why = Decline::HeaderUnreadable;
                 return false;
             }
@@ -525,8 +490,6 @@ namespace vba
         m_p = reinterpret_cast<const std::uint8_t*>(h);
         m_base = reinterpret_cast<std::uint64_t>(h);
 
-        // SEH lives in its own function: __try cannot share a frame with
-        // objects that need unwinding (C2712), and this one has several.
         m_ok = GuardedParseLoaded(m_p, m_size, m_codeLo, m_codeHi, &m_why);
 
     }

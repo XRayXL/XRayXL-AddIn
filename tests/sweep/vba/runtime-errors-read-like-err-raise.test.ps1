@@ -1,9 +1,5 @@
-# An error the VBA runtime raises reads the same as one Err.Raise raises.
-#
-# Division by zero, an overflow and a failed conversion are raised inside the opcode that did the
-# arithmetic, not through Err.Raise. The frame still leaves without its epilogue, and that is what
-# makes it `threw`: its caller that catches reads `handled`, one that passes it on `unwound`, and a
-# worksheet function it escapes from `unhandled`.
+# An error the VBA runtime raises inside an arithmetic opcode (division by zero, overflow, a
+# failed conversion) reads like an Err.Raise: the frame still leaves without its epilogue.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -125,7 +121,7 @@ try {
     Check 'a-macro-chain-reads-threw-unwound-handled' (($t -eq 'threw') -and ($m -eq 'unwound') -and ($o -eq 'handled')) `
           "R_Thrower='$t' R_Middle='$m' R_Outer='$o'"
 
-    # THE NEGATIVE CONTROL: the same shape with nothing raised.
+    # the negative control: the same shape with nothing raised
     $h = OutcomeOf $rows 'H_Clean'; $u = OutcomeOf $rows 'U_Clean'
     Check 'the-clean-pair-returned' (($h -eq 'returned') -and ($u -eq 'returned')) "H_Clean='$h' U_Clean='$u'"
 

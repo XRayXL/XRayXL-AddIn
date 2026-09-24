@@ -37,9 +37,8 @@ function Invoke-WithRetry {
 
 function Resolve-SuiteConfig {
     <#
-      The suite configuration in force for one folder: every suite.psd1 from
-      the tests root down to that folder, merged, nearest wins PER KEY, unset
-      keys inherited from ancestors.
+      The suite configuration for one folder: every suite.psd1 from the tests
+      root down to it, merged per key, nearest wins.
     #>
     [CmdletBinding()]
     param(

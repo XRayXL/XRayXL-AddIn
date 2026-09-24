@@ -8,7 +8,7 @@
 #include <cwchar>
 #include <cwctype>
 
-// Every colour and distance here is read off a capture of Excel's Name Manager at 96 DPI.
+// Every colour and distance here matches Excel's Name Manager at 96 DPI.
 
 EXTERN_C IMAGE_DOS_HEADER __ImageBase;
 

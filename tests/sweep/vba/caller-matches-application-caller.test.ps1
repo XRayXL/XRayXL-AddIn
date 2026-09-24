@@ -1,24 +1,10 @@
-# `caller` reproduces Application.Caller. That is the whole specification.
-#
-# The tracer asks Excel12(xlfCaller) once per activation, at frame-open, so a row says what
-# Application.Caller would have returned on the first line of the procedure. This test inserts
-# that call and compares, rather than predicting Excel's answer: the documented table says
-# nothing about nesting or event handlers.
-#
-# Each procedure reads Application.Caller in its own body, not in a helper, since whether the
-# VBA call stack affects the answer is part of the question.
-#
-# Not covered: a macro on a button. Application.Caller names the shape only for a real mouse
-# click, which this project will not simulate.
-#
-# The caller is inherited, not reset per activation: a Worksheet_Change nested inside Auto_Open
-# reports Auto_Open's caller. Case 4 cannot show this, because its outer and inner callers are
-# both #REF!; the verdict is drawn from case 5.
+# `caller` is what Application.Caller returns on the procedure's first line. Compared against
+# the real call rather than predicted, since the documented table says nothing about nesting or
+# events. Each procedure reads it inline: whether the call stack matters is part of the question.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
-# The formatter mirrors src/xll/caller.cpp's vocabulary exactly, because the
-# whole test is a string comparison against what that file wrote.
+# the formatter mirrors src/xll/caller.cpp's vocabulary: the test is a string comparison
 $moduleCode = @'
 Public gLog As String
 
@@ -116,7 +102,6 @@ try {
     Set-XRaySessionDefaults $sx
     $paths = Get-XRayPaths $sx.ProcId
 
-    # The sheet's own code module, reached by the sheet's CODE NAME.
     New-XRayMacroBook $sx 'Caller' @(
         @{ Kind=1; Name='XRCase'; Code=$moduleCode }
         @{ Kind='Sheet'; Code=$sheetCode }
@@ -130,8 +115,7 @@ try {
 
     [void](Set-XRayTraceParam $sx 'XLL' 'DEPTH' 'OFF')
 
-    # One arming session per trigger, so each trigger's rows stand alone --
-    # csv::Open truncates at every arm.
+    # one arming session per trigger, so each trigger's rows stand alone in their own trace file
     function Invoke-Trigger([scriptblock]$act) {
         $app.Run($bang + 'XRReset') | Out-Null
         $mark = Get-LogLength $paths.Log
@@ -147,14 +131,12 @@ try {
         return [pscustomobject]@{ Vba = $vba; Rows = $rows }
     }
 
-    # What the tracer wrote for a procedure, in the VBA formatter's vocabulary.
     function Get-TracerCaller($rows, [string]$proc) {
         $r = @($rows | Where-Object { $_.function -eq $proc })
         if ($r.Count -eq 0) { return $null }
         $x = $r[0]
-        # Translated into the VBA formatter's vocabulary here, so the VBA side stays an
-        # independent witness. It says `object:` for any string (the trace's kind is `name`) and
-        # a bare `array` for anything IsArray covers, which includes a toolbar and a menu.
+        # translated here, so the VBA side stays an independent witness; IsArray covers a
+        # toolbar and a menu too
         if ($x.caller -eq 'cell') { return "cell|$(Get-CallerCell $x)|$(Get-CallerSheet $x)" }
         if ($x.caller -eq 'name') { return "object:$($x.callerref)" }
         if ($x.caller -in @('toolbar','menu','array')) { return 'array' }
@@ -167,8 +149,7 @@ try {
         }
         return $null
     }
-    # The tracer writes the sheet as [Book]Sheet; VBA's Parent.Name is the bare
-    # sheet. Compare on the parts that mean the same thing.
+    # the tracer writes [Book]Sheet; VBA's Parent.Name is the bare sheet
     function Same([string]$tracer, [string]$vba) {
         if ($null -eq $tracer -or $null -eq $vba) { return $false }
         if ($tracer -eq $vba) { return $true }
@@ -179,9 +160,7 @@ try {
         return $false
     }
 
-    # Results go to a script variable, not down the pipeline: a function's return value is
-    # everything it wrote to the pipeline, so an assignment would swallow the `STRETCH case=`
-    # lines Check emits.
+    # a script variable, not the pipeline: assigning the result would swallow Check's output
     $script:lastCmp = $null
     function Compare-Proc($res, [string]$proc, [string]$label) {
         $t = Get-TracerCaller $res.Rows $proc
@@ -207,10 +186,7 @@ try {
     Compare-Proc $r3 'Worksheet_Change' 'edit-fires-change-and-agrees'
     $e = $script:lastCmp
 
-    # ---- 4. THE NESTED CASE ------------------------------------------------
-    # Application.Run -> XRWriteCell -> writes a cell -> Worksheet_Change, one
-    # activation inside another. Whatever Excel answers in the inner frame, the
-    # tracer must answer the same.
+    # ---- 4. nested: Run -> XRWriteCell -> Worksheet_Change -----------------
     $r4 = Invoke-Trigger {
         $app.EnableEvents = $true
         $app.Run($bang + 'XRWriteCell') | Out-Null
@@ -221,18 +197,12 @@ try {
     Compare-Proc $r4 'Worksheet_Change' 'nested-inner-agrees'
     $inner = $script:lastCmp
 
-    # Both frames must be present, or the comparison above passed vacuously on
-    # a nesting that never happened.
+    # or the comparison above passed vacuously on a nesting that never happened
     $both = ($null -ne $outer.Tracer) -and ($null -ne $inner.Tracer)
     Check 'nested-both-frames-traced' $both "outer='$($outer.Tracer)' inner='$($inner.Tracer)'"
 
-    # 5. The discriminating nesting. Application.Run and an event handler both answer #REF!, so
-    # case 4 cannot separate "inherited" from "reset". Auto_Open is documented to answer with
-    # the document name, so the nested Change settles it either way.
-    #
-    # RunAutoMacros, because Workbooks.Open from automation does not run Auto_Open. A null
-    # answer here is a result, not a failure: the assertion is only that the tracer agrees with
-    # the VBA.
+    # 5. Run and an event both answer #REF!, so case 4 cannot tell inherited from reset; Auto_Open
+    # answers the document name. RunAutoMacros, since an automated Workbooks.Open skips Auto_Open.
     $r5 = Invoke-Trigger {
         $app.EnableEvents = $true
         try { $wb.RunAutoMacros(1) } catch { }      # 1 = xlAutoOpen
@@ -251,8 +221,7 @@ try {
     }
     Write-XRayObservation 'auto-open-is-a-distinctive-outer-caller' $aoDetail
 
-    # What Excel does, recorded either way; not an assertion. The verdict comes from case 5:
-    # only a distinctive outer caller can tell the two hypotheses apart.
+    # recorded, not asserted: only a distinctive outer caller can tell the two apart
     if ($discriminated) {
         $verdict = if ($aoInner.Vba -eq $ao.Vba) {
             "INHERITED -- the nested handler reports the OUTER invocation's caller ('$($ao.Vba)')"

@@ -48,23 +48,16 @@ End Sub
         foreach ($fn in @('T_ArrL','T_ArrS','T_Arr2','T_ArrV')) {
             if (-not $entry.ContainsKey($fn)) { return "no VBA entry row for $fn" }
         }
-        # SLOTS, not declared parameters. A ByRef array is one 8-byte slot; a
-        # ByVal Variant is a 24-byte VARIANT and so occupies THREE. Both are
-        # asserted so the distinction stays pinned -- it is the kind of thing
-        # a later "tidy-up" would collapse into a single wrong number.
+        # argcount counts parameters, not slots: a ByRef array is one slot
         foreach ($fn in @('T_ArrL','T_ArrS','T_Arr2')) {
             if ([int]$entry[$fn].argcount -ne 1) {
                 return "$fn slots=$($entry[$fn].argcount), expected 1" }
         }
-        # ONE parameter, though it occupies THREE frame slots -- a ByVal
-        # Variant is 24 bytes. argcount reports parameters, matching the
-        # signature; reporting slots made a one-argument Sub read as taking
-        # three, two of them undecodable padding.
+        # a ByVal Variant takes three slots but is still one parameter
         if ([int]$entry['T_ArrV'].argcount -ne 1) {
             return "T_ArrV argcount=$($entry['T_ArrV'].argcount), expected 1 (ByVal Variant is 3 slots, 1 parameter)" }
 
-        # The arrays themselves, with the bounds and contents declared above.
-        # Decimal, not raw bytes: the args column shares the result column's renderer. &H1001 is 4097.
+        # decimal, not raw bytes: the args column shares the result column's renderer
         if ($entry['T_ArrL'].args -ne 'a1:Ref&=Long[1..5]{4097,4098,4099,4100,4101}') {
             return "T_ArrL args were [$($entry['T_ArrL'].args)]" }
         if ($entry['T_ArrS'].args -ne 'a1:Ref&=String[1..3]{"ALPHA","BETA","GAMMA"}') {
@@ -72,8 +65,7 @@ End Sub
         # 2-D, and rendered in VBA declaration order: m(1 To 2, 1 To 3).
         if ($entry['T_Arr2'].args -notmatch '^a1:Ref&=Long\[1\.\.2,1\.\.3\]') {
             return "T_Arr2 args were [$($entry['T_Arr2'].args)]" }
-        # The Variant carries VT_ARRAY|VT_I4 in its first slot and the same
-        # array in its second -- and the p-code names that first slot Variant.
+        # the p-code names the slot Variant, though it carries VT_ARRAY|VT_I4
         if ($entry['T_ArrV'].typetext -ne 'Variant') {
             return "T_ArrV signature was [$($entry['T_ArrV'].typetext)]" }
         if ($entry['T_ArrV'].args -notmatch '^a1:Variant=') {

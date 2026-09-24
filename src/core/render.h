@@ -2,12 +2,11 @@
 #include <cstdio>
 #include <cstring>
 
-// WHAT BOTH COLUMNS AGREE ON. The XLL and VBA rows share one trace file, so a
-// number must read the same whichever source wrote it.
+// The XLL and VBA rows share one trace file, so a number must read the same whichever source
+// wrote it.
 namespace core
 {
-    // %.15g: fifteen digits round-trip every value a double holds exactly;
-    // %.17g adds only noise digits. Two renderings of one number that disagree
+    // %.15g, not %.17g: the extra digits are noise, and two renderings of one number that disagree
     // are worse than either.
     inline void FormatDouble(double d, char* out, int cap)
     {

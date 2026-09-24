@@ -1,7 +1,5 @@
-# A real Err.Raise nested beneath a benign object-model raise.
-#
-# A cell write in the frame the error passes through must not disturb the chain. A genuine
-# Err.Raise in a nested frame must still be attributed:
+# A real Err.Raise is still attributed when a frame it unwinds through made a benign
+# object-model raise (a cell write) first.
 #
 #    P1_Outer    On Error GoTo, catches             -> handled
 #    P1_Mid      writes a cell (benign), then calls -> the error unwinds through it

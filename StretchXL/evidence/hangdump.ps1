@@ -1,17 +1,13 @@
 # Dump a process that will not exit, while it is still stuck: every thread is
 # parked where it hung, and a killed process leaves no evidence at all.
-#
-# Dumps by pid only and never kills anything; the caller decides that.
-# Writes one object to the output stream: ProcessId, Path ($null when no dump
-# was written), SizeMB and Error. Nothing goes to any other stream, so a job
-# or a pipeline can use the result directly.
+# Never kills; the caller decides. Writes one result object and nothing to any
+# other stream, so a job or a pipeline can use it directly.
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][int]$ProcessId,
     [string]$Path,
-    # Full memory keeps evidence/dumpstack.py working (it reads the
-    # Memory64List stream). -Small keeps stacks and handles: about 1/20th the
-    # size, enough to see where a thread is stuck but not what it holds.
+    # -Small keeps stacks and handles: enough to see where a thread is stuck, not
+    # what it holds. evidence/dumpstack.py needs the full dump's Memory64List.
     [switch]$Small
 )
 $ErrorActionPreference = "Stop"

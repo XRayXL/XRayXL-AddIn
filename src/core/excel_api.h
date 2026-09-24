@@ -16,10 +16,8 @@ struct PascalStr
     std::vector<XCHAR> buf;
     XLOPER12 oper{};
 
-    // A copy's oper.val.str would still point into the ORIGINAL buf, so it
-    // would share or outlive storage it does not own. Deleting the copy turns
-    // that into a compile error rather than a dangling pointer handed to Excel;
-    // moving is safe, since the vector hands the buffer over.
+    // A copy's oper.val.str would still point into the original buf; moving is safe, since the
+    // vector hands the buffer over.
     PascalStr() = default;
     PascalStr(const PascalStr&) = delete;
     PascalStr& operator=(const PascalStr&) = delete;

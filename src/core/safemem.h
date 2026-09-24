@@ -18,14 +18,11 @@ namespace core
         return p >= 0x10000ull && p < 0x00007FFFFFFFFFFFull;
     }
 
-    // 8 for a structure, 4 for a p-code trailer,
-    // 2 for a BSTR -- it points four bytes past its length prefix. Unaligned is
-    // a reason to REFUSE the read, not a reason to believe anything about what
-    // is there.
+    // 8 for a structure, 4 for a p-code trailer, 2 for a BSTR (it points four bytes past its length
+    // prefix). Unaligned is a reason to refuse the read, not to believe anything about what is there.
     inline bool Aligned(std::uint64_t p, std::uint64_t n) { return (p & (n - 1)) == 0; }
 
-    // Named for its conjuncts and nothing else: `PlausibleStruct(p)` read as a
-    // verdict on what p points at, which is not a question this can answer.
+    // Named for its conjuncts only: it cannot say what p points at.
     inline bool InRangeAndAligned(std::uint64_t p, std::uint64_t n)
     {
         return InUserRange(p) && Aligned(p, n);
@@ -54,9 +51,8 @@ namespace core
         __try { out = *reinterpret_cast<const std::uint16_t*>(at); return true; }
         __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
     }
-    // A Byte array's last element is one byte, and RdU16 would read past the
-    // end of the allocation -- a refusal that depends on where the array sits
-    // in a page is not a fact about the program.
+    // A Byte array's last element is one byte: RdU16 would read past the allocation, and refuse
+    // or not depending on where the array sits in a page.
     inline bool RdU8(std::uint64_t at, std::uint8_t& out)
     {
         __try { out = *reinterpret_cast<const std::uint8_t*>(at); return true; }

@@ -1,12 +1,6 @@
-# The whole-timeline assertion: one saved workbook with XLL and VBA UDFs
-# produces ONE FILE, ONE MONOTONIC SEQUENCE, both sources, each call named and
-# attributed to its calling cell. The Excel lifecycle, XLL registration,
-# dialogs, deadlines and shutdown measurement all belong to StretchXL -- this
-# drives and asserts, and nothing else.
-#
-# The MTC arm is a DIFFERENT test, not a repeat: single-threaded, write order
-# and event order agree trivially; multithreaded they genuinely diverge, and
-# what must still hold is everything that makes the file one trace.
+# One saved workbook with XLL and VBA UDFs must produce one file, one monotonic sequence, both
+# sources, each call named and attributed to its cell. Under MTC write order and event order truly
+# diverge, so that arm is a different test, not a repeat.
 
 function Invoke-TimelineTest {
     param([switch]$Mtc, [int]$ThreadSafeCells = 400, [int]$Threads = 8)
@@ -85,7 +79,7 @@ End Function
         Check 'file-contains-xll-rows' ($xllRows.Count -gt 0) 'none found'
         Check 'file-contains-vba-rows' ($vbaRows.Count -gt 0) 'none found'
 
-        # ---- 2. ONE MONOTONIC SEQUENCE ------------------------------------
+        # ---- 2. one monotonic sequence ------------------------------------
         $seqs = @($rows | ForEach-Object { [int64]$_.seq })
         $dupes = @($seqs | Group-Object | Where-Object { $_.Count -gt 1 })
         Check 'no-seq-used-twice' ($dupes.Count -eq 0) `
@@ -104,7 +98,7 @@ End Function
         }
         Check 'every-span-entry-then-exit' ($bad.Count -eq 0) ($bad -join '; ')
 
-        # ---- 4. THE NESTING, ACROSS SOURCES -------------------------------
+        # ---- 4. the nesting, across sources -------------------------------
         $outer = @($rows | Where-Object { $_.function -eq 'VbaOuter' })
         $oe = @($outer | Where-Object { $_.kind -eq 'entry' } | Select-Object -First 1)
         $ox = @($outer | Where-Object { $_.kind -eq 'exit' } | Select-Object -First 1)
@@ -167,9 +161,7 @@ End Function
         }
         Check 'span-stamped-entry-before-exit' ($unordered.Count -eq 0) ($unordered -join '; ')
 
-        # seq vs qpc disagreement is REPORTED, not asserted: they answer
-        # different questions and are allowed to differ (that is the log line
-        # in the captured output, not a case).
+        # seq vs qpc disagreement is reported, not asserted: they answer different questions.
         $inversions = 0
         for ($i = 1; $i -lt $rows.Count; $i++) {
             if ([int64]$rows[$i].qpc -lt [int64]$rows[$i - 1].qpc) { $inversions++ }

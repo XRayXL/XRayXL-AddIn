@@ -1,9 +1,5 @@
-# A parameter that is only forwarded carries no type, and must not claim one.
-#
-# Opcode 751 is the generic by-reference push: it forwards a slot's address to another call and
-# says nothing about what the slot holds. A `ByRef n As Long` and a `ByRef a() As Double` that
-# are only passed on must not read `Udt&`. The real UDT is kept beside them as the control: 1058
-# does name a UDT, and must go on doing so.
+# A parameter that is only forwarded must not claim a type: opcode 751, the generic by-reference
+# push, says nothing about the slot, so it must not read `Udt&`. A real UDT is the control.
 $case = @{ Name='params-only-passed-on'
      Setup=@'
 Private Type TPoint
@@ -49,10 +45,7 @@ End Sub
         foreach ($fn in @('P_FwdLong','P_FwdArr','P_RealUdt')) {
             if (-not $entry.ContainsKey($fn)) { return "never traced: $fn" }
         }
-        # Neither forwarded parameter is a UDT, so neither may say so. An
-        # unresolved marker is the RIGHT answer here: the opcode genuinely does
-        # not carry the type, and saying so is what distinguishes this from the
-        # defect.
+        # an unresolved marker is the right answer: the opcode does not carry the type
         $wrong = @()
         foreach ($fn in @('P_FwdLong','P_FwdArr')) {
             $tt = [string]$entry[$fn].typetext
@@ -60,9 +53,7 @@ End Sub
         }
         if ($wrong.Count -gt 0) {
             return "a forwarded parameter claimed a UDT it is not: $($wrong -join ' ')" }
-        # The control must not have been broken by taking 751 out: a real UDT
-        # reference is named through its MEMBER access, which is a different
-        # opcode family.
+        # a real UDT is named through its member access, a different opcode family
         $udt = [string]$entry['P_RealUdt'].typetext
         if ($udt -notmatch 'Udt') {
             return "the real UDT stopped being recognised: P_RealUdt=$udt" }

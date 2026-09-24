@@ -18,10 +18,8 @@ End Sub
      Expect={ param($t)
         if ($t.procedures -lt 3)  { return "expected 3 procedures, got $($t.procedures)" }
         if ($t.maxDepth -ne 2)    { return "siblings should nest only 2 deep, got $($t.maxDepth)" }
-        # A RETURN is only observed if the caller executes another statement
-        # before its next call -- here it does not, so the caller is not seen
-        # again between siblings. Transitions therefore count 4, not 6. The
-        # exit slots are the reliable return signal; transitions are not.
+        # the caller runs no statement between siblings, so transitions miss the returns;
+        # the exit slots are the reliable return signal
         if ($t.transitions -lt 3) { return "expected >=3 transitions, got $($t.transitions)" }
         if ($t.exits -lt 3)       { return "expected >=3 exits for 3 calls, got $($t.exits)" }
         $null }

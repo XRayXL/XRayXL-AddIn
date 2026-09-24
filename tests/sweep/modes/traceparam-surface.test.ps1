@@ -1,14 +1,6 @@
-# XRayXL_SetTraceParam / XRayXL_GetTraceParam -- the whole surface.
-#
-# One setting per call, addressed by (Source, Name). Omitting Source addresses
-# BOTH sources, which works because an XLL argument that is not supplied
-# arrives as xltypeMissing whatever its POSITION -- so the leading argument
-# can be omitted without a placeholder. Get returns a scalar when both are
-# given and a grid otherwise, and the four shapes are asserted here because
-# their sizes are what a sheet formula spills into.
-#
-# The refusals matter as much as the settings: a value the tracer cannot
-# honour must fail loudly and change NOTHING, never half-apply.
+# XRayXL_SetTraceParam / XRayXL_GetTraceParam, the whole surface. Omitting Source addresses both (an
+# unsupplied XLL argument arrives as xltypeMissing in any position), and a refusal must fail loudly
+# and change nothing, never half-apply.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -27,11 +19,11 @@ try {
     $v = [string](Get-XRayTraceParam $sx 'XLL' 'DEPTH')
     Check 'get-xll-depth-scalar' ($v -eq 'TOP') "got '$v'"
 
-    # The OTHER source must be untouched -- one call changes one thing.
+    # The other source must be untouched: one call changes one thing.
     $v = [string](Get-XRayTraceParam $sx 'VBA' 'DEPTH')
     Check 'set-one-source-leaves-the-other' ($v -eq $vbaBefore) "VBA DEPTH was '$vbaBefore' before the XLL set and is '$v' after"
 
-    # ---- 2. OMITTED SOURCE ADDRESSES BOTH ---------------------------------
+    # ---- 2. omitted source addresses both ---------------------------------
     $echo = Set-XRayTraceParam $sx $null 'ARGS' $false
     Check 'set-both-sources-echoes' ($echo -match 'ARGS: XLL=FALSE VBA=FALSE') $echo
     $x = [string](Get-XRayTraceParam $sx 'XLL' 'ARGS')
@@ -77,14 +69,13 @@ try {
     Check 'array-everything-is-10x3' $ok ("J1='{0}' J6='{1}' L1='{2}' M1='{3}' J11='{4}'" -f `
           (CellText 'J1'), (CellText 'J6'), (CellText 'L1'), (CellText 'M1'), (CellText 'J11'))
 
-    # The CONTENT still arrives whole through Application.Run, in row-major
-    # order -- only the shape is lost, so the values remain assertable there.
+    # The content still arrives whole through Application.Run, in row-major order; only the shape is lost.
     $flat = @(ConvertTo-XRayGrid (Get-XRayTraceParam $sx 'XLL' $null))[0]
     Check 'run-returns-all-cells' ($flat.Count -eq 10) "$($flat.Count) cells"
     Check 'run-cells-row-major' (($flat[0] -eq 'DEPTH') -and ($flat[2] -eq 'ARGS') -and
                                  ($flat[4] -eq 'RETVAL') -and ($flat[6] -eq 'OBJECTS') -and ($flat[8] -eq 'BREAKPOINTS')) ($flat -join ',')
 
-    # ---- 4. REFUSALS: loud, and nothing changes ---------------------------
+    # ---- 4. refusals: loud, and nothing changes ---------------------------
     $before = [string](Get-XRayTraceParam $sx 'XLL' 'DEPTH')
 
     $e = Set-XRayTraceParam $sx 'NOPE' 'DEPTH' 'ALL'
@@ -115,26 +106,25 @@ try {
     $after = [string](Get-XRayTraceParam $sx 'XLL' 'DEPTH')
     Check 'refusals-changed-nothing' ($after -eq $before) "was '$before', now '$after'"
 
-    # CALLER is not a setting: the calling cell is always resolved, since the VBA tracer needs
-    # it to place an error that escapes into a cell. The name is refused like any other unknown
-    # one.
+    # CALLER is not a setting: the VBA tracer always needs the calling cell to place an error that
+    # escapes into it. The name is refused like any other unknown one.
     $e = Set-XRayTraceParam $sx 'XLL' 'CALLER' $false
     Check 'caller-is-not-a-setting' ($e -match '#Err') $e
 
-    # ---- 5. REFUSES WHILE ARMED -------------------------------------------
+    # ---- 5. refuses while armed -------------------------------------------
     $mark = Get-LogLength $paths.Log
     [void](Invoke-XRayCommand $sx 'XRayXL_Arm')
     if (Wait-LogLine $paths.Log 'armed \d+ of|nothing armed|could not' $mark) {
         $e = Set-XRayTraceParam $sx 'XLL' 'DEPTH' 'OFF'
         Check 'refused-while-armed' ($e -match '#Err - cannot change settings while armed') $e
-        # The QUERY is not a change and must still answer.
+        # The query is not a change and must still answer.
         $v = [string](Get-XRayTraceParam $sx 'XLL' 'DEPTH')
         Check 'get-answers-while-armed' ($v -eq $before) "got '$v'"
     }
     $lossy = Stop-XRayTrace $sx
     if ($lossy) { Complete-Test -Fail -Detail $lossy }
 
-    # ---- 6. REFUSES FROM A CELL -------------------------------------------
+    # ---- 6. refuses from a cell -------------------------------------------
     # A formula that reconfigures the tracer on every recalc is a foot-gun,
     # and xlfCaller says exactly who is asking.
     $bookPath = Join-Path $sx.WorkDir ("ParamCell_{0}.xlsx" -f $sx.ProcId)

@@ -1,23 +1,8 @@
-// STRESS TEST FOR emit::ByteRing -- the lock-free MPSC byte queue lifted
-// out of csv.cpp. This is the point of the extraction: the one piece of subtle
-// memory-ordering in the emitter can be hammered on its own, with no Excel and
-// no CSV, and its correctness asserted directly.
-//
-// It runs N producer threads against one consumer (as the drain thread is the
-// sole consumer in the product) and checks the three ways a lock-free queue can
-// betray you:
-//   * TORN     -- a record read while half-written. Every payload carries a key
-//                 in its first 8 bytes and a body derived from that key; a torn
-//                 record fails the body check.
-//   * LOST/DUP -- a committed record never popped, or popped twice. Every
-//                 (producer, index) key is expected exactly once among
-//                 popped + dropped.
-//   * MISCOUNT -- the reconciliation the product relies on: attempted ==
-//                 popped + dropped, exactly.
-//
-// Three configurations: an AMPLE ring (nothing should drop), a STARVED ring
-// under DROP (drops expected, still reconciles, nothing torn), and a STARVED
-// ring under PAUSE (nothing dropped, everything eventually popped).
+// Stress test for emit::ByteRing, the lock-free MPSC byte queue, on its own with no Excel and no CSV.
+// N producers run against one consumer, as in the product, checking the ways such a queue fails:
+//   * torn     -- a record read half-written: each body derives from its key, so a torn one fails.
+//   * lost/dup -- every (producer, index) key must appear exactly once among popped + dropped.
+//   * miscount -- attempted == popped + dropped, exactly: the reconciliation the product relies on.
 //
 // Built by XRayXL.sln into build\x64\Release\unit\; it needs nothing else to run.
 
@@ -139,9 +124,8 @@ namespace
         return 0;
     }
 
-    // PAUSE RESUMES AT HALF EMPTY. Fill a ring with no consumer, block one more
-    // producer on it, then free one record at a time: the producer must not
-    // resume until at least half the ring is free.
+    // PAUSE resumes at half empty: fill a ring with no consumer, block one more producer on it, then
+    // free one record at a time; the producer must not resume until half the ring is free.
     struct Blocked { ByteRing* ring; const char* data; int len; volatile LONG done; };
 
     DWORD WINAPI DepositOnce(LPVOID arg)
@@ -234,7 +218,7 @@ namespace
                               what must hold is the reconciliation, not zero. */ }
         else ok &= (dropped == 0);                     // PAUSE never loses
 
-        const std::size_t cap = ring.CapacityBytes();  // read BEFORE teardown zeroes it
+        const std::size_t cap = ring.CapacityBytes();  // read before teardown zeroes it
         ring.Teardown();
 
         printf("[%s] %-22s cap=%-9zu attempted=%lld popped=%lld dropped=%lld torn=%lld dup=%lld lost=%lld\n",
@@ -252,7 +236,7 @@ int main()
     ok &= RunCase("contended-drop-64M", 64ull * 1024 * 1024, false);
     ok &= RunCase("contended-drop-64K", 64ull * 1024, false);
     // PAUSE on the tiny ring: the producers are throttled to the consumer, so
-    // NOTHING is dropped and all 1.6M records are popped intact.
+    // nothing is dropped and all 1.6M records are popped intact.
     ok &= RunCase("contended-pause-64K", 64ull * 1024, true);
     // PAUSE waits for half empty, not for room for one row.
     ok &= RunHalfEmptyCase();

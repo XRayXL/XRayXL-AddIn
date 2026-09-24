@@ -25,12 +25,11 @@ namespace crashlog
     // SetDumpEnabled is for the instrument that proves the capture works.
     void SetDumpEnabled(bool on);
 
-    // Executable memory WE allocated: a stub page belongs to no module, so
+    // Executable memory we allocated: a stub page belongs to no module, so
     // without this every stub address reads as "not mapped code".
     void NoteExecRegion(const void* base, std::size_t bytes, const char* what);
 
-    // A plain line, so the last thing written before a crash says where we
-    // were.
+    // A plain line, so the last thing written before a crash says where we were.
     void Note(const char* text);
 }
 }   // namespace core

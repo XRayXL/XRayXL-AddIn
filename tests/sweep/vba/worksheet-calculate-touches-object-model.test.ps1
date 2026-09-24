@@ -1,17 +1,6 @@
-# A Worksheet_Calculate HANDLER THAT TOUCHES THE OBJECT MODEL.
-#
-# Worksheet_Calculate fires from inside the calc engine itself. The existing
-# stress case proves it is traced with a trivial body; this drives the realistic
-# shape -- the handler WRITES a cell (a benign object-model raise) and calls a
-# helper -- and asks that the write not read as an error and the helper nest
-# under it. A volatile UDF makes the event fire deterministically on a full
-# recalculation. A non-volatile cell on a clean sheet recomputes nothing, so
-# the event never fires and the test sees zero -- hence the volatile UDF.
-#
-# The handler's own cell write re-dirties the sheet, so the event may fire more
-# than once; that is REPORTED, not asserted, because Excel decides whether to
-# coalesce those passes and the count is not ours to fix. A module counter caps
-# the writes so the recalculation always settles.
+# A Worksheet_Calculate handler, fired from inside the calc engine, that writes a cell and calls
+# a helper: the write must not read as an error and the helper must be traced. Its write can
+# re-fire the event, so the count is reported, not asserted; Excel decides whether to coalesce.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -76,13 +65,10 @@ try {
     $calcN   = @($entries | Where-Object { $_.function -eq 'Worksheet_Calculate' }).Count
     $helpN   = @($entries | Where-Object { $_.function -eq 'P5_Helper' }).Count
 
-    # The event fired from inside the calc engine and was traced.
     Check 'calculate-event-traced' ($calcN -ge 1) ("Worksheet_Calculate entries: $calcN  (saw: " + (($names | Select-Object -Unique) -join ',') + ")")
-    # Its object-model write did not stop the helper it calls from being traced.
     Check 'helper-under-the-handler-traced' ($helpN -ge 1) "P5_Helper entries: $helpN"
 
-    # The handler wrote a cell; that benign raise must not read as an error, and
-    # repeated firing must not corrupt a single frame's outcome.
+    # repeated firing must not corrupt a single frame's outcome
     $notRet = @($exits | Where-Object { $_.outcome -ne 'returned' })
     Check 'every-frame-returned' ($notRet.Count -eq 0) `
           ("not returned: " + (@($notRet | ForEach-Object {

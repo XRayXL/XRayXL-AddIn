@@ -1,11 +1,6 @@
-# An error that Excel turns into #VALUE! does not reach the macro that recalculated.
-#
-# A macro calls Application.CalculateFull, and a cell's VBA function raises an error it does not
-# handle. Excel puts #VALUE! in the cell and the function reads `unhandled`; the macro carries
-# on and must not read `handled`, though the shadow stack holds it beneath the function.
-#
-# A function that returns an error value returned. A macro still running when disarm closes it
-# has run no epilogue, but it has not thrown.
+# An unhandled error Excel turns into #VALUE! stops at the cell: the function reads `unhandled`
+# and the recalculating macro beneath it on the shadow stack must not read `handled`. A macro
+# still running at disarm has run no epilogue, but it has not thrown.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -109,11 +104,11 @@ try {
     $armLine = Wait-LogLine $paths.Log 'VBA tracing: ' $mark
     if ($armLine -notmatch 'ARMED') { Complete-Test -Fail -Detail "did not arm: $armLine" }
 
-    # On its own first, with no VBA frame beneath it.
+    # on its own first, with no VBA frame beneath it
     $ws.Range('A5').Formula = '=ABC()'
     $a5alone = Get-XRayCellText $ws.Range('A5')
 
-    # Each run on its own: one that fails must not hide what the others do.
+    # each run on its own: one that fails must not hide what the others do
     $runErrors = @()
     foreach ($m in 'M_Recalc', 'M_DisarmInside') {
         try { $app.Run($leaf + '!' + $m) | Out-Null }
@@ -144,7 +139,7 @@ try {
            (@($abc | Where-Object { $_.outcome -ne 'unhandled' }).Count -eq 0)) `
           "A5='$a5alone' ABC=$(OutcomesOf $rows 'ABC')"
 
-    # RETURNING AN ERROR IS NOT THROWING ONE: the row carries the value the cell shows.
+    # returning an error is not throwing one: the row carries the value the cell shows
     $rv = @(ExitsOf $rows 'GiveMeAHashValue')
     Check 'GiveMeAHashValue-returned-VALUE' `
           (($a3 -eq '#VALUE!') -and ($rv.Count -ge 1) -and
@@ -159,7 +154,7 @@ try {
            ($sdRets -contains '#DIV/0!') -and ($sdRets -contains '2')) `
           "A6='$a6' A7='$a7' SafeDiv=$(OutcomesOf $rows 'SafeDiv') ret='$($sdRets -join ',')'"
 
-    # Observed, not asserted: what Application.Run does for a macro it cannot find.
+    # observed, not asserted: what Application.Run does for a macro it cannot find
     Write-XRayObservation 'application-run-into-a-variant' "A4='$a4' U_RunIntoVariant=$(OutcomesOf $rows 'U_RunIntoVariant')"
     Write-XRayObservation 'application-run-probe' "A8='$a8'"
 
@@ -168,9 +163,8 @@ try {
           (($recalc.Count -eq 1) -and ($recalc[0].outcome -eq 'returned')) `
           "M_Recalc=$(OutcomesOf $rows 'M_Recalc')"
 
-    # NOTHING NESTS UNDER A DEAD FRAME. Excel calculates cells one after another, so a
-    # cell's function sits directly under the macro, or at the top, never under another
-    # cell's function; and a macro started from outside sits at the top.
+    # Excel calculates cells one after another, so a cell's function sits under the macro or at
+    # the top, never under another cell's function
     $recalcSpan = if ($recalc.Count -eq 1) { [string]$recalc[0].span } else { '' }
     $entries = @($rows | Where-Object { $_.kind -eq 'entry' -and $_.source -eq 'VBA' })
     $cellFns = @('U_RunFails', 'U_Raises', 'GiveMeAHashValue', 'U_RunIntoVariant', 'ABC', 'SafeDiv', 'RunProbe')

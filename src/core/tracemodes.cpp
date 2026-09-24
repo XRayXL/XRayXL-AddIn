@@ -18,22 +18,20 @@ namespace modes
         // broken tool. VBA OFF stays available, since it patches the interpreter.
         volatile LONG g_depth [kSources] = { static_cast<LONG>(Depth::All),
                                              static_cast<LONG>(Depth::All) };
-        // ON: a new switch must not quietly change what an existing user gets.
+        // On: a new switch must not quietly change what an existing user gets.
         volatile LONG g_args  [kSources] = { 1, 1 };
         volatile LONG g_retval[kSources] = { 1, 1 };
-        // ON, and it is the only one whose cost is a CALL INTO EXCEL rather than
-        // a read of memory. Off, an object renders as its address, so turning it off loses detail and changes
-        // nothing else.
+        // On, though it is the only one that calls into Excel rather than reading memory. Off, an
+        // object renders as its address: less detail, nothing else changed.
         volatile LONG g_objects[kSources] = { 1, 1 };
-        // OFF: the column it adds changes the file's header, which every reader of a trace relies on.
+        // Off: the column it adds changes the file's header, which every reader of a trace relies on.
         volatile LONG g_breakpoints[kSources] = { 0, 0 };
 
-        // The shipped default is a ring -- the production path, and
-        // what the suites run. 64 MB is deep enough that a functional workload
-        // never laps the ~1 ms drain. LONG64, as the accessors around it are.
+        // A ring by default, the production path and what the suites run; 64 MB is deep enough that
+        // a functional workload never laps the drain.
         volatile LONG64 g_bufferBytes = 64ll * 1024 * 1024;
 
-        // 1 = PAUSE by default: a full ring makes the calc wait until it is half empty, and loses nothing.
+        // Pause by default: a full ring makes the calc wait until it is half empty, and loses nothing.
         volatile LONG g_pauseOnFull = 1;
 
         // CSV by default: the format every reader of a trace already understands.

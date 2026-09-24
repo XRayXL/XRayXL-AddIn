@@ -11,7 +11,7 @@ namespace
     double NormCdf(double x) { return 0.5 * (1.0 + std::erf(x / std::sqrt(2.0))); }
 
     // Naive recursive Fibonacci -- exponential on purpose, so Fib(30+) is a
-    // procedure that visibly TAKES time in the trace, not an instant return.
+    // procedure that visibly takes time in the trace, not an instant return.
     double FibRec(double n)
     {
         if (n < 2.0) return n;
@@ -45,7 +45,7 @@ CompoundReturn(double principal, double rate, double years)
     return RetNum(principal * std::pow(1.0 + rate, years));
 }
 
-// Deliberately SLOW: ~40ms of nothing, then the sum. The obvious culprit when
+// Deliberately slow: ~40ms of nothing, then the sum. The obvious culprit when
 // you sort a trace by duration. =SlowSum(2, 3)
 extern "C" __declspec(dllexport) LPXLOPER12 __stdcall
 SlowSum(double a, double b)

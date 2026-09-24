@@ -1,10 +1,6 @@
-# A FAULT CONTAINED PART-WAY THROUGH A VBA ARM OR DISARM MUST NOT WEDGE THE VBA SIDE.
-#
-# Arm and disarm hold a gate that makes them mutually exclusive. A contained fault runs no
-# destructor, so a gate taken by the faulting call used to stay held for the life of the process:
-# every later arm and disarm answered "arm/disarm already in progress", the dispatch table was
-# never restored, and a long hammer run ended with Excel failing fast. XRayXL_FaultProbe
-# "ARMGATE" faults while holding the gate (XRAYXL_DIAG); arming and disarming must work after it.
+# A fault contained part-way through a VBA arm or disarm must release the arm gate: a contained fault
+# runs no destructor, and a gate left held refuses every later arm and disarm. XRayXL_FaultProbe
+# "ARMGATE" faults while holding it (needs XRAYXL_DIAG).
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

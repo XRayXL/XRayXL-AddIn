@@ -29,7 +29,7 @@ End Sub
      Counters='XR_Counts'
      Expect={ param($t)
         $why = Assert-VbaTraced $t 'Worksheet_Change','BadUdf'; if ($why) { return $why }
-        # The counter is incremented BEFORE the raise, so a raising call is counted too:
+        # The counter is incremented before the raise, so a raising call is counted too:
         # every call must have its row, whether it returned or threw.
         Test-TracedCallsMatchCounters $t }
      Why='the Change handler recalculates a sheet whose UDF raises: an error crossing the re-entry' }

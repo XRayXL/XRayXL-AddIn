@@ -1,6 +1,5 @@
-# A pure VBA macro, with no UDF and no XLL: a Sub reads values off a worksheet, computes over
-# them through nested Function calls and writes the result back. It shows VBA tracing observes
-# the interpreter, not only UDFs reached from a recalculation. Asserted:
+# A pure macro that reads a sheet, computes through nested Functions and writes back traces in
+# full: VBA tracing observes the interpreter, not only UDFs reached from a recalculation.
 #
 #    present   every procedure that ran has a row
 #    named     each is named, not reported as a trailer address
@@ -93,10 +92,7 @@ try {
     Check 'no-entry-without-its-exit' ($orphanEntries.Count -eq 0) `
           ("orphans: " + (@($orphanEntries | ForEach-Object { $_.function }) -join ','))
 
-    # ---- the CALL CHAIN, read from the parent spans ----------------------
-    # note carries parent=<span>, 0 for a top-level frame. The macro is
-    # entered by Application.Run, so XR_PureMacro is the root of THIS chain;
-    # XR_SumWeighted must parent on it, and every XR_Weight on XR_SumWeighted.
+    # ---- the call chain, read from the parent spans ----------------------
     function SpanOf([string]$fn) {
         $e = @($entries | Where-Object { $_.function -eq $fn })
         if ($e.Count) { return [string]$e[0].span } else { return '' }
@@ -115,7 +111,7 @@ try {
     Check 'label-nests-under-the-macro' (($labelEntry.Count -ge 1) -and ((ParentOf $labelEntry[0]) -eq $macroSpan) -and ($macroSpan -ne '')) `
           ("XR_Label parent=$(if ($labelEntry.Count) { ParentOf $labelEntry[0] } else { '(absent)' }), XR_PureMacro span=$macroSpan")
 
-    # ---- the LOOP: five weights, all under the one sum frame --------------
+    # ---- the loop: five weights, all under the one sum frame --------------
     $weights = @($entries | Where-Object { $_.function -eq 'XR_Weight' })
     Check 'weight-called-once-per-cell' ($weights.Count -eq 5) `
           ("XR_Weight entries: $($weights.Count) (A1:A5 is five cells)")
@@ -124,8 +120,7 @@ try {
           ("XR_SumWeighted span=$sumSpan; weight parents: " + (@($weights | ForEach-Object { ParentOf $_ }) -join ','))
 
     # ---- the macro actually did its job ----------------------------------
-    # 2*(1+2+3+4+5) = 30, written as text into D1. If the chain ran but wrote
-    # nothing, the trace could look complete while the macro did nothing.
+    # otherwise the trace could look complete while the macro did nothing
     Check 'macro-wrote-its-result' ($written -eq 'total=30') `
           ("D1='$written' (expected 'total=30')")
 

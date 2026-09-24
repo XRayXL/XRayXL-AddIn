@@ -1,14 +1,6 @@
-# ByRef arguments a procedure changed: the exit row shows the new value.
-#
-# ByRef is VBA's default, so `Sub Calc(result As Double)` filling in `result` is ordinary code.
-# Argument types come from the load opcode, and a pure out-parameter is never read, so the two
-# shapes are separated:
-#
-#      FillOnly     assigns only          -- typed from the store
-#      ReadWrite    reads, then assigns   -- typed from the load
-#
-# The negative control matters as much: a ByVal parameter whose copy the callee modified must
-# not be reported, because the caller never sees that change.
+# A ByRef argument the procedure changed shows its new value on the exit row, whether typed from
+# a load or, for a pure out-parameter, from the store. A changed ByVal copy is never reported:
+# the caller never sees it.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -138,13 +130,13 @@ try {
         if ($totals -match "$k=(\d+)") { Write-Output ("  {0,-14} {1}" -f $k, $Matches[1]) }
     }
 
-    # ---- VBA'S OWN VIEW, first: the change really happened -----------------
-    # Without this the trace could be consistent and still describing nothing.
+    # ---- VBA's own view, first: the change really happened -----------------
+    # without this the trace could be consistent and still describing nothing
     $seen = [double]$app.Run($leaf + '!GetSeen')
     Check 'the-caller-really-saw-the-change' ($seen -eq 9.75) `
           "VBA's gSeen after FillOnly = $seen (expected 9.75)"
 
-    # ---- THE READ-THEN-WRITE SHAPE, where the type is certainly known ------
+    # ---- the read-then-write shape, where the type is certainly known ------
     Check 'a-changed-byref-argument-is-reported-at-the-exit' `
           ((ExitArgsOf $rows 'ReadWrite') -match '102\.5') `
           ("ReadWrite entry='" + (ArgsOf $rows 'ReadWrite') + "' exit='" + (ExitArgsOf $rows 'ReadWrite') + "' (2.5 -> 102.5)")
@@ -157,23 +149,19 @@ try {
           ((ExitArgsOf $rows 'FillString') -match 'in-out') `
           ("FillString entry='" + (ArgsOf $rows 'FillString') + "' exit='" + (ExitArgsOf $rows 'FillString') + "'")
 
-    # ---- UNCHANGED MEANS SILENT -------------------------------------------
-    # An exit row with args means "these moved". A procedure that touched
-    # nothing must not produce one, or the column stops meaning anything.
+    # ---- unchanged means silent -------------------------------------------
+    # exit args mean "these moved", or the column stops meaning anything
     Check 'an-untouched-byref-argument-is-not-reported' `
           (-not (ExitArgsOf $rows 'NoTouch')) `
           ("NoTouch exit args='" + (ExitArgsOf $rows 'NoTouch') + "' (expected empty)")
 
-    # ---- THE NEGATIVE CONTROL ---------------------------------------------
-    # ByValChanged modifies its COPY. The caller never sees it. Reporting it
-    # would assert an effect that does not exist.
+    # ---- the negative control ---------------------------------------------
     Check 'a-byval-copy-the-callee-changed-is-not-reported' `
           (-not (ExitArgsOf $rows 'ByValChanged')) `
           ("ByValChanged exit args='" + (ExitArgsOf $rows 'ByValChanged') + "' (the caller never sees this)")
 
-    # ---- ByVal BESIDE ByRef -------------------------------------------------
-    # Any ByRef parameter makes the exit re-read happen, so what moved must be
-    # judged per parameter or the ByVal copy is reported with it.
+    # ---- ByVal beside ByRef -------------------------------------------------
+    # any ByRef parameter triggers the exit re-read, so what moved is judged per parameter
     Check 'a-byval-copy-beside-an-untouched-byref-is-not-reported' `
           (-not (ExitArgsOf $rows 'MixedByValOnly')) `
           ("MixedByValOnly entry='" + (ArgsOf $rows 'MixedByValOnly') + "' exit='" + (ExitArgsOf $rows 'MixedByValOnly') + "' (expected empty)")
@@ -183,24 +171,21 @@ try {
           (($mixed -match '(^| )a2:[^ ]*=15$') -and ($mixed -notmatch 'a1:')) `
           ("MixedBoth entry='" + (ArgsOf $rows 'MixedBoth') + "' exit='$mixed' (expected only a2, reading 15)")
 
-    # ---- THE CONTRACT: exit rows carry VALUES, not the signature -----------
+    # ---- exit rows carry values, not the signature -----------
     $exitRows = @($rows | Where-Object { ($_.kind -eq 'exit' -and $_.source -eq 'VBA') })
     $leaky = @($exitRows | Where-Object { $_.argcount -or $_.typetext })
     Check 'exit-rows-do-not-repeat-argcount-or-typetext' ($leaky.Count -eq 0) `
           ("rows carrying them: " + (@($leaky | ForEach-Object { "$($_.function) argcount='$($_.argcount)' typetext='$($_.typetext)'" }) -join ' | '))
 
-    # ---- THE COUNTERS AGREE WITH THE ROWS ---------------------------------
+    # ---- the counters agree with the rows ---------------------------------
     $tChanged = 0
     if ($totals -match 'byrefChanged=(\d+)') { $tChanged = [int]$Matches[1] }
     $rChanged = @($exitRows | Where-Object { $_.args }).Count
     Check 'the-changed-counter-agrees-with-the-rows' ($tChanged -eq $rChanged) `
           "byrefChanged=$tChanged, exit rows carrying args=$rChanged"
 
-    # ---- THE PURE OUT-PARAMETER, which is the commonest shape of all -------
-    #
-    # `FillOnly` writes its parameter and never reads it, so there is no typed
-    # LOAD: the type comes from the store (`op - 32`). Both directions are
-    # checked -- the value written, and what went in.
+    # ---- the pure out-parameter, the commonest shape of all -------
+    # never read, so no typed load: the type comes from the store (`op - 32`)
     Check 'a-pure-out-parameter-reports-its-value' `
           ((ExitArgsOf $rows 'FillOnly') -match '9\.75') `
           ("FillOnly entry='" + (ArgsOf $rows 'FillOnly') + "' exit='" + (ExitArgsOf $rows 'FillOnly') + "' (writes 9.75, never reads it)")
@@ -209,10 +194,8 @@ try {
           ((ArgsOf $rows 'FillOnly') -match '1\.5') `
           ("FillOnly entry='" + (ArgsOf $rows 'FillOnly') + "' (caller passed 1.5)")
 
-    # ---- THE WRITE-ONLY STRING, ASSIGNED A LITERAL ---------------------------
-    # Its typed load sits past an opcode with no derivable length, so the type
-    # may stay unrecovered; a wrong type is never acceptable. Declared ByRef
-    # String, the two honest readings are String& and ?.
+    # ---- the write-only string, assigned a literal ---------------------------
+    # its type may stay unrecovered, but a wrong one is never acceptable: String& or ?
     $sigOnly = SigOf $rows 'FillStringOnly'
     Check 'a-write-only-string-is-typed-right-or-not-at-all' ($sigOnly -in @('String&', '?')) `
           "FillStringOnly sig='$sigOnly', expected String& or ?"

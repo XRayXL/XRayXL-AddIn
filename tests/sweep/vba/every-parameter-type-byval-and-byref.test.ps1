@@ -1,15 +1,6 @@
-# Every declared parameter type, ByVal and ByRef: twelve types, twenty-four cases, so the whole
-# grid is asserted rather than the entries some procedure happened to reach.
-#
-# ByVal and ByRef of the same declared type reach the decoder differently (one slot holds the
-# value, the other a pointer, through opcodes from different families) but describe the same
-# planted value, so they must render the same text.
-#
-# The signature is asserted separately and loosely: the declared type must appear in it, with
-# `&` for ByRef. That is what says the p-code walk recovered the type, since a BSTR and a
-# SAFEARRAY prove themselves whatever the opcode table knows.
-#
-# `Date` is a `Double` and `Boolean` is an `Integer`: one opcode each, asserted as such.
+# Every declared parameter type, ByVal and ByRef, renders the same planted value both ways,
+# though one slot holds the value and the other a pointer, reached through different opcode
+# families. The whole grid is asserted, not just what some procedure happened to reach.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -287,8 +278,7 @@ try {
     Set-XRaySessionDefaults $sx
     $paths = Get-XRayPaths $sx.ProcId
 
-    # Enum and Type are module-level declarations and must live in the
-    # declarations section of a standard module, ahead of any procedure.
+    # Enum and Type must sit in a standard module's declarations section, ahead of any procedure
     New-XRayMacroBook $sx 'PType' @(
         @{ Kind=1; Name='PTypeCase'; Code=$moduleCode }
         @{ Kind=2; Name='XRPType'; Code=$classCode }
@@ -314,16 +304,14 @@ try {
         $r = @($rows | Where-Object { ($_.kind -eq 'entry' -and $_.source -eq 'VBA') -and $_.function -eq $fn })
         if ($r.Count) { return $r[0] } else { return $null }
     }
-    # The value with the `aN:Type=` label stripped, so ByVal and ByRef compare.
+    # label stripped, so ByVal and ByRef compare
     function ValOf([string]$fn) {
         $r = RowOf $fn
         if (-not $r) { return '(no row)' }
         return ([string]$r.args) -replace '^a1(:[^=]*)?=', ''
     }
 
-    # Declared type -> the name expected in the signature, and the planted value.
-    # `Date` shares the Double opcode and `Boolean` shares Integer's, so those
-    # two expect the shared name deliberately.
+    # `Date` shares the Double opcode and `Boolean` shares Integer's, so they expect those names
     $grid = @(
         @{ T='Byte';     V='VByte';     R='RByte';     Sig='Byte';     Want='7'          }
         @{ T='Integer';  V='VInteger';  R='RInteger';  Sig='Integer';  Want='1234'       }
@@ -337,7 +325,7 @@ try {
         @{ T='Variant';  V='VVariant';  R='RVariant';  Sig='Variant';  Want=''           }
         @{ T='Date';     V='VDate';     R='RDate';     Sig='Double';   Want=''           }
         @{ T='Boolean';  V='VBoolean';  R='RBoolean';  Sig='Integer';  Want='-1'         }
-        # LongPtr is an ALIAS for LongLong on a 64-bit host, so it reads as one.
+        # LongPtr is an alias for LongLong on a 64-bit host
         @{ T='LongPtr';  V='VLongPtr';  R='RLongPtr';  Sig='';         Want='4294967296' }
         # An Enum's underlying type is Long.
         @{ T='Enum';     V='VEnum';     R='REnum';     Sig='Long';     Want='2'          }
@@ -361,7 +349,7 @@ try {
     Check 'every-type-ran-in-both-modes' ($missing.Count -eq 0) `
           ("missing: " + $(if ($missing.Count) { $missing -join ', ' } else { 'none' }) + " (of $($grid.Count * 2) cases)")
 
-    # ---- THE INVARIANT: the two modes describe the same planted value ------
+    # ---- the invariant: the two modes describe the same planted value ------
     $disagree = @()
     foreach ($g in $grid) {
         $a = ValOf $g.V; $b = ValOf $g.R
@@ -371,8 +359,7 @@ try {
           ("disagreements: " + $(if ($disagree.Count) { $disagree -join ' | ' } else { 'none' }))
 
     # ---- the planted value, where it is a stable literal --------------------
-    # Object and Variant are checked separately; Date is a serial number whose
-    # exact rendering is not the point of this file.
+    # Object and Variant are checked separately; Date's serial rendering is not the point here
     $wrong = @()
     foreach ($g in $grid) {
         if (-not $g.Want) { continue }
@@ -395,12 +382,8 @@ try {
           (((ValOf 'VVariant') -match '42') -and ((ValOf 'RVariant') -match '42')) `
           ("ByVal='" + (ValOf 'VVariant') + "' ByRef='" + (ValOf 'RVariant') + "'")
 
-    # ---- THE TYPE CAME FROM THE P-CODE, not from the value validating -------
-    #
-    # A BSTR and a SAFEARRAY prove themselves whatever the opcode table knows,
-    # so checking values alone would pass with the type table empty. The
-    # signature is what says the walk recovered a type -- and `&` is what says
-    # it recovered the ByRef one, which is a different opcode family.
+    # ---- the type came from the p-code, not from the value validating -------
+    # a BSTR or SAFEARRAY validates itself, so values alone would pass with an empty type table
     $noSig = @(); $noRef = @()
     foreach ($g in $grid) {
         if (-not $g.Sig) { continue }     # LongLong& is an untyped 8-byte ref
@@ -413,8 +396,7 @@ try {
           ("missing: " + $(if ($noRef.Count) { $noRef -join ' | ' } else { 'none' }))
 
     # ---- no case fell back to a bare raw qword ------------------------------
-    # An undecoded slot is honest but is not a pass here: every one of these has
-    # a declared type and a planted value, so a raw pointer means a gap.
+    # every one has a declared type and a planted value, so a raw pointer means a gap
     $raw = @()
     foreach ($g in $grid) {
         foreach ($m in @(@{ N='ByVal'; F=$g.V }, @{ N='ByRef'; F=$g.R })) {
@@ -424,12 +406,8 @@ try {
     Check 'no-parameter-reads-as-an-undecoded-qword' ($raw.Count -eq 0) `
           ("raw: " + $(if ($raw.Count) { $raw -join ' | ' } else { 'none' }))
 
-    # ---- THE FORMS THAT HAVE ONLY ONE MODE --------------------------------
-    #
-    # Not every parameter has both. `ByVal` on an ARRAY is a compile error
-    # (MS-VBAL 5.3.1.5), a UDT parameter is always by reference, and a
-    # ParamArray is always a resizable ByRef array of Variant. Asserting a
-    # ByVal case for those would be asserting against the language.
+    # ---- the forms that have only one mode --------------------------------
+    # an array, a UDT and a ParamArray cannot be ByVal (MS-VBAL 5.3.1.5)
     Write-Output ''
     Write-Output 'ByRef-only forms:'
     foreach ($f in @('RUdt','RArray','RParamArray')) {
@@ -441,9 +419,8 @@ try {
         for ($i = 0; $i -lt $r.Count; $i++) { Write-Output ('  {0,-14} {1}' -f "$f[$i]", $r[$i].args) }
     }
 
-    # A record has no scalar value, so its address is the answer, the same shape an object gets.
-    # It must be a plausible address: a stack address is 8-aligned and well above the first
-    # page, while the record's packed members (X=55, Y=66 -> 0x4200000037) are neither.
+    # A record has no scalar value, so its address is the answer. A real address is 8-aligned and
+    # above the first page; the record's packed members (0x4200000037) are neither.
     $udtVal = ValOf 'RUdt'
     $udtOk = $false
     if ($udtVal -match '^udt@0x([0-9A-F]+)$') {
@@ -461,9 +438,7 @@ try {
           ((ValOf 'RParamArray') -match '\[0\.\.2\]|\[3\]') `
           ("RParamArray sig=" + (SigOf $rows 'RParamArray') + " value='" + (ValOf 'RParamArray') + "'")
 
-    # An omitted Optional is the published `LitVar_Missing` marker, and the
-    # supplied case must NOT read as one -- otherwise `Missing` would be what
-    # the decoder says when it is unsure rather than when it is certain.
+    # the caller materialises a typed Optional's default, so omitted reads 99, not Missing
     $optRows = @($rows | Where-Object { ($_.kind -eq 'entry' -and $_.source -eq 'VBA') -and $_.function -eq 'VOptional' } |
                  Sort-Object { [int]$_.span })
     if ($optRows.Count -ge 2) {
@@ -477,11 +452,8 @@ try {
         Check 'optional-ran-twice' $false "VOptional rows=$($optRows.Count), expected 2"
     }
 
-    # ---- A TYPED VARIABLE INTO A VARIANT PARAMETER, and Decimal --------------
-    #
-    # ByRef into a Variant parameter is ordinary VBA and arrives as a VARIANT
-    # tagged VT_BYREF; it read as a raw qword until the tag was followed.
-    # Decimal is the one VBA value that lives only inside a Variant.
+    # ---- a typed variable into a Variant parameter, and Decimal --------------
+    # ByRef into a Variant arrives tagged VT_BYREF; Decimal lives only inside a Variant
     Check 'a-typed-variable-byval-into-a-variant-reads-its-value' `
           ((ValOf 'VVarFromStr') -eq '"hello"') ("VVarFromStr='" + (ValOf 'VVarFromStr') + "'")
     Check 'a-string-byref-into-a-variant-reads-through-the-byref-tag' `

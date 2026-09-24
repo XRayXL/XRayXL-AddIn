@@ -65,8 +65,8 @@ End Sub
         $sheetOut = [string]$sx[0].ret
         if ($rangeIn -notmatch "^Range@0x[0-9A-F]+\('?\[") {
             return "SheetOf's argument is not a described Range: [$rangeIn]" }
-        # THE ADDRESS IS EXCEL'S OWN, character for character -- the macro asked
-        # Range.Address with the same arguments the tracer uses, quoting and all.
+        # The address is Excel's own, character for character: the macro asked Range.Address with
+        # the tracer's arguments.
         $vbaAddr = [string]$t.cells['E4']
         if ($rangeIn -notmatch ([regex]::Escape($vbaAddr))) {
             return "the Range reads [$rangeIn]; VBA says its address is '$vbaAddr'" }
@@ -88,9 +88,9 @@ End Sub
         if ($bookOut -notmatch ([regex]::Escape([string]$t.cells['E6']))) {
             return "the Workbook reads [$bookOut]; VBA says its name is '$($t.cells['E6'])'" }
 
-        # ---- THE JOIN: one object, two columns, one address ------------------
-        # What SheetOf RETURNED is what BookOf was GIVEN. Nothing but the address
-        # can establish that, which is why it is never dropped from an object.
+        # ---- the join: one object, two columns, one address ------------------
+        # What SheetOf returned is what BookOf was given; only the address can establish that,
+        # which is why an object never drops it.
         $outAddr = & $addrOf $sheetOut
         $inAddr  = & $addrOf $sheetIn
         if (-not $outAddr -or $outAddr -ne $inAddr) {

@@ -1,13 +1,5 @@
-# A CELL-CALLED VBA UDF THAT TOUCHES THE OBJECT MODEL.
-#
-# The form/timer test drove object-model VBA from a MACRO. This drives it from a
-# cell UDF under recalculation -- a different boundary, where the caller is a
-# cell and the tracer must resolve it. The UDF is volatile, reads Application.
-# Caller and another cell, and calls a helper. Object-model touches inside a cell
-# UDF must not stamp it `threw`, and the caller must still resolve to its cell.
-#
-#   P6_Udf     =P6_Udf(5) in A1; volatile; reads Application.Caller and Z1
-#   P6_Helper  called by it                       -> nested, returned
+# A cell UDF that touches the object model under recalculation is not stamped `threw`, and its
+# caller still resolves to its cell; its helper nests under it.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

@@ -1,15 +1,5 @@
-# AN On Error GoTo HANDLER THAT ITSELF TOUCHES THE OBJECT MODEL.
-#
-# The real cleanup pattern: catch, then write a status cell. The handler now
-# fires its OWN benign object-model raise WHILE the tracer is resolving the
-# error episode the thrower started. This asks whether the handler's benign
-# raise collides with the `handled` detection.
-#
-#   P3_Thrower  Err.Raise                         -> threw
-#   P3_Outer    On Error GoTo; handler writes cells -> handled
-#
-# If P3_Outer reads anything but `handled`, the handler's cell write disturbed
-# the catch it was in the middle of.
+# A handler that writes a status cell, the common cleanup pattern, still reads `handled`: its
+# own benign object-model raise lands while the tracer is resolving the error it caught.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

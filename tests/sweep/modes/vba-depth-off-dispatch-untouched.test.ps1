@@ -1,7 +1,5 @@
-# VBA DEPTH=OFF -- the default -- leaves the dispatch table
-# untouched: arming says so, a VBA UDF runs untraced, and the XLL side
-# stands alone. The XLL side arming is also what truncates the trace file,
-# so "no vba rows" is an assertion about THIS arm window.
+# VBA DEPTH=OFF, the default, leaves the dispatch table untouched and a VBA UDF untraced. The XLL
+# side's arm truncates the trace file, so "no VBA rows" is about this arm window.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -25,7 +23,7 @@ End Function
     $book = Get-XRayMacroBook
     $ws = $book.Sheet; $bookPath = $book.Path
 
-    # Explicit, not just inherited: the default IS the assertion here.
+    # Explicit, not just inherited: the default is the assertion here.
     $echo = Set-XRayTraceParam $sx 'VBA' 'DEPTH' 'OFF'
     if ($echo -notmatch 'DEPTH=OFF') { Complete-Test -Fail -Detail "setter echo: $echo" }
 

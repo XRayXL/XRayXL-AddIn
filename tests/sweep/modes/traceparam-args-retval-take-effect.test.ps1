@@ -60,7 +60,7 @@ End Function
         Check 'retval-captured-when-on' ($xOn[0].ret -eq '5') "ret='$($xOn[0].ret)' rettype='$($xOn[0].rettype)'"
     }
 
-    # ---- OFF: EMPTY, and only those columns --------------------------------
+    # ---- OFF: empty, and only those columns --------------------------------
     if ($eOff.Count) {
         Check 'args-empty-when-off' ([string]::IsNullOrEmpty($eOff[0].args)) "args='$($eOff[0].args)'"
         # The row is still a proper row: it still names its caller and cell,
@@ -73,7 +73,7 @@ End Function
         Check 'rettype-empty-when-off' ([string]::IsNullOrEmpty($xOff[0].rettype)) "rettype='$($xOff[0].rettype)'"
     }
 
-    # ---- THE XLL SIDE: its own switches, the same rule ----------------------
+    # ---- the XLL side: its own switches, the same rule ----------------------
     $xeOn  = @($on.Rows  | Where-Object { $_.kind -eq 'entry' -and $_.source -eq 'XLL' -and $_.function -eq 'TxB' })
     $xeOff = @($off.Rows | Where-Object { $_.kind -eq 'entry' -and $_.source -eq 'XLL' -and $_.function -eq 'TxB' })
     $xxOn  = @($on.Rows  | Where-Object { $_.kind -eq 'exit'  -and $_.source -eq 'XLL' -and $_.function -eq 'TxB' })
@@ -91,7 +91,7 @@ End Function
               "ret='$($xxOff[0].ret)' rettype='$($xxOff[0].rettype)'"
     }
 
-    # ---- THE ACCOUNTING IS UNTOUCHED --------------------------------------
+    # ---- the accounting is untouched --------------------------------------
     if ($on.Totals -and $off.Totals) {
         $tOn  = ConvertFrom-XRayTotals $on.Totals
         $tOff = ConvertFrom-XRayTotals $off.Totals

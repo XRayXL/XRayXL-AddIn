@@ -20,10 +20,8 @@ namespace xll
         std::string detail;     // human-readable, for the log and the dialog
     };
 
-    // Enumerate, classify, plan, verify and install THIS source. Explicit --
-    // nothing arms at load -- so by the time a user asks, every other add-in
-    // has registered: the ordering problem solved for free. app/session.h
-    // arms both sources; nothing here knows the VBA side exists.
+    // Arms the XLL source only (app/session.h arms both). Never at load, so by the time a user
+    // asks every other add-in has registered.
     ArmReport Arm();
     // shuttingDown: skip the coverage check, which needs the object model.
     void      Disarm(bool shuttingDown = false);
@@ -34,16 +32,12 @@ namespace xll
     bool      IsArmed();
 
     // Latched at arm from core::modes::, so the hot path never sees them change.
-    // `caller` decides whether each entry asks Excel WHO called -- an Excel12
-    // round-trip made once per entry, from the traced thread, INSIDE the span
-    // it is timing.
     void      SetCapture(bool args, bool retval);
     // DEPTH=TOP: emit only the outermost call on a thread.
     void      SetTopOnly(bool topOnly);
 
-    // Entry rows whose exit could not be written because the recorder was
-    // re-entered. Each leaves a span that reads exactly like a call that never
-    // returned, so Disarm says so when it is non-zero.
+    // Exits dropped because the recorder was re-entered; each entry then reads like a call
+    // that never returned.
     long long ExitsDropped();
     long long RecorderFaults();
     long long FramesResynced();

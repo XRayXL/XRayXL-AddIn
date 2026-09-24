@@ -48,8 +48,7 @@ PascalStr MakeStr(const wchar_t* text)
     return ps;
 }
 
-// The fallback for EnsureAppSubdir when %TEMP% is unusable. Not exposed:
-// nothing outside wants the directory, only the path.
+// The fallback for EnsureAppSubdir when %TEMP% is unusable.
 static std::wstring GetOwnModuleDir()
 {
     const std::wstring full = GetOwnModulePath();
@@ -83,8 +82,8 @@ namespace
 }
 const char* OutputDirRefused() { return g_outputDirRefused; }
 
-// THE ONE PLACE THAT RESOLVES THE OUTPUT ROOT. A second copy of this rule
-// once sent the trace file somewhere the suites did not look.
+// The one place that resolves the output root: a second copy of the rule could send the trace
+// file somewhere the suites do not look.
 std::wstring EnsureAppSubdir(const wchar_t* leaf)
 {
     // An explicit output root, so a suite can keep each run's trace and logs beside its test. Not

@@ -12,11 +12,10 @@ namespace xll
     // The most characters of one string we read; a longer string ends "...".
     const int kValueMax = 128;
 
-    // Argument `slot` of a call, given the captured registers.
+    // Argument slot `s` of a call, given the captured registers.
     void DescribeArg(const Slot& s, const Regs& r, core::ValueWriter& w);
 
-    // `k` is the plan's returnKind -- NOT an assumption that everything
-    // returns an LPXLOPER12, which is the defect this signature prevents.
+    // `k` is the plan's returnKind: not every function returns an LPXLOPER12.
     void DescribeReturn(Kind k, const Regs& r, core::ValueWriter& w);
 
     // The XLOPER decoder and its guarded read are internal to xlldecode.cpp:

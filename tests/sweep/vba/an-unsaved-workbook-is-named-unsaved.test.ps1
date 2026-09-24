@@ -1,9 +1,5 @@
-# A WORKBOOK THAT WAS NEVER SAVED.
-#
-# VBE7 keeps the project's file name where the module column reads the workbook from, and a book
-# that was never saved has none: the field holds an internal id (ten hex digits). The id is the
-# only handle there is, so it is kept -- but marked, because "006cd206e1" otherwise reads as a
-# workbook a user could go and look for.
+# A never-saved workbook has no file name, only an internal hex id. The module column keeps the
+# id but marks it unsaved, or it reads as a workbook a user could go and look for.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

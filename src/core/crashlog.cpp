@@ -62,9 +62,8 @@ namespace
     volatile LONG g_reported = 0;      // one-shot: the first such crash is the evidence
     volatile LONG g_dumpEnabled = 0;   // opt-in; see crashlog.h for why
 
-    // SAFE memory probe: ReadProcessMemory returns FALSE instead of faulting,
-    // which is what we need inside a vectored handler -- a nested fault here
-    // would replace the evidence with a different crash.
+    // ReadProcessMemory fails instead of faulting: a nested fault inside a vectored handler would
+    // replace the crash being recorded with a different one.
     bool SafeRead(ULONG64 addr, void* out, SIZE_T bytes)
     {
         SIZE_T got = 0;
@@ -72,9 +71,8 @@ namespace
                                  out, bytes, &got) && got == bytes;
     }
 
-    // Names an address: a loaded module, one of our own stub pages, or nothing.
-    // "nothing" is itself the finding -- it is the signature of the crash this
-    // handler exists for.
+    // A loaded module, one of our stub pages, or nothing -- and "nothing" is the signature of the
+    // crash the vectored handler exists for.
     void AppendWhere(ULONG64 addr)
     {
         if (addr == 0) { AppendText("<null>"); return; }
@@ -130,8 +128,7 @@ namespace
         if (g_dumpDir[0] == 0) return;
         if (InterlockedCompareExchange(&g_dumpEnabled, 0, 0) == 0)
         {
-            // Say so: the absence of a dump otherwise reads as a second
-            // failure.
+            // Say so: the absence of a dump otherwise reads as a second failure.
             AppendText("\r\n  dump: not written -- opt-in; set XRAYXL_CRASHDUMP=1 "
                        "before starting Excel (it contains workbook memory)\r\n");
             return;
@@ -157,16 +154,15 @@ namespace
         if (f == INVALID_HANDLE_VALUE) { AppendText("\r\n  dump: could not create file\r\n"); FreeLibrary(dbg); return; }
 
         // MINIDUMP_EXCEPTION_INFORMATION is declared under pshpack4.h, with the pointer at
-        // offset 4. Laid out naturally, dbghelp read a garbage pointer: ERROR_NOACCESS.
+        // offset 4; laid out naturally, dbghelp reads a garbage pointer (ERROR_NOACCESS).
 #pragma pack(push, 4)
         struct DumpInfo { DWORD tid; EXCEPTION_POINTERS* ep; BOOL client; };
 #pragma pack(pop)
         static_assert(sizeof(DumpInfo) == 16 && offsetof(DumpInfo, ep) == 4,
                       "MINIDUMP_EXCEPTION_INFORMATION is 4-byte packed");
         DumpInfo info{ GetCurrentThreadId(), ep, FALSE };
-        // Full memory first, then fall back: a full dump of Excel is hundreds
-        // of megabytes and the call DOES fail, while a leaner dump still
-        // carries the faulting thread's stack.
+        // Full memory first, then fall back: a full dump of Excel is hundreds of megabytes and can
+        // fail, while a leaner one still carries the faulting thread's stack.
         const int kFull = 2 | 4 | 0x1000;   // FullMemory|HandleData|ThreadInfo
         const int kLean = 0x1000 | 0x40;    // ThreadInfo|IndirectlyReferencedMemory
         BOOL ok = write(GetCurrentProcess(), GetCurrentProcessId(), f, kFull,
@@ -201,8 +197,7 @@ namespace
         }
     }
 
-    // The one crash an unhandled filter cannot describe: the instruction
-    // pointer is in no mapped module, so execution was transferred to data. An
+    // The one crash an unhandled filter cannot describe: execution transferred to data, where the
     // address alone says nothing, so this writes the stack that got there.
     LONG CALLBACK Vectored(EXCEPTION_POINTERS* ep)
     {
@@ -216,10 +211,8 @@ namespace
         const CONTEXT* c = ep->ContextRecord;
         const ULONG64 rip = c->Rip;
 
-        // Narrow by design: our own guarded reads fault inside this module
-        // on the path of every VBA statement, and must stay free.
-        // RtlPcToFileHeader takes no loader lock, which GetModuleHandleEx would, on
-        // every one of those faults, on a calc thread.
+        // Narrow by design: our guarded reads fault inside this module on every VBA statement and
+        // must stay cheap. RtlPcToFileHeader takes no loader lock; GetModuleHandleEx would.
         PVOID base = nullptr;
         if (RtlPcToFileHeader(reinterpret_cast<PVOID>(rip), &base) != nullptr)
             return EXCEPTION_CONTINUE_SEARCH;
@@ -294,7 +287,6 @@ namespace
             addr = reinterpret_cast<ULONG64>(ep->ExceptionRecord->ExceptionAddress);
         AppendHex(addr);
 
-        // Whose code is that?
         AppendText("\r\n  in   ");
         AppendWhere(addr);
         AppendText("\r\n  thread ");
@@ -341,8 +333,6 @@ namespace crashlog
             g_dumpDir[dumpDir.size()] = 0;
         }
 
-        // Read ONCE: the handler goes in at load, long before anything can be
-        // armed, which is why this is an environment variable.
         wchar_t v[8]{};
         const DWORD got = GetEnvironmentVariableW(L"XRAYXL_CRASHDUMP", v, 8);
         const bool on = (got > 0 && got < 8) &&
@@ -353,9 +343,7 @@ namespace crashlog
         if (InterlockedCompareExchange(&g_vectoredInstalled, 1, 0) == 0)
             AddVectoredExceptionHandler(1, Vectored);   // 1 = first in the chain
 
-        // Which mode was in force is the first question asked of a crash that
-        // produced no dump. Buffered like every other note, so a session that
-        // does not fault still leaves no file.
+        // The first question about a crash with no dump; buffered, so a clean session leaves no file.
         Note(on ? "crash capture: text always; minidump ENABLED (XRAYXL_CRASHDUMP)"
                 : "crash capture: text always; minidump off (set XRAYXL_CRASHDUMP=1 to enable)");
     }

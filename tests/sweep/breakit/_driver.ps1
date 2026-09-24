@@ -1,10 +1,5 @@
-# A deliberate attempt to break XLL tracing, one hostile input at a time.
-#
-# Where the xll suite asserts the tracer is RIGHT about ordinary calls, this
-# fails loudly on the unambiguous wrongs -- a changed result, an entry without
-# an exit, a span whose halves disagree, an exit stamped before its entry --
-# and on decoded arguments whose answer is knowable by hand. The rest go to the
-# captured log: asserting a guess would pin the guess.
+# A deliberate attempt to break XLL tracing, one hostile input at a time. It fails on unambiguous
+# wrongs and on arguments knowable by hand; the rest is logged, as asserting a guess would pin it.
 
 function Invoke-FuzzCase($Case) {
     . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
@@ -20,7 +15,7 @@ function Invoke-FuzzCase($Case) {
         $rows = $run.Rows
 
         $problems = @()
-        # THE UNAMBIGUOUS WRONGS.
+        # The unambiguous wrongs.
         if ($now -ne $baseline) { $problems += "tracing changed the result: '$baseline' -> '$now'" }
 
         $entries = @($rows | Where-Object { ($_.kind -eq 'entry' -and $_.source -eq 'XLL') })
@@ -34,9 +29,8 @@ function Invoke-FuzzCase($Case) {
         if ($orphanX.Count) { $problems += "$($orphanX.Count) exit record(s) with no entry" }
         if ($dupE.Count)    { $problems += "$($dupE.Count) span id(s) reused by more than one entry" }
 
-        # WHO CALLED IT. Every fuzz case drives its call from a FORMULA in
-        # A1, so any entry whose caller is not its cell is misattribution,
-        # not fuzz noise -- hostile ARGUMENTS must not corrupt the CALLER.
+        # Every fuzz call comes from a formula in A1, so any other caller is misattribution: hostile
+        # arguments must not corrupt the caller.
         $problems += Test-RowInvariants $rows
         # Calls, when the case knows them: every XLL call, in order, and no others.
         if ($c.ContainsKey('Calls')) { $problems += Test-ExpectedTrace $rows $c.Calls 'XLL' }
@@ -56,12 +50,8 @@ function Invoke-FuzzCase($Case) {
             if ($en -and $ex -and [long]$ex.qpc -lt [long]$en.qpc) { $problems += "span $($g.Name): exit qpc precedes entry qpc" }
         }
 
-        # NESTING, when the case declares it. An add-in that re-enters Excel
-        # via xlUDF puts one hook genuinely on the stack while another fires;
-        # cell-level nesting like =TxB(TxB(1,2),3) does NOT -- Excel evaluates
-        # the inner call, finishes it, then the outer. The `depth` and `parent`
-        # columns state the nesting, and the order of the rows states it
-        # independently: both are checked, against each other.
+        # Nesting, when declared: re-entry through xlUDF truly nests, =TxB(TxB(1,2),3) does not (Excel
+        # finishes the inner call first). The depth/parent columns and the row order are checked together.
         if ($c.ContainsKey('NestDepth')) {
             $gotDepth = Get-MaxNestDepth $rows
             if ($gotDepth -ne $c.NestDepth) {
@@ -81,10 +71,8 @@ function Invoke-FuzzCase($Case) {
             Write-Output ("nesting: depth {0} (expected {1})" -f $gotDepth, $c.NestDepth)
         }
 
-        # No trace rows is two different facts. If the cell shows an Excel error, Excel refused
-        # the call upstream and the decoder was never reached: 300 chars into a 255-max byte
-        # count gives #VALUE! and no call, while 400 wide chars are legal and traced. No rows
-        # and no error means the call vanished, which is a failure.
+        # No rows and an error in the cell means Excel refused the call upstream (300 chars into a
+        # 255-max byte count); no rows and no error means the call vanished.
         $refusedUpstream = ($entries.Count -eq 0 -and $now -like '#*')
         if ($entries.Count -eq 0 -and -not $refusedUpstream) {
             $problems += "nothing was traced and the cell shows no error ('$now') -- the call vanished"
@@ -115,7 +103,7 @@ function Invoke-FuzzCase($Case) {
             $problems += "argcount=$($entries[0].argcount), expected $($c.ArgCount)"
         }
 
-        # REPORTED, not asserted: what the decoder produced for this input.
+        # Reported, not asserted: what the decoder produced for this input.
         foreach ($e in ($entries | Select-Object -First 4)) {
             Write-Output ("traced: {0} args=[{1}]" -f $e.function, $e.args)
         }

@@ -24,8 +24,7 @@ namespace vba
             return (kCorpusWalked[byteIdx] & (1u << (slot & 7))) != 0;
         }
 
-        // A ranking truncated too short hides most of its own finding, and the
-        // whole point of the line is to be worked through. Disarm-time only.
+        // Long, because a short ranking hides what it is there to show. Disarm-time only.
         constexpr int kTopStops = 40;
 
 
@@ -36,46 +35,30 @@ namespace vba
         volatile LONG64 g_walks = 0;
         volatile LONG64 g_resyncs = 0;
 
-        // WHICH opcode stopped a walk, per slot. The denominator that matters
-        // is not "how many of the 1023 implemented slots have a length" --
-        // nothing cares about slots that never occur -- but "which opcodes cost
-        // us a signature, and how often". That distribution is head-heavy.
+        // Which opcodes stopped a walk, and how often: only opcodes that occur cost a signature.
         volatile LONG g_stopOp[PcodeLengths::kMax] = {};
-        // The opcode whose length was just used when the walk then broke. `g_stopOp` names an
-        // opcode with no length; this names one whose length is probably wrong, which is worse:
-        // a missing length resynchronises safely, a wrong one steps into the middle of an
-        // operand.
+        // The opcode whose length was used just before the walk broke: probably a wrong length,
+        // worse than a missing one because it steps into the middle of an operand.
         volatile LONG g_suspectOp[PcodeLengths::kMax] = {};
 
-        // The same blame, but certain: the walk landed on a slot that is not an instruction, so
-        // the step that brought it there was wrong. A bisect starts here.
+        // The same blame, but certain: the walk landed on a slot that is not an instruction.
         volatile LONG g_definiteOp[PcodeLengths::kMax] = {};
 
-        // REFUSED BY THE FRAME GATE: an argument-shaped operand on an opcode
-        // whose handler never addresses R14, so it cannot be naming a parameter.
-        // A high count on one opcode means the gate is working; a high count on
-        // a NAMED load opcode would mean the frame scan is wrong.
+        // Refused by the frame gate. A high count on a named load opcode would mean the frame
+        // scan is wrong.
         volatile LONG g_notFramedOp[PcodeLengths::kMax] = {};
 
-        // DEVELOPER ONLY. With XRAYXL_DIAG the dump also captures a walk that
-        // RESYNCHRONISED rather than only one that failed to type a parameter --
-        // different questions, and only the first shows where a walk went wrong.
-        // Read once at arm (class F), so a user's session cannot reach the copy.
+        // With XRAYXL_DIAG the dump also takes a walk that resynchronised, which shows where a
+        // walk went wrong. Read once at arm, so a user's session never sets it.
         bool g_dumpResync = false;
 
-        // Steps taken through a length nothing has confirmed. Bounded by the
-        // same array the other rankings use, and only touched for the slots the
-        // bitmap marks -- zero cost on every ordinary opcode.
+        // Steps through a length nothing has confirmed; touched only for bitmap-marked slots.
         volatile LONG g_unverifiedOp[PcodeLengths::kMax] = {};
 
-        // Walked from offset 0 to a clean end with no resynchronisation. THE
-        // health number for the length table: a correct table walks every
-        // procedure cleanly, so anything less is a defect and this sizes it.
+        // Walks from offset 0 to a clean end with no resync; a correct table makes every walk clean.
         volatile LONG64 g_cleanWalks = 0;
 
-        // ONE UNTYPED PROCEDURE'S (opcode, operand) STREAM -- the instrument
-        // that says whether an unrecovered type is a gap in the TABLES or in the
-        // WALK, which a `(?)` cannot. Bounded, once per arm.
+        // One untyped procedure's (opcode, operand) stream. Bounded, once per arm.
         constexpr int kDumpMax = 64;
         volatile LONG g_dumpTaken = 0;
         volatile LONG g_dumpWriting = 0;   // one dump writer at a time
@@ -84,23 +67,16 @@ namespace vba
         std::int32_t  g_dumpOperand[kDumpMax] = {};
         std::uint64_t g_dumpTrailer = 0;
 
-        // THE RAW BYTES, because the decoded stream is only as good as the
-        // lengths that produced it: once a walk desynchronises, what it prints
-        // is already fiction. The bytes are the only account that does not depend
-        // on the thing under investigation.
+        // The raw bytes too: once a walk desynchronises, the decoded stream is fiction.
         constexpr int kRawMax = 192;
         int           g_rawN = 0;
         std::uint8_t  g_raw[kRawMax] = {};
 
-        // The corpus: every distinct procedure this session walked. A length table is correct
-        // exactly when every procedure parses from offset 0 to its exit consuming exactly
-        // ProcSize, so the bytes are kept and solved offline.
-        //
-        // DIAG only, bounded, deduplicated by trailer. Claimed lock-free on the hot path and
-        // written at disarm, never from a traced thread.
+        // Every distinct procedure walked, kept as bytes so the length table can be checked
+        // offline. DIAG only, bounded, deduplicated by trailer; written at disarm, never from a
+        // traced thread.
         constexpr int kCorpusProcs = 4096;
-        // A procedure over the cap is DROPPED, not truncated, so the cap must hold what real
-        // libraries write. Allocated only when DIAG turns the corpus on: 4096 x 8 KB.
+        // A procedure over the cap is dropped, not truncated, so the cap must hold real ones.
         constexpr int kCorpusBytes = 8192;
         struct CorpusProc
         {
@@ -120,9 +96,7 @@ namespace vba
             InterlockedIncrement64(&g_declines[static_cast<int>(d)]);
         }
 
-        // The top `max` entries of a per-slot counter, highest first, above
-        // `floor`; ties rank the lower slot first. `consume` zeroes what it
-        // takes, so a ranking is reported once per arm. Disarm-time only.
+        // `consume` zeroes what it takes, so a ranking is reported once per arm. Disarm-time only.
         int TopSlots(volatile LONG* counts, long floor, int max, bool consume,
                      int* slot, long* val)
         {
@@ -141,8 +115,7 @@ namespace vba
             return n;
         }
 
-        // Appends " op<slot>=<count>" per entry at `j` and returns the new
-        // length. The shape every log parser reads.
+        // " op<slot>=<count>" is the shape every log parser reads.
         int AppendOps(char* b, size_t cap, int j, const int* slot, const long* val, int n)
         {
             for (int k = 0; k < n; ++k)
@@ -154,12 +127,11 @@ namespace vba
             return j;
         }
 
-        // core/safemem.h.
         using core::RdU16;
         using core::RdI32;
 
-        // Walks whose last statement did not end at ProcSize, by the exit it ended on, and walks
-        // whose last exit has no measured length, so could not be checked.
+        // Walks whose last statement missed ProcSize, by exit; and those whose exit length is
+        // unknown, so could not be checked.
         volatile LONG     g_openExitOp[PcodeLengths::kMax] = {};
         volatile LONG64   g_closureUnchecked = 0;
 
@@ -168,23 +140,14 @@ namespace vba
             for (const SigLength& e : kExitLength) if (e.slot == op) return e.len;
             return 0;
         }
-
-        // No length derivation here: the lengths are the constant kSigLength, and deriving them
-        // is offline work. An unknown opcode is flagged by number where it stops a walk.
     }
 
-    // Opcodes that touch a parameter slot and carry no type. `?opNNN` would wrongly say "add a
-    // row to kTypeOps" for these, so they render a bare `?`.
-    //
-    //    671  `movsxd rax,[rsi]; add rax,r14; push rax` pushes the ADDRESS of the frame slot
-    //         without dereferencing it, which says nothing about what the slot holds.
-    //
-    // Not here: 739, which does load a value, so `?op739` is the right thing to say.
+    // 671 (`movsxd rax,[rsi]; add rax,r14; push rax`) pushes the slot's address without
+    // dereferencing it. Not 739: that loads a value, so `?op739` is right.
     bool PcodeCarriesNoType(std::uint32_t op)
     {
-        // 662 shares 671's handler. 1122, 1467 and 1470 are the same idiom without the push.
-        // 751 forwards a by-reference slot's address, alike for a `ByRef Long` and a `ByRef
-        // Double()`.
+        // 662 shares 671's handler; 1122, 1467 and 1470 are the idiom without the push; 751
+        // forwards a ByRef slot's address whatever its type.
         return op == 671 || op == 662 || op == 751 ||
                op == 1122 || op == 1467 || op == 1470;
     }
@@ -195,27 +158,21 @@ namespace vba
         return nullptr;
     }
 
-    // A store names its type through the load it mirrors: store = load + 32. Exceptions, ByVal
-    // side only: the String store is 708 (not 663+32) and the Variant store is 694 (not
-    // 1477+32). nullptr for those; callers keep explicit entries.
+    // Exceptions, ByVal only: the String store is 708 (not 663+32) and the Variant store 694
+    // (not 1477+32); callers keep explicit entries for those.
     const char* PcodeStoreTypeName(std::uint32_t storeOp)
     {
         if (storeOp < 32) return nullptr;
-        // The subtraction must exclude the exceptions too, or 1509 answers "Variant" through
-        // 1477 and 695 "String" through 663.
+        // Or 1509 would answer "Variant" through 1477, and 695 "String" through 663.
         if (storeOp == 1477 + 32 || storeOp == 663 + 32) return nullptr;
-        // The ByRef Variant store has several forms, picked by the right-hand side:
-        // a number 774, `Set` 783, `Set` of an IUnknown 784 (785 from a function), a full
-        // copy 787. Only 774 mirrors a load (742); the others sit over loads that name no type.
-        //
+        // ByRef Variant stores vary with the right-hand side: a number 774, `Set` 783, `Set` of
+        // an IUnknown 784 or 785, a full copy 787. Only 774 mirrors a typed load.
         if (storeOp == 783 || storeOp == 784 || storeOp == 785 || storeOp == 787) return "Variant&";
         return PcodeTypeName(storeOp - 32);
     }
 
-    // Two kinds of stop. An opcode that stopped several walks is a real instruction missing
-    // from kSigLength, and is actionable. Distinct opcodes each stopping once are operand bytes
-    // read as opcodes after the walk lost alignment. A fuzz run asserts only that the repeat
-    // group is empty.
+    // An opcode that stopped several walks is a real instruction missing from kSigLength; ones
+    // that stopped a single walk are most likely operand bytes read after a desync.
     const char* PcodeStopWarning()
     {
         static char b[2048];
@@ -248,9 +205,7 @@ namespace vba
         return b;
     }
 
-    // What the frame gate refused: opcodes with an argument-shaped operand whose handler never
-    // computes an address from R14. A named load opcode here means the frame scan is wrong and
-    // is suppressing real parameter types; an unnamed one is the gate working. At DEBUG.
+    // A named load opcode here means the frame scan is wrong and suppressing real types.
     const char* PcodeNotFramedWarning()
     {
         static char b[512];
@@ -275,11 +230,7 @@ namespace vba
         return b;
     }
 
-    // Which lengths are probably wrong: opcodes whose length was used and after which the walk
-    // could not continue. Repeat offenders only, because a single break after an unrelated
-    // desync blames whatever opcode preceded it.
-    // A walk that reached its last exit where ProcSize says it cannot be: a length in the last
-    // statement is wrong, since that statement has no successor to check it against.
+    // The last statement has no successor to check its lengths against, so ProcSize is the check.
     const char* PcodeClosureWarning()
     {
         static char b[600];
@@ -296,15 +247,15 @@ namespace vba
         return b;
     }
 
+    // Suspects need two breaks: one break after an unrelated desync blames whatever preceded it.
     const char* PcodeSuspectWarning()
     {
         static char b[1400];
         b[0] = 0;
         const long long walks = g_walks, cleanN = g_cleanWalks;
         if (walks <= 0) return b;
-        // Definite first: a landing on the invalid-opcode handler proves the previous length
-        // wrong, where a stop only suggests it. Both rankings are consumed here, so they are
-        // reported once per arm. Nothing blamed is no warning; the tally is logged at INFO.
+        // Definite first: landing on the invalid handler proves the previous length wrong, where
+        // a stop only suggests it.
         int dSlot[8]; long dVal[8]; int sSlot[8]; long sVal[8];
         const int nd = TopSlots(g_definiteOp, 0, 6, true, dSlot, dVal);
         const int ns = TopSlots(g_suspectOp, 1, 8, true, sSlot, sVal);
@@ -391,15 +342,9 @@ namespace vba
         if (g_corpus) for (int i = 0; i < kCorpusProcs; ++i) g_corpus[i].trailer = 0;
     }
 
-    // Does this handler ever compute an address from R14? R14 is the VBA frame base and
-    // argument n is at `[R14 + 8n]`, so a handler that never names it cannot touch a parameter.
-    //
-    // R14 is encoding 6 with the matching REX bit and can arrive four ways: as modrm.reg with
-    // REX.R, as modrm.rm with REX.B, or inside a SIB as index with REX.X or base with REX.B. A
-    // false negative silently loses a parameter type.
-    //
-    // Unconditional jumps are followed, because the frame access is often in a shared tail. The
-    // next-opcode fetch, a return or an indirect jump ends the scan.
+    // A handler that never addresses R14, the frame base, cannot touch a parameter. R14 can
+    // appear as modrm.reg, modrm.rm, SIB index or SIB base; missing one loses a parameter type.
+    // Jumps are followed because the frame access is often in a shared tail.
     bool HandlerTouchesR14(const Image& img, std::uint32_t rva)
     {
         for (int step = 0; step < 400; ++step)
@@ -424,6 +369,7 @@ namespace vba
             if (hs.opcode == 0xEB) { rva += n + static_cast<std::uint32_t>(static_cast<std::int8_t>(hs.imm.imm8));   continue; }
             if (hs.opcode == 0xFF && (hs.flags & F_MODRM) && hs.modrm_reg == 4) return false;
             if (hs.opcode == 0xC3 || hs.opcode == 0xC2) return false;
+            // the next-opcode fetch ends the handler
             if (hs.opcode == 0x0F && (hs.opcode2 == 0xB7 || hs.opcode2 == 0xBF)
                 && hs.modrm_rm == 6 && !hs.rex_b && hs.modrm_mod != 3) return false;
             rva += n;
@@ -431,9 +377,7 @@ namespace vba
         return false;
     }
 
-    // Nothing is derived: the lengths ARE the table. The image and SlotSet are
-    // still taken because the caller has verified them, and because a slot beyond
-    // this build's table must not be written.
+    // The SlotSet bounds the writes: a slot beyond this build's table must not be written.
     bool PinPcodeLengths(const Image& img, const SlotSet& s, PcodeLengths& out)
     {
         out = PcodeLengths{};
@@ -443,9 +387,6 @@ namespace vba
 
         for (const SigLength& e : kSigLength)
         {
-            // A slot past the end of THIS build's table is not ours to write.
-            // The caller checks the slot count, so this fires only if that ever
-            // changes -- and then declines rather than writing off the end.
             if (e.slot >= out.slots) continue;
             out.len[e.slot] = e.len;
             ++out.pinned;
@@ -457,15 +398,10 @@ namespace vba
             out.varUnit[e.slot] = e.unit;
             ++out.pinned;
         }
-        // PINNED BUT NEVER EXERCISED. Marked here rather than listed by hand so
-        // the set shrinks automatically as the corpus grows: regenerate
-        // kCorpusWalked and whatever the new procedures walked past stops being
-        // reported.
+        // Derived from kCorpusWalked rather than listed, so regenerating that shrinks the set.
         for (std::uint32_t i = 0; i < out.slots && i < PcodeLengths::kMax; ++i)
             if (out.len[i] && !CorpusWalked(i)) { out.unverified[i] = true; ++out.unverifiedCount; }
-        // Which slots are not instructions: those pointing at the shared invalid-opcode
-        // handler. Read once at arm into a bitmap, so the hot path costs an index. The same
-        // pass answers which slots can name a parameter (framesR14).
+        // Read once at arm into bitmaps, so the hot path costs an index.
         {
             // Timed because arming cost matters and this pass decodes every handler.
             const long long t0 = core::QpcMicros();
@@ -482,10 +418,8 @@ namespace vba
             }
             out.scanMicros = static_cast<std::uint32_t>(core::QpcMicros() - t0);
         }
-        // Fail open if the scan found nothing, fail closed per slot otherwise. A build whose
-        // handlers this decoder cannot follow leaves framedCount zero, and the walk must go on
-        // attributing or every parameter type disappears. A low non-zero count is the dangerous
-        // middle: it suppresses most attribution while looking like it worked.
+        // Fail open when the scan found nothing, or every parameter type would disappear. A low
+        // non-zero count is worse: it suppresses most attribution while looking like it worked.
         if (out.framedCount && out.framedCount < 64)
         {
             char w[192];
@@ -515,10 +449,8 @@ namespace vba
 
     namespace
     {
-        // The next instruction boundary after losing alignment. Every statement starts with a
-        // beginning-of-statement opcode, so the next one is a known-good boundary. A candidate
-        // is accepted only if the instruction after it also decodes. Scans one parity of the
-        // byte stream in two-byte steps. Returns the new offset, or -1.
+        // Every statement starts with a beginning-of-statement opcode, so the next one is a
+        // known-good boundary. Scans one parity in two-byte steps. Returns the offset, or -1.
         int ResyncScan(std::uint64_t code, std::uint32_t procSize,
                        std::uint32_t from, const PcodeLengths* L)
         {
@@ -531,9 +463,8 @@ namespace vba
                 std::uint16_t next = 0;
                 if (!RdU16(code + j + 6, next)) return -1;   // BoS is 6 bytes
 
-                // The next word must be a plausible opcode: inside the dispatch table, and not
-                // a second beginning-of-statement. Requiring a known length instead would
-                // reject genuine boundaries.
+                // The next word need only be a plausible opcode: requiring a known length
+                // would reject genuine boundaries.
                 if (next >= L->slots) continue;
                 if (IsBosSlot(next))  continue;
                 return static_cast<int>(j);
@@ -541,10 +472,8 @@ namespace vba
             return -1;
         }
 
-        // Not every instruction is an even number of bytes: `LitI2_Byte` (1643) is three, so
-        // everything after it in that procedure sits at an odd offset. The walk's own parity is
-        // scanned first, because it is right whenever the step that got here was; then the
-        // other.
+        // Both parities: `LitI2_Byte` (1643) is three bytes, putting what follows at odd offsets.
+        // The walk's own parity first, since it is right whenever the last step was.
         int ResyncAtStatement(std::uint64_t code, std::uint32_t procSize,
                               std::uint32_t from, const PcodeLengths* L)
         {
@@ -555,8 +484,6 @@ namespace vba
         }
     }
 
-    // Every candidate store near the result, named or not. Both offsets, because a Variant
-    // result lives at [R14-0x18] rather than [R14-8].
     int ReturnStoreCandidates(std::uint64_t trailer, std::uint16_t* ops,
                               std::int32_t* offs, int max)
     {
@@ -584,10 +511,8 @@ namespace vba
 
     namespace
     {
-        // Linear scan for the duplicate check: the table is small, this is
-        // DIAG-only, and a hash would need a collision policy that could
-        // silently drop a distinct procedure.
-        // DIAG only, so a lock is affordable; without it two threads can record one procedure twice.
+        // DIAG only, so a lock and a linear duplicate scan are affordable; without the lock two
+        // threads can record one procedure twice.
         SRWLOCK g_corpusLock = SRWLOCK_INIT;
         struct CorpusLock
         {
@@ -602,9 +527,7 @@ namespace vba
             for (LONG i = 0; i < n && i < kCorpusProcs; ++i)
                 if (g_corpus[i].trailer == trailer) return;      // already have it
 
-            // DROPPED rather than truncated: a truncated body cannot be told
-            // from one that ends early, and a solver fed truncated bytes would
-            // blame a length for the cut.
+            // Dropped rather than truncated: a solver fed a cut body would blame a length for it.
             InterlockedIncrement(&g_corpusSeen);
             if (procSize == 0 || procSize > kCorpusBytes)
             { InterlockedIncrement(&g_corpusDropped); return; }
@@ -623,22 +546,13 @@ namespace vba
             }
             c.procSize = procSize;
             c.n        = static_cast<std::uint16_t>(got);
-            // Written LAST, so a reader that sees a non-zero trailer sees a
-            // complete record rather than a half-filled slot.
+            // Written last, so a non-zero trailer means a complete record.
             c.trailer  = trailer;
         }
 
-        // What one instruction says about a parameter slot. [R14 + 8n] is argument n, and every
-        // typed load has a 4-byte operand at +2.
-        //
-        // Gated on the frame set, not the operand's shape: a two-byte opcode has no operand, so
-        // the bytes at +2 belong to the next instruction. The gate fails open when the arm-time
-        // scan found nothing.
-        //
-        // First evidence wins. A load names the type directly; a write-only parameter emits a
-        // typed store, and store = load + 32. With neither, the opcode is kept as a diagnostic.
-        // Control-flow opcodes are excluded: a statement marker's offset can look like a frame
-        // offset.
+        // Gated on the frame set, not the operand's shape: a two-byte opcode's "operand" is the
+        // next instruction. First evidence wins; a store covers a write-only parameter. Control
+        // opcodes are excluded because a statement marker's offset can look like a frame offset.
         void Attribute(ArgTypes& out, const PcodeLengths* L, std::uint16_t op,
                        std::int32_t operand, bool haveOperand, int maxArg)
         {
@@ -647,8 +561,7 @@ namespace vba
             if (!framed) { InterlockedIncrement(&g_notFramedOp[op]); return; }
 
             const int idx = operand / 8;
-            // Bounded by the frame: an index past argSz came from a bad
-            // resync landing, not from a load.
+            // An index past argSz came from a bad resync landing, not from a load.
             const int cap = (maxArg > 0 && maxArg < ArgTypes::kMax) ? maxArg + 1
                                                                    : ArgTypes::kMax;
             if (idx < 1 || idx >= cap || out.name[idx]) return;
@@ -660,7 +573,6 @@ namespace vba
             else if (!control && !out.op[idx])   out.op[idx] = op;
         }
 
-        // The instructions one walk met, for the untyped dump.
         struct Seen
         {
             std::uint16_t op[kDumpMax];
@@ -670,10 +582,8 @@ namespace vba
             { if (n < kDumpMax) { op[n] = o; operand[n] = opd; ++n; } }
         };
 
-        // Developer evidence after a walk. The corpus takes every procedure. The one-procedure
-        // dump takes the first walk with an unnamed argument slot; under XRAYXL_DIAG a walk
-        // that resynchronised takes it instead, last wins. A procedure with no argument slots
-        // never qualifies.
+        // The dump takes the first walk with an unnamed argument slot; under XRAYXL_DIAG a
+        // resynchronised walk takes it instead, last wins.
         void OfferEvidence(std::uint64_t trailer, std::uint64_t code, std::uint32_t procSize,
                            const ArgTypes& out, int maxArg, int resyncs, const Seen& seen)
         {
@@ -690,7 +600,6 @@ namespace vba
             if (InterlockedCompareExchange(&g_dumpWriting, 1, 0) != 0) return;
 
             g_dumpTrailer = trailer;
-            // The whole body, up to the cap -- guarded, one byte at a time.
             const int want = (procSize < kRawMax) ? static_cast<int>(procSize) : kRawMax;
             int got = 0;
             for (; got < want; ++got)
@@ -717,8 +626,7 @@ namespace vba
         std::uint16_t procSize = 0;
         if (!RdU16(trailer + kTrl_procSize, procSize))
         { NoteDecline(PcDecline::NoProcSize); return false; }
-        // A body of 0 bytes is not a body, and the ceiling is generous but
-        // finite so a stale trailer cannot send the walk into unrelated memory.
+        // A finite ceiling, so a stale trailer cannot send the walk into unrelated memory.
         if (procSize < 2 || procSize > 0x4000)
         { NoteDecline(PcDecline::ProcSizeInsane); return false; }
 
@@ -729,18 +637,13 @@ namespace vba
         std::uint32_t stmtNext = 0;
         int  resyncs = 0;
         constexpr int kMaxResyncs = 64;   // bounded: a procedure is finite
-        // The opcode whose length was last used to step: when the walk cannot
-        // continue, THIS is the suspect, not the byte it landed on.
+        // When the walk cannot continue, the last length used is the suspect, not the landing.
         std::uint16_t prevOp = 0;
         Seen seen{};
 
-        // Alignment is lost: an opcode outside the table, a landing on the invalid handler, or
-        // an opcode with no pinned length. Keep what was recovered and resynchronise on the
-        // next statement marker. No guessed step is taken over an unsized opcode, since a wrong
-        // step attributes types to the wrong parameters.
-        //
-        // `blame` records prevOp only from an unresynchronised run; after a resync the fault
-        // may be several steps back. Returns false when nothing recognisable remains.
+        // Resynchronises rather than guessing a step, since a wrong step types the wrong
+        // parameters. Blame only before any resync: after one, the fault may be several steps
+        // back. False when nothing recognisable remains.
         auto lose = [&](PcDecline why, volatile LONG* blame) -> bool
         {
             NoteDecline(why);
@@ -759,9 +662,8 @@ namespace vba
             std::uint16_t op = 0;
             if (!RdU16(code + i, op)) { NoteDecline(PcDecline::CodeUnreadable); return false; }
 
-            // Outside the table, prevOp's length is a suspect. On the invalid
-            // handler (none of its slots is an operation) the step was
-            // certainly wrong: a definite suspect, and the landing is a stop.
+            // Outside the table, prevOp's length is a suspect; on the invalid handler it is
+            // certainly wrong.
             if (op >= L->slots)
             {
                 if (lose(PcDecline::Desynced, g_suspectOp)) continue;
@@ -774,11 +676,8 @@ namespace vba
                 break;
             }
 
-            // An `Exit` emits the same opcode as the real end. Which it is comes
-            // from the statement carrying it: a statement's operand is the next
-            // statement's offset, and is ZERO on the last one. So an exit needs no
-            // length -- and there are ten of them, one per return type.
-            //
+            // An `Exit` emits the same opcode as the real end; only the last statement has no
+            // next-statement offset, so an exit mid-body needs no length.
             if (IsProcTerminatorSlot(op))
             {
                 clean = true;
@@ -790,7 +689,7 @@ namespace vba
                 }
                 if (stmtNext <= i)              // last statement: the real end
                 {
-                    // It has no successor to land on, so it closes against ProcSize instead.
+                    // No successor to land on, so it closes against ProcSize instead.
                     const std::uint32_t el = ExitLength(op);
                     const std::uint32_t end = i + el;
                     if (!el) InterlockedIncrement64(&g_closureUnchecked);
@@ -807,9 +706,6 @@ namespace vba
             // unsized opcode still names its slot.
             std::int32_t operand = 0;
             const bool haveOperand = RdI32(code + i + 2, operand);
-            // A statement opcode says where the next statement begins, relative
-            // to itself. Only forward offsets inside the procedure are kept: a
-            // backward or out-of-range one is not a next statement.
             if (IsBosSlot(op))
             {
                 // Reset on every statement, or the last one inherits a successor
@@ -828,10 +724,8 @@ namespace vba
                 if (!RdU16(code + i + 2, count)) { NoteDecline(PcDecline::CodeUnreadable); return false; }
                 len += static_cast<std::uint32_t>(L->varUnit[op]) * count;
             }
-            // No pinned length: either a real instruction missing from
-            // kSigLength, or prevOp's length is wrong and `op` is operand
-            // debris (how 1309 presented, as a phantom "opcode 2"). Both are
-            // recorded; only evidence outside this walk separates them.
+            // Either a real instruction missing from kSigLength, or prevOp's length is wrong and
+            // `op` is operand debris; only evidence outside this walk separates them.
             if (len == 0)
             {
                 InterlockedIncrement(&g_stopOp[op]);
@@ -839,8 +733,6 @@ namespace vba
                 break;
             }
 
-            // One array index; the increment fires only for a length no
-            // running code has confirmed.
             if (L->unverified[op]) InterlockedIncrement(&g_unverifiedOp[op]);
             prevOp = op;
             i += len;
@@ -849,7 +741,6 @@ namespace vba
         if (i == procSize) clean = true;
         if (clean && resyncs == 0) InterlockedIncrement64(&g_cleanWalks);
         InterlockedIncrement64(&g_walks);
-        // Stopped early or resynchronised: a `?` may be a skipped load.
         out.partial = !clean || resyncs > 0;
         OfferEvidence(trailer, code, procSize, out, maxArg, resyncs, seen);
         return true;
@@ -865,8 +756,6 @@ namespace vba
         return b;
     }
 
-    // One procedure's instruction stream; empty when every procedure this
-    // session was fully typed. See the globals for why it is bounded.
     const char* PcodeUntypedDump()
     {
         static char line[1400];
@@ -901,10 +790,8 @@ namespace vba
         return line;
     }
 
-    // Writes the corpus, at disarm and never from a hook. One line per procedure: trailer,
-    // ProcSize, bytes. No decoded opcodes or lengths, because the file exists to check the
-    // lengths. The summary includes what was dropped, so a corpus missing every large procedure
-    // does not flatter the table.
+    // Raw bytes only, since the file exists to check the lengths. The summary counts what was
+    // dropped, so a corpus missing every large procedure does not flatter the table.
     std::string WritePcodeCorpus(const std::wstring& path)
     {
         char msg[400];
@@ -915,12 +802,11 @@ namespace vba
         if (kept <= 0)
             return "VBA p-code corpus: nothing walked, nothing written";
 
-        // Every procedure of every module something ran in, run or not: its p-code is compiled
-        // and sits before its trailer like any other. Here, at disarm, never from a hook.
+        // Also every procedure of every module something ran in: its p-code is compiled too.
         const LONG before = kept;
         long uncompiled = 0;
-        // An uncompiled body is not p-code, but it is the only place BosStub is measured, so its
-        // trailer is kept and it is written apart, as a `stub` line the solvers do not read.
+        // An uncompiled body is not p-code but is the only view of BosStub, so it is written
+        // apart as a `stub` line the solvers do not read.
         constexpr int kStubMax = 1024;
         static std::uint64_t stubs[kStubMax];
         int nStubs = 0;
@@ -959,10 +845,8 @@ namespace vba
                         "VBA p-code corpus: %ld procedure(s) held but the file could not be opened", kept);
             return msg;
         }
-        // APPEND, not truncate: the reset at arm clears the in-memory set, so
-        // truncating here would keep only the LAST arm. Duplicates across arms
-        // are the solver's problem and trivial to remove; losing procedures is
-        // not recoverable.
+        // Appended: each arm clears the in-memory set, and duplicates are easier to drop than
+        // lost procedures are to recover.
         fprintf(f, "# XRayXL p-code corpus. One procedure per line: raw bytes only.\n");
         fprintf(f, "# A length table is correct exactly when every one of these parses\n");
         fprintf(f, "# from offset 0 to an exit opcode, consuming exactly size bytes.\n");
@@ -981,7 +865,7 @@ namespace vba
         {
             std::uint16_t size = 0;
             if (!RdU16(stubs[s] + kTrl_procSize, size) || !size || size > kCorpusBytes) continue;
-            // every stub body measured is kBosStubBody; a different one is worth seeing
+            // a stub body other than kBosStubBody is worth seeing
             fprintf(f, "stub %llX size=%u%s bytes=", static_cast<unsigned long long>(stubs[s]), size,
                     size == kBosStubBody ? "" : " UNEXPECTED");
             for (std::uint32_t q = 0; q < size; ++q)

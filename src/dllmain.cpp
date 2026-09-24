@@ -35,8 +35,7 @@ namespace
     // Set by xlAutoRemove: the add-in dialog is removing us, and no COM callback will follow.
     volatile LONG g_removing = 0;
 
-    // The process id, because that is what a person can match against Task
-    // Manager.
+    // The process id, because that is what a person can match against Task Manager.
     std::wstring SessionSuffix()
     {
         std::wostringstream o;
@@ -139,8 +138,8 @@ extern "C" int __stdcall xlAutoOpen()
                            "; output is under %TEMP%\\XRayXL instead");
     core::crashlog::Note(g_modulePinned ? "module pinned; it cannot be unloaded"
                                   : "module NOT pinned; unload remains a risk");
-    // WHERE this XLL was loaded from -- the project build, or a copy -- so a
-    // support log names the exact binary. INFO, so it shows in a shipped log.
+    // Where this XLL was loaded from, so a support log names the exact binary; at Info, so it
+    // shows in a shipped log.
     {
         const std::wstring xllPath = core::GetOwnModulePath();
         // UTF-8 can need up to 4 bytes per UTF-16 unit.
@@ -153,9 +152,7 @@ extern "C" int __stdcall xlAutoOpen()
                     narrow[0] ? narrow : "(unknown)");
         core::Log::Info(msg);
     }
-    // XLL commands, so Application.Run reaches them from VBA and from any
-    // automation client with no window and no COM object of ours in the process
-    // (src/app/commands.cpp).
+    // XLL commands, so Application.Run reaches them with no window and no COM object of ours.
     app::RegisterCommands();
     core::Log::Note("loaded: XLL commands registered.");
     core::Log::Note("settings at start -- " + app::settings::List(app::settings::Take()));
@@ -192,7 +189,7 @@ extern "C" int __stdcall xlAutoClose()
     core::Log::Note(removing ? "xlAutoClose: add-in removed -- disarming and stopping the ribbon"
                              : "xlAutoClose: no ribbon to report the exit -- disarming now");
 
-    // Unhook FIRST: a detour left behind after the module goes points at
+    // Unhook first: a detour left behind after the module goes points at
     // unmapped code the next time Excel calls that add-in function, which is a
     // crash with our name nowhere near it.
     app::Disarm(true);

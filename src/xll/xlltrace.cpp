@@ -16,16 +16,12 @@
 
 namespace xll
 {
-    // ---- WHAT THE HOT PATH DECODES, latched at arm --------------------------
-    // Read ONCE from core::modes::, so the hot path never sees a value change under
-    // it. A disabled decode leaves its column EMPTY and is COUNTED, keeping "we
-    // did not look" distinguishable from "we looked and found nothing".
+    // ---- what the hot path decodes, latched at arm --------------------------
+    // Latched so the hot path never sees a value change under it.
     volatile LONG g_capArgs = 1;
     volatile LONG g_capRet  = 1;
-    // DEPTH=TOP: only the OUTERMOST call on a thread emits a row, the one Excel
-    // itself initiated. An add-in that re-enters Excel through xlUDF nests
-    // genuinely (TxCallsBack2 reaches depth 3), so TOP is how a user says they
-    // want only the call the sheet made.
+    // DEPTH=TOP: only the outermost call on a thread, the one the sheet made, emits a row; an
+    // add-in that re-enters Excel through xlUDF nests genuinely.
     volatile LONG g_topOnly = 0;
 
     void SetCapture(bool args, bool retval)
@@ -55,7 +51,7 @@ namespace xll
         {
             unsigned long long span = 0;
             long long          startQpc = 0;
-            bool               recorded = false;   // did its ENTRY get written?
+            bool               recorded = false;   // did its entry get written?
             ULONG_PTR          sp = 0;             // the thunk frame, for resynchronising
         };
 
@@ -103,7 +99,7 @@ namespace xll
 
             // Decoded in one place for both sources (core/caller.h). Asking costs a round trip
             // into Excel once per entry, inside the span being timed.
-            core::Caller who;      // NOT {} -- ReadCaller fills it
+            core::Caller who;      // not {}: ReadCaller fills it
             core::ReadCaller(who);
 
             // One field, "a<slot>:<code>=<value>" joined by spaces -- the grammar VBA's args use -- so
@@ -161,9 +157,8 @@ namespace xll
             else
             {
                 _snprintf_s(durbuf, _TRUNCATE, "%lld", qpc - startQpc);
-                // The detour fires on the RETURN PATH, so this row existing is
-                // the evidence the call came back -- the same fact VBA's exit
-                // opcode gives, and it earns the same word.
+                // The detour fires on the return path, so this row proves the call came back,
+                // as VBA's exit opcode does.
                 trustText = "exit";
             }
 
@@ -235,9 +230,8 @@ namespace xll
             // Counted before the TOP filter; capped and re-entrant entries returned above.
             InterlockedIncrement64(&t->calls);
 
-            // DEPTH=TOP drops every nested call. The exit is not a separate
-            // decision: it writes only when f.recorded says its entry did, so
-            // an entry suppressed here can never leave a dangling exit.
+            // The exit writes only when f.recorded says its entry did, so an entry dropped here
+            // cannot leave a dangling exit.
             if (d == 0 || InterlockedCompareExchange(&g_topOnly, 0, 0) == 0)
             {
                 f.span = emit::csv::NextSpan();
@@ -266,9 +260,8 @@ namespace xll
 
         Frame& f = t_state.frames[d];
 
-        // An exit is written only if its entry was emitted, so a filtered entry
-        // cannot leave an exit that invents a span. An entry the ring later drops
-        // WAS emitted, so its exit is still written; `input` locates the loss.
+        // A filtered entry must not leave an exit that invents a span. An entry the ring later
+        // drops was emitted, so its exit is still written; `input` locates the loss.
         if (!f.recorded) return;
 
         if (t_state.inside) { InterlockedIncrement64(&g_exitsDropped); return; }

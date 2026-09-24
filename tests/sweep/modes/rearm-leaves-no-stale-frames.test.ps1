@@ -1,19 +1,10 @@
-# Arming again in the same process must start from a clean slate. A user arms, looks, disarms,
-# changes a setting and arms again, for the life of one Excel, and the per-thread shadow stack
-# in src/xll/xlltrace.cpp (`depth`, `frames[].recorded`) survives between those sessions unless
-# arming resets it.
-#
-# Under DEPTH=TOP an inner call's exit writes only when `f.recorded` says its entry did. A frame
-# left `recorded = true` by an earlier session would give this session an exit with no entry: a
-# row asserting a call that never happened, with every field well-formed.
-#
-# Done in one Excel under the ordinary Fresh gate, so it does not depend on a session-reuse mode
-# and test ordering.
+# Arming again in the same process must start from a clean slate: the per-thread shadow stack
+# survives between sessions unless arming resets it, and under DEPTH=TOP a frame left `recorded`
+# would give an exit with no entry, every field well-formed.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
-# Enough cycles to reach the state the ReuseClean session reached by its ninth
-# test; its log showed ~15 arm/disarm pairs before the failure.
+# Enough arm/disarm cycles to reach the state a long reused session reaches.
 $kCycles = 15
 
 try {
@@ -61,10 +52,9 @@ try {
     Check 'top-still-emits-exactly-one-entry' ($entries.Count -eq 1) `
           ("entries: " + (@($entries | ForEach-Object { $_.function }) -join ','))
 
-    # ---- THE POINT: pairing, by span, in both directions -------------------
-    # Counting rows would catch this particular defect, but only by luck --
-    # one orphan entry and one orphan exit would cancel. A span is the
-    # identity of an activation, so matching them names WHICH row is unpaired.
+    # ---- the point: pairing, by span, in both directions -------------------
+    # Counting rows could let one orphan entry and one orphan exit cancel; matching spans names
+    # which row is unpaired.
     $entrySpans = @($entries | ForEach-Object { $_.span })
     $exitSpans  = @($exits   | ForEach-Object { $_.span })
 
@@ -79,8 +69,7 @@ try {
     Check 'entries-and-exits-balance' ($entries.Count -eq $exits.Count) `
           "entries=$($entries.Count) exits=$($exits.Count)"
 
-    # A suppressed inner call must be absent from the trace ENTIRELY, not just
-    # from its entry rows -- which is how the defect first showed.
+    # A suppressed inner call must be absent from the trace entirely, not just from its entry rows.
     $inner = @($rows | Where-Object { $_.function -eq 'TxB' -or $_.function -eq 'TxCallsBack' })
     Check 'inner-calls-leave-no-rows-at-all' ($inner.Count -eq 0) `
           ("leaked: " + (@($inner | ForEach-Object { "$($_.kind):$($_.function)" }) -join ','))
@@ -88,10 +77,8 @@ try {
     Check 'caller-invariants-hold' ((Test-RowInvariants $rows).Count -eq 0) `
           ((Test-RowInvariants $rows) -join '; ')
 
-    # DROPPED EXITS ARE COUNTED AND REPORTED, and must be zero here. This is a
-    # different mechanism from the pairing above -- the recorder being
-    # re-entered -- and it would produce the same unpaired-entry row, so it is
-    # ruled out separately rather than left to be inferred.
+    # Dropped exits are counted and reported, and must be zero: a re-entered recorder would produce
+    # the same unpaired entry, so it is ruled out separately.
     $dropped = @(Get-Content $paths.Log | Select-String 'exit row\(s\) were dropped')
     Check 'no-exits-were-dropped' ($dropped.Count -eq 0) `
           ("disarm warnings: " + (@($dropped | ForEach-Object { $_.Line }) -join ' | '))

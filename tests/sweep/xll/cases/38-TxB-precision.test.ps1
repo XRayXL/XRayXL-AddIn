@@ -1,7 +1,5 @@
-# A double with more digits than `%g` prints. Both columns land in the same trace file, so the
-# XLL and VBA renderings of 1234567.89012345 must agree; `%g` would keep six of its fifteen
-# significant digits. TxB returns a*10 + b, so one formula checks both the argument and the
-# return.
+# A double with more digits than `%g` prints: the XLL and VBA columns of one trace file must agree
+# on it. TxB returns a*10 + b, so one formula checks both the argument and the return.
 $case = @{ Formula='=TxB(1234567.89012345,0)'; Fn='TxB'
      # the cell's value to fifteen significant digits, not the display text
      Value='12345678.9012345'

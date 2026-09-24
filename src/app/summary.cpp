@@ -31,12 +31,10 @@ namespace
     // std::regex allocates and throws on a malformed pattern.
     constexpr int kSumRows = 48;      // data rows before truncation
     constexpr int kSumCols = 4;       // Source, Module, Function, Calls
-    // + column header, the status block and one truncation or "nothing" note. The row emitters below never exceed this.
+    // Room for the column header, the status footer and one truncation or "nothing" note.
     constexpr int kSumCells = (kSumRows + 8) * kSumCols;
     constexpr int kSumText = 72;
 
-    // The summary's grid -- the same XlGrid, sized for the whole table.
-    // SumStr/SumStrA/SumNum stay as the names the body uses.
     __declspec(thread) app::XlGrid<kSumCells, kSumText> t_sum;
 
     void SumStr (int i, const wchar_t* text) { t_sum.Str(i, text); }
@@ -87,9 +85,8 @@ namespace
         put(L"", "format", core::modes::FormatName(core::modes::GetFormat()),
             static_cast<double>(core::modes::GetFormat()));
 
-        // THE P-CODE TABLE'S HEALTH, where a cell can read it. It is the one
-        // number that says whether the types in this trace can be believed, and
-        // until now it existed only in a log line at disarm.
+        // The p-code table's health, where a cell can read it: the one number that says whether
+        // the types in this trace can be believed.
         {
             long long walks = 0, clean = 0;
             vba::PcodeHealth(walks, clean);
@@ -150,9 +147,8 @@ namespace
         row = 1;
 
         int shown = 0, matched = 0, traced = 0;
-        // ONE GATE for both sources: the wildcard, the row cap, and the count
-        // of what the cap hid. The filter matches the function or the module, so
-        // "*.xll" and "[Book1.xlsm]*" both work.
+        // One gate for both sources. The filter matches the function or the module, so "*.xll" and
+        // "[Book1.xlsm]*" both work.
         auto offer = [&](const wchar_t* src, const char* mod, const char* fn, double calls)
         {
             ++traced;
@@ -179,8 +175,7 @@ namespace
             char mod[384] = {}, fn[256] = {};
             if (!vba::ProcSnapshot(i, trailer, calls, mod, sizeof(mod), fn, sizeof(fn))) continue;
             if (calls == 0) continue;
-            // An unresolved name is shown as its trailer address, which at
-            // least looks like an address rather than claiming a name.
+            // An unresolved name shows as its trailer address rather than claiming a name.
             char shownName[64];
             if (fn[0]) _snprintf_s(shownName, _TRUNCATE, "%s", fn);
             else       _snprintf_s(shownName, _TRUNCATE, "0x%llX", trailer);
@@ -201,8 +196,6 @@ namespace
             put(L"", "", more, static_cast<double>(matched));
         }
 
-        // The status footer -- armed state, buffer mode, drops/pauses, file --
-        // sized into the grid's spare rows (kSumRows + 6) after any note above.
         AppendSummaryStatusFooter(put);
 
         return t_sum.AsGrid(row, kSumCols);

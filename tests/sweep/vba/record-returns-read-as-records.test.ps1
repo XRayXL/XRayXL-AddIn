@@ -1,13 +1,6 @@
-# A Function returning a user-defined Type leaves through exit 1494, and the caller's result
-# buffer arrives as a hidden first argument. Two things must hold:
-#
-#   1. The hidden argument is not a parameter: args, typetext and argcount name only what the
-#      source declares. It once read `a1:?unseen=0x... a2:Long=4`, every parameter one slot late.
-#   2. The return is the record, `udt@0x...` with rettype Udt, as a record argument reads. It once
-#      read a Double, 4.5: with the exit unmapped, the store scan took a field for the result.
-#
-# A record of 1, 2, 4 or 8 bytes comes back in a register instead, through exit 1495, with no
-# hidden argument. Unmapped, it read as its one field: `Long 4`, `String "seven"`.
+# A Function returning a record returns `udt@0x...`, not one of its fields, and lists only its
+# declared parameters: a large record's result buffer arrives as a hidden first argument, while
+# one of 1, 2, 4 or 8 bytes comes back in a register through a different exit.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

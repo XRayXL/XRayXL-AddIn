@@ -28,8 +28,7 @@ from dumpstack import streams, modules, threads, memranges, readmem, owner, exce
 # x64 CONTEXT: Rsp at 0x98, Rbp at 0xA0, Rip at 0xF8.
 CTX_RSP, CTX_RBP, CTX_RIP = 0x98, 0xA0, 0xF8
 
-# The modules of interest, from --ours=name1,name2: this ships with StretchXL,
-# which knows no product's name. Empty means none is special.
+# from --ours, since StretchXL knows no product's name; empty means none is special
 OURS = ()
 
 # A thread parked in one of these is idle by design -- a worker waiting for

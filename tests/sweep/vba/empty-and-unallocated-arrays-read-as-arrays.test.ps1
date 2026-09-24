@@ -1,12 +1,6 @@
-# An empty or never-allocated array is a value, and reads as an array, not as a number.
-#
-#    =PA()                 an empty ParamArray: VBA passes a descriptor with no element type,
-#                          no width and no data. It printed as the pointer in decimal
-#    EmptyVar()            a Variant holding a Long() never allocated: the read was declined
-#                          and both ret and rettype were blank
-#    EmptyTyped()          a Function As Long() that never allocated its result
-#    FillIt a  (a unallocated, ByRef)   a zero in a Ref& slot: a LongLong 0 or an unallocated
-#                          array, which nothing tells apart, so the raw qword
+# An empty or never-allocated array reads as an array, not as a number: an empty ParamArray's
+# descriptor has no element type, width or data. An unallocated ByRef array is a zero in a Ref&
+# slot, which nothing tells apart from a LongLong 0, so it reads as the raw qword.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

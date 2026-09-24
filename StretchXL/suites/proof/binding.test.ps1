@@ -1,17 +1,12 @@
-# PROOF: the by-handle binding lands on EXACTLY the designated Excel.
-#
-# This is the one mechanism the whole process-per-test design rests on:
-# AccessibleObjectFromWindow(OBJID_NATIVEOM) against the hwnd the manager
-# handed us must yield the object model of that instance -- not "some Excel".
-# Three cases, each a distinct identity check; any one failing fails the test.
+# Proof that binding by window handle lands on exactly the designated Excel, not
+# "some Excel": the process-per-test design rests on it.
 . (Join-Path $PSScriptRoot '..\..\TestKit.ps1')
 
 try {
     $sx = Connect-TestExcel
     $allGood = $true
 
-    # 1. The session's pid is the designated pid. (Connect-TestExcel refuses
-    #    a mismatched hwnd outright; this asserts what it returned.)
+    # Connect-TestExcel already refuses a mismatched hwnd; this checks what it returned.
     if (-not [string]::IsNullOrEmpty($env:STRETCH_SESSION_PID)) {
         $ok = ($sx.ProcId -eq [int]$env:STRETCH_SESSION_PID)
         if (-not $ok) { $allGood = $false }
@@ -22,19 +17,15 @@ try {
         Write-TestCase -Name 'designated-pid' -Pass -Detail 'standalone -- no designated pid to compare'
     }
 
-    # 2. The bound Application reports the same main window we were given --
-    #    the object model and the window agree about which Excel this is.
+    # the object model and the window must agree about which Excel this is
     $appHwnd = [int64]$sx.App.Hwnd
     $ok2 = ($appHwnd -eq [int64]$sx.Hwnd)
     if (-not $ok2) { $allGood = $false }
     Write-TestCase -Name 'app-hwnd-matches' -Pass:$ok2 -Fail:(-not $ok2) `
                    -Detail "app.Hwnd=$appHwnd session.Hwnd=$([int64]$sx.Hwnd)"
 
-    # 3. A real object-model round trip through the binding: write a value into the baseline
-    # workbook and read it back, which proves the proxy is live.
-    #
-    # Every link in the chain is held and released: a dotted chain leaks an intermediate RCW per
-    # dot, and the session then sits as a refcount zombie until the close deadline.
+    # A round trip proves the proxy is live. Each link is held and released: a dotted chain
+    # leaks an RCW per dot, which keeps Excel alive until the close deadline.
     $booksRef = $sx.App.Workbooks
     $bookRef  = $booksRef.Item(1)
     $sheetsRef = $bookRef.Worksheets
@@ -43,9 +34,7 @@ try {
     $cellRef.Value2 = 42137
     $readBack = [int]$cellRef.Value2
     $cellRef.Value2 = $null                       # leave the baseline as found
-    # The write dirtied the workbook, and a dirty workbook turns the session close into a hidden
-    # "Save changes?" dialog that waits forever. A test that modifies the baseline restores
-    # Saved.
+    # a dirty workbook turns the session close into a hidden "Save changes?" dialog
     $bookRef.Saved = $true
     foreach ($r in @($cellRef, $sheetRef, $sheetsRef, $bookRef, $booksRef)) {
         [void][Runtime.InteropServices.Marshal]::ReleaseComObject($r)

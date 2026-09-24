@@ -1,13 +1,6 @@
-# Real-world parameter shapes, sampled.
-#
-# Generated once and committed, so the suite needs no Office add-ins and no network. The
-# signatures are real, mined from VBA source text in Office's own add-ins and open-source
-# libraries; the bodies, callers and argument values are ours. Only the shape of the parameter
-# list matters, since the argument walker decodes the frame at entry and never looks at the
-# body.
-#
-# 31 shapes are chosen from 35213 by greedy set cover over the features that change the frame:
-# return type, passing mode, declared type, Optional supplied and omitted.
+# Real-world parameter lists, mined from published VBA and chosen to cover what changes the
+# frame (return type, passing mode, declared type, Optional supplied or omitted), read back
+# with planted values. Committed, so the suite needs no add-ins and no network.
 $case = @{ Name='frame-wild'
      Setup=@'
 Public gaBool() As Boolean
@@ -451,12 +444,8 @@ End Sub
                 if (-not $e.ContainsKey($r.function)) { $e[$r.function] = @() }
                 $e[$r.function] += $r }
         }
-        # THE PLANTED ANSWERS. Each is `a<slot>=<value>`, where the slot is the
-        # trace's own coordinate and not the parameter ordinal -- a `ByVal
-        # Variant` is a 24-byte VARIANT across THREE slots, so the parameter
-        # after one is a4. Only values that can be predicted are listed: an
-        # array argument has no scalar value, and an omitted Optional of a
-        # declared type reads that type's default, which is not what this tests.
+        # `a<slot>` is the trace's slot, not the parameter ordinal: a ByVal Variant takes three.
+        # Only predictable values are listed, so no arrays and no typed Optional defaults.
         $want = @(
             @{ fn='W_0401'; args='a1=Nothing a2=1234567890123 a3=1234567890123 a4=287454020' }
             @{ fn='W_0442'; args='a2=287454020 a3=287454020 a4=287454020' }
@@ -496,8 +485,7 @@ End Sub
             @{ fn='W_5825'; args='a1=Nothing a2=-1' }
             @{ fn='W_6194'; args='a2=287454020 a3=287454020 a4=1234 a5=1234 a9=1234' }
         )
-        # Each planted call is matched to whichever entry row satisfies it, so
-        # the order Excel happened to write the rows in cannot fail the test.
+        # matched to any satisfying row, so the order Excel wrote them in cannot fail the test
         $pool = @{}
         foreach ($k in $e.Keys) { $pool[$k] = [System.Collections.ArrayList]::new($e[$k]) }
         foreach ($w in $want) {
@@ -510,9 +498,7 @@ End Sub
                     if (-not $tok) { continue }
                     $n2 = $tok.Split('=')[0]
                     $v2 = $tok.Substring($tok.IndexOf('=') + 1)
-                    # Match on the KEY and read to the next key, because the
-                    # declared type sits between them (`a1:Long=...`) and a
-                    # value can contain anything the add-in's memory held.
+                    # read to the next key: the type sits between, and a value can hold anything
                     $rx = '(?:^|\s)' + [regex]::Escape($n2) + '(?::[^=\s]*)?=(.*?)(?=\s+a\d+(?::[^=\s]*)?=|$)'
                     $m2 = [regex]::Match($got, $rx)
                     if (-not $m2.Success -or $m2.Groups[1].Value -ne $v2) { $ok = $false; break }

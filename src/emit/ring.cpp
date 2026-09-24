@@ -7,9 +7,8 @@ namespace emit
     namespace
     {
         constexpr std::size_t kHdr = 16;        // commitTag + len + pad
-        // A floor of last resort, so a degenerate budget falls back to
-        // synchronous rather than becoming a one-record ring. The command
-        // surface refuses anything below 16 KB well before this.
+        // A floor of last resort, so a degenerate budget falls back to synchronous rather than
+        // becoming a one-record ring; the command surface refuses anything below 16 KB anyway.
         constexpr std::size_t kMinBytes = 4096;
 
         std::size_t Align16(std::size_t n) { return (n + 15u) & ~std::size_t(15u); }
@@ -52,8 +51,7 @@ namespace emit
         if (m_buf) { free(m_buf); m_buf = nullptr; }
         m_cap = m_mask = 0;
         m_tail = m_headPub = m_head = 0;
-        // m_drops / m_pauses are NOT reset here: the summary reads them after
-        // disarm, once the ring is gone. Init resets them for the next session.
+        // Not m_drops or m_pauses: the summary reads them after disarm, once the ring is gone.
     }
 
     void ByteRing::PutWrapped(LONG64 at, const char* src, int n)
@@ -92,7 +90,6 @@ namespace emit
             pos = LoadAcq(&m_tail);
             const std::size_t used = static_cast<std::size_t>(pos - LoadAcq(&m_headPub));
             const bool fits = need <= m_cap - used;
-            // Full. DROP: lose the record, count it, return.
             if (!fits && !m_pauseOnFull) { InterlockedIncrement64(&m_drops); return false; }
             // PAUSE: once the ring fills, every producer waits until the drain has emptied it to
             // half, so the calculation resumes with room for a burst rather than refilling at once.

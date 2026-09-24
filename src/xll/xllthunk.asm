@@ -1,8 +1,4 @@
-; XRayXL -- the shared wrapping thunk for a traced XLL function.
-;
-; Every hooked function enters here with r10 pointing at its own Target. We
-; record the entry, call the ORIGINAL function, record the exit, and return
-; whatever it returned.
+; The shared thunk for every traced XLL function; r10 points at the function's Target on entry.
 ;
 ; A real call, not a rewritten return address: overwriting the return address mismatches the CET
 ; shadow stack, which is a fast-fail that bypasses SEH. An ordinary `call` is matched on `ret`.
@@ -13,8 +9,7 @@
 ; Registers: only volatile registers are scratch. rbx and rbp are taken and pushed; rsi/rdi
 ; would corrupt the caller.
 ;
-; FRAME. A frame pointer, with the outgoing area sized per call to the signature
-; (up to Excel's 255 arguments). .setframe keeps it unwindable.
+; Frame: the outgoing area is sized per call to the signature; .setframe keeps it unwindable.
 ;
 ;   entry rsp = 8 (mod 16)          [return address pushed by the caller]
 ;   push rbp                     -> 0 (mod 16)
@@ -33,17 +28,15 @@
 ;
 ; Where the caller's fifth argument is:
 ;   at our entry            rsp_e -> [rsp_e+00h] return address
-;                                    [rsp_e+08h..27h] 32 bytes of SHADOW SPACE
+;                                    [rsp_e+08h..27h] 32 bytes of shadow space
 ;                                    [rsp_e+28h] argument 4   <-- the fifth
 ;   push rbp, push rbx      rsp = rsp_e - 10h
 ;   sub rsp, 68h            rsp = rsp_e - 78h = rbp
 ;   so argument 4 sits at   rbp + 78h + 28h = rbp + 0A0h
 ;
-; Outgoing, the symmetry is different and must not be copied from the above:
-; our `call` pushes 8 more, so the callee reads its argument 4 at ITS rsp+28h,
-; which is our rsp+20h -- FRAME_OUTARGS.
+; Outgoing differs: our `call` pushes 8 more, so the callee's rsp+28h is our rsp+20h -- FRAME_OUTARGS.
 ;
-; STACK PROBING. The outgoing area can exceed a page, so it is probed page by page.
+; The outgoing area can exceed a page, so it is probed page by page.
 ;
 ; Regs layout is shared with xllregs.h, which static_asserts these offsets.
 

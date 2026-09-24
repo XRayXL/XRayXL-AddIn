@@ -82,16 +82,14 @@ End Sub
         if ($t.framesOpened -ne $t.framesClosed) {
             return "LEAK: opened $($t.framesOpened), closed $($t.framesClosed)" }
         $e = Get-FirstEntryByName $t.rows
-        # EQUIVALENCE. Each suffix must yield the type its `As` spelling does.
         $wantSig = @{
             'T_SfxInt'='Integer'; 'T_SfxLng'='Long';
             'T_SfxLL'='LongLong'; 'T_SfxSng'='Single';
             'T_SfxDbl'='Double';  'T_SfxCur'='Currency';
             'T_SfxStr'='String';
-            # No `As`, no suffix, no Def directive in this module: Variant.
+            # no `As`, no suffix, no Def directive in this module: Variant
             'T_BareVar'='Variant';
-            # LongPtr is an alias, not a type -- on x64 it IS LongLong, so the
-            # p-code cannot say "LongPtr" and should not pretend to.
+            # LongPtr is an alias for LongLong on x64; the p-code cannot say "LongPtr"
             'T_PtrByVal'='LongLong';
             'T_QualRange'='Object' }
         foreach ($fn in $wantSig.Keys) {
@@ -99,9 +97,7 @@ End Sub
             if ($e[$fn].typetext -ne $wantSig[$fn]) {
                 return "$fn signature was [$($e[$fn].typetext)], expected $($wantSig[$fn])" }
         }
-        # And the VALUES, since knowing the type is what turns bits back into
-        # one. A suffix that decoded to the right name but the wrong width
-        # would pass the signature check alone.
+        # a suffix decoded to the right name but the wrong width would pass the signature check
         $wantArgs = @{
             'T_SfxInt'='a1:Integer=1234'; 'T_SfxLng'='a1:Long=287454020';
             'T_SfxSng'='a1:Single=1.5';   'T_SfxDbl'='a1:Double=2748.5';
@@ -112,15 +108,12 @@ End Sub
             if ($e[$fn].args -ne $wantArgs[$fn]) {
                 return "$fn args were [$($e[$fn].args)], expected [$($wantArgs[$fn])]" }
         }
-        # A bare untyped parameter is a ByVal Variant: THREE frame slots, ONE
-        # parameter. This is the arity rule seen from the syntax side.
+        # a bare untyped parameter is a ByVal Variant: three slots, one parameter
         if ([int]$e['T_BareVar'].argcount -ne 1) {
             return "T_BareVar argcount=$($e['T_BareVar'].argcount), expected 1 (ByVal Variant is 3 slots)" }
-        # An array in suffix form is still an array: ByRef, self-validating.
         if ($e['T_SfxArr'].args -notmatch '^a1:Ref&=Double\[1\.\.3\]') {
             return "T_SfxArr args were [$($e['T_SfxArr'].args)]" }
-        # A ParamArray preceded by a positional parameter: the ParamArray does not start at slot
-        # 1, so argument indexing can slip. The Long must stay first and keep its value.
+        # the ParamArray does not start at slot 1, so argument indexing can slip
         if ($e['T_PaAfter'].args -notmatch '^a1:Long=1432778632') {
             return "T_PaAfter first arg was [$($e['T_PaAfter'].args)], expected a1:Long=1432778632 leading" }
         if ([int]$e['T_PaAfter'].argcount -ne 2) {

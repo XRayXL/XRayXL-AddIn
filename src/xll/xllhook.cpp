@@ -24,10 +24,8 @@ namespace xll
         int      g_count = 0;
         Declines g_declines;
 
-        // Each hooked function has its own entry stub, which is what tells the shared thunk
-        // which function it stands in. An absolute jump, so there is no rel32 range to worry
-        // about:
-        //
+        // A per-function entry stub tells the shared thunk which Target it stands in. An absolute
+        // jump, so there is no rel32 range to worry about:
         //    49 BA <imm64>            mov r10, Target*
         //    FF 25 00 00 00 00        jmp qword ptr [rip+0]
         //    <imm64>                  XRayXllThunk
@@ -35,16 +33,14 @@ namespace xll
         // As many as fit in one 4 KB page.
         const int kStubsPerPage = 170;
         unsigned char* g_stubs = nullptr;   // the page currently being filled
-        int            g_stubsUsed = 0;     // stubs used in THAT page
+        int            g_stubsUsed = 0;     // stubs used in that page
         bool           g_minhookReady = false;   // never uninitialised: the module is pinned for the process
 
         InstallCost g_installCost;
         using core::QpcMicros;
 
-        // WHAT SITS AT A TARGET'S ADDRESS NOW. No reference is held on another
-        // add-in, so it may have unloaded, loaded again, or given its address to
-        // another module. An unload between this look and the write leaves the
-        // memory unmapped, and MinHook's VirtualProtect then refuses to write.
+        // No reference is held on another add-in, so it may since have unloaded, reloaded or given
+        // its address away. An unload after this look is safe: MinHook's VirtualProtect then refuses.
         enum class Code { Gone, Foreign, Unpatched, Patched };
         Code Inspect(const Target& t)
         {
@@ -169,10 +165,8 @@ namespace xll
                 return false;
             }
 
-            // MinHook suspends every thread before patching, and by default finds them with a
-            // snapshot of every thread on the machine. The process-scoped enumeration is a
-            // local change to the vendored copy (third_party/minhook/FORK.md); the log says
-            // which one is in force.
+            // By default MinHook snapshots every thread on the machine to freeze them; the
+            // process-scoped method is a local change to the vendored copy (third_party/minhook/FORK.md).
             const MH_STATUS fm = MH_SetThreadFreezeMethod(MH_FREEZE_METHOD_FAST_UNDOCUMENTED);
             core::Log::Note(fm == MH_OK
                 ? "minhook: process-scoped thread freeze (NtGetNextThread)"
@@ -194,9 +188,8 @@ namespace xll
         }
         t->original = tramp;
 
-        // QUEUED, not enabled: the patch happens in ApplyQueued under one
-        // thread freeze for the whole batch. Queueing still validates the
-        // target, so a bad one is declined and named here.
+        // Queued, not enabled: ApplyQueued patches the batch under one thread freeze. Queueing
+        // still validates the target, so a bad one is declined here.
         const long long tQueue = QpcMicros();
         const MH_STATUS q = MH_QueueEnableHook(t->exportAddr);
         g_installCost.queueUs += QpcMicros() - tQueue;
@@ -233,10 +226,8 @@ namespace xll
 
     int DisableAll()
     {
-        // Every slot still in its own add-in is queued, which also cancels an enable
-        // an arm queued and never applied. One unloaded, or with another module at its
-        // address, is left as MinHook recorded it: there is nothing there of ours to
-        // restore, and a queued write that failed would stop the rest of the batch.
+        // Queueing also cancels an enable never applied. A slot whose add-in is gone is left alone:
+        // nothing of ours is there, and a failed queued write would stop the rest of the batch.
         int queued = 0, untouched = 0;
         for (int i = 0; i < g_count; i++)
         {
@@ -253,8 +244,7 @@ namespace xll
         }
 
         // Disabled, never removed: MH_RemoveHook frees the trampoline a thread still inside the
-        // detour is about to call. The slot, its stub and its trampoline are kept, and arming
-        // the export again reuses them.
+        // detour is about to call. Arming the export again reuses the slot.
         const bool applied = (queued == 0) || (MH_ApplyQueued() == MH_OK);
         if (untouched > 0)
         {
@@ -295,9 +285,7 @@ namespace xll
         return stuck;
     }
 
-    // A fixed array, so the thunk's Target* can never dangle mid-call. Slots are not recycled,
-    // because a disabled detour's stub still names its slot; FindRetired gives an export its
-    // own slot back.
+    // Slots are not recycled, because a disabled detour's stub still names its slot.
     Target* Allocate()
     {
         if (g_count >= kMaxTargets) return nullptr;

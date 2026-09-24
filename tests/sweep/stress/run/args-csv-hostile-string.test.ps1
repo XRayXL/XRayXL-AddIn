@@ -18,12 +18,8 @@ End Sub
         if (-not $e.proc) { return "proc column lost -- escaping broke the row" }
         if (-not $e.args) { return "args column lost -- the slot was not even captured" }
 
-        # A broken escape fails in Read-TraceFile, which checks every line's field count against
-        # the header, before Expect is reached.
-        #
-        # The value itself is asserted too: a declared String holding vbCrLf must decode as
-        # text, not fall back to the raw qword. Control characters are rendered, not passed
-        # through: the CSV writer would turn a raw CR or LF into a space.
+        # A broken escape already fails Read-TraceFile's field-count check. The value must decode as
+        # text with control characters rendered: the CSV writer would turn a raw CR or LF into a space.
         $want = 'a1:String="a,b\"quoted\",c\r\nsecond,line\t\x01C:\\temp\u00E9\u20AC"'
         if ($e.args -ne $want) {
             return "args decoded as '$($e.args)', expected '$want'" }

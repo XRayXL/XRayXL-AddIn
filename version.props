@@ -6,10 +6,8 @@
     <XRayVersionPatch>0</XRayVersionPatch>
   </PropertyGroup>
 
-  <!-- The configuration the binary was built as, carried into its VERSIONINFO: the suites load
-       from build\addin\, which names no configuration, and Debug and Release share a version.
-       A number, because a quoted-string define does not survive rc.exe's command line.
-       Anything but Debug or Release yields 2, which the resource reads as UNKNOWN. -->
+  <!-- The build configuration goes into VERSIONINFO, since build\addin\ names none and Debug and
+       Release share a version. A number: a quoted-string define does not survive rc.exe. -->
   <PropertyGroup>
     <XRayBuildConfig>$(Configuration)</XRayBuildConfig>
     <XRayBuildDebugFlag Condition="'$(XRayBuildConfig)'=='Debug'">1</XRayBuildDebugFlag>

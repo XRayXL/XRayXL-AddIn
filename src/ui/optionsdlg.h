@@ -6,7 +6,7 @@ namespace ui
 {
 namespace options
 {
-    // Modal against `owner` (null: Excel's main window). True if OK applied the settings.
+    // Modal against `ownerHwnd` (null: unowned). True if OK applied the settings.
     bool Show(void* ownerHwnd);
 }
 }

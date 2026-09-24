@@ -1,56 +1,41 @@
-// Reading a VBA procedure's arguments out of its frame, on 64-bit Excel.
+// A VBA procedure's arguments, read from its frame on 64-bit Excel.
 //
-//    * R14 is the frame base. The argument region is [R14, R14 + argSz), and argSz is the
-//      WORD at trailer+0x08, in bytes: argSz = 8 * (nargs + 1).
-//    * Slot 0, at [R14+0], is reserved. Arguments are slots 1..n.
-//    * Every slot is eight bytes. ByVal Long and Integer hold the value, ByVal Double the
-//      raw IEEE bits, ByVal String a BSTR pointer; ByRef of any type holds a pointer.
-//    * One slot past argSz is the caller's frame. Reading it does not fault, so the bound
-//      is enforced here.
+//    * R14 is the frame base; the arguments are [R14, R14 + argSz), argSz the WORD at
+//      trailer+0x08: argSz = 8 * (nargs + 1). Slot 0 is reserved.
+//    * Each slot is eight bytes: ByVal holds the value (a BSTR pointer for String), ByRef a
+//      pointer.
+//    * Past argSz is the caller's frame, which reads without faulting, so the bound is ours.
 //
-// The type is not in the frame and is never guessed from it: it comes from the procedure's own
-// bytecode (vbapcode.h). A parameter the body never reads has no recoverable type. It renders
-// "?" and its value is a raw qword, or is decoded only where it validates itself (a BSTR, a
-// SAFEARRAY).
+// Types come from the bytecode (vbapcode.h), never guessed from the frame. An untyped value is
+// a raw qword unless it validates itself (a BSTR, a SAFEARRAY).
 #pragma once
 #include <cstdint>
 #include "core/textbuf.h"
 
 namespace vba
 {
-    // XRAYXL_DIAG only: append `#NNN` to each named type, naming the opcode that
-    // named it. `?opNNN` says which opcode failed; this says which succeeded,
-    // for when a name is present but wrong.
+    // XRAYXL_DIAG only: append `#NNN` to each named type, for when a name is present but wrong.
     void SetArgTypeOpcodeDiagnostics(bool on);
 
     struct ArgCapture
     {
         bool ok    = false;
 
-        // DECLARED PARAMETERS -- what a reader means by "how many arguments". Not
-        // the same as `slots`: a ByVal Variant occupies three. Falls back to `slots`
-        // when no types were recovered.
+        // Declared parameters, not slots: a ByVal Variant occupies three. `slots` when untyped.
         int  params = 0;
 
-        // ARGUMENT SLOTS, excluding the reserved slot 0. Almost every parameter
-        // is one 8-byte slot, but a `ByVal Variant` is a 24-byte VARIANT and
-        // occupies THREE. Nothing in the trailer carries the declared parameter
-        // count, so this reports what is actually known.
+        // Argument slots, excluding slot 0. The trailer carries no parameter count, only this.
         int  slots = 0;
 
-        // Which slot the first argument is at. Normally 1, because slot 0 is reserved; 2 for a
-        // Function returning Variant, where the caller's result VARIANT arrives first. Labels
-        // count arguments (a1, a2, ...) while reads are done at slots.
+        // 2 for a Function returning Variant, whose caller's result VARIANT arrives first.
         int  firstSlot = 1;
 
-        // CALLER-PROVIDED (a per-thread buffer), so ArgCapture stays small on the hot-path
-        // stack. A null `text` makes CaptureArgs decline cleanly.
+        // Caller-provided (per-thread), so ArgCapture stays small on the hot-path stack. Null
+        // makes CaptureArgs decline.
         core::TextBuf* text = nullptr;
 
-        // A slot that had to be DEREFERENCED is ByRef in substance, whatever the
-        // p-code declared -- the property the exit re-read needs. A
-        // write-only `String` recovers no type at all, but its slot still points
-        // at the caller's BSTR.
+        // A slot that had to be dereferenced is ByRef in substance, which the exit re-read
+        // needs: a write-only `String` has no type but still points at the caller's BSTR.
         bool viaPointer = false;
 
         // Render only the ByRef slots: a declared `&` type, or one read through a pointer.
@@ -61,14 +46,11 @@ namespace vba
         // A ByRef slot was written as its shape alone, so the hash cannot see its contents.
         bool byRefShapeOnly = false;
 
-        // Recovered from the procedure's own p-code, e.g. "(Long,String)". A
-        // position reads "?" when that parameter's type was not recoverable --
-        // almost always because the body never reads it.
+        // From the p-code, e.g. "(Long,String)"; "?" where a type was not recoverable.
         char signature[256] = {};
     };
 
-    // Counted, never merged: "we never looked" and "we looked and the frame did
-    // not check out" are different facts about the tracer.
+    // Counted separately: "never looked" and "the frame did not check out" are different facts.
     enum class ArgDecline
     {
         NoTrailer,
@@ -84,9 +66,7 @@ namespace vba
 
     const char*   ArgDeclineName(ArgDecline d);
 
-    // Opcodes that reached a parameter slot and could not be NAMED -- a hole in
-    // the type table, not an absence of evidence. Distinct from a bare `?`,
-    // which means no instruction referenced the slot at all.
+    // Opcodes that reached a parameter slot and could not be named: a hole in the type table.
     const char*   ArgTypeUnknownWarning();
     void          ResetArgCounts();
 

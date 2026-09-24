@@ -11,10 +11,8 @@ End Sub
      }
      Trigger=@{ Kind='Run'; Name='Go' }
      Expect={ param($t)
-        # VBA goes deeper than the shadow stack holds. Capping is allowed;
-        # reporting the cap as the depth is not.
-        #
-        # So: frames may be lost, but the DEPTH must survive them.
+        # VBA goes deeper than the shadow stack holds: capping is allowed, reporting the cap as the
+        # depth is not.
         if ($t.faults -gt 0) { return "$($t.faults) guarded reads faulted at depth" }
         if ($t.framesOpened -ne $t.framesClosed) {
             return "frames leaked: $($t.framesOpened)/$($t.framesClosed)" }
@@ -27,9 +25,7 @@ End Sub
             # ipEntries is the independent total from the p-code boundary.
             if ($t.framesOpened + $t.overflows -ne $t.ipEntries) {
                 return "activations unaccounted: framesOpened $($t.framesOpened) + overflows $($t.overflows) != ipEntries $($t.ipEntries)" }
-            # THE POINT OF THIS CASE. deepestSeen is a floor on how deep VBA
-            # actually went; 256 would mean the cap is still being reported as
-            # the answer.
+            # deepestSeen is a floor on how deep VBA went; 256 would mean the cap is reported as the answer.
             if ($t.deepestSeen -le $t.maxDepth) {
                 return "deepestSeen $($t.deepestSeen) is no deeper than the cap $($t.maxDepth) -- the true depth is being lost" }
             if ($t.deepestSeen -lt 500) {

@@ -1,15 +1,6 @@
-# Close the harness's Excel without leaving a recovery prompt behind.
-#
-# Killing an Excel with a macro workbook open makes it keep a recovery copy, and
-# because harness workbooks live in %TEMP% (not a trusted location) the next
-# Excel offers that copy back behind an "untrusted source" macro banner. So:
-#
-#   1. Close every workbook first, discarding changes: nothing open, nothing to recover.
-#   2. Ask the application to quit, and wait for it.
-#   3. Kill only what refuses to go, by a pid we were given, name re-checked.
-#
-# It acts on pids it is handed, or -- with none -- only on Excels that have our
-# add-in loaded and no visible window, so an Excel someone is using is left alone.
+# Close the harness's Excel without a recovery prompt: a killed Excel keeps a copy of its
+# open macro workbook, which the next Excel offers back behind a macro banner. With no pids
+# given, it acts only on windowless Excels with our add-in loaded, sparing one in use.
 [CmdletBinding()]
 param(
     [int[]]$ProcessId = @(),
@@ -21,7 +12,6 @@ $commonScript = Join-Path $PSScriptRoot '..\StretchXL\_common.ps1'
 if (-not (Test-Path -LiteralPath $commonScript)) { throw "excel_shutdown: shared helpers not found at $commonScript" }
 . $commonScript
 
-# How often to look for the processes to have gone while waiting.
 $ExitPollMs = 400
 # Excel writes its recovery files as it goes down, a moment after the process ends.
 $RecoveryFileSettleMs = 800
@@ -45,9 +35,8 @@ if ($ProcessId.Count) {
 }
 if (-not $targets) { Write-Status "  no harness Excel to close"; return }
 
-# 1 + 2. Through COM where we can reach it: shut the workbooks, then quit.
 # GetActiveObject returns whichever Excel the ROT holds, which need not be ours,
-# and closing its books discards unsaved work -- so check its pid first.
+# and closing its books discards unsaved work, so check its pid first.
 try {
     $xl = [Runtime.InteropServices.Marshal]::GetActiveObject('Excel.Application')
     $xlPid = 0
@@ -74,7 +63,6 @@ try {
 }
 [GC]::Collect(); [GC]::WaitForPendingFinalizers()
 
-# 3. Wait, then kill only what is left.
 $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
 while ((Get-Date) -lt $deadline) {
     $alive = @($targets | ForEach-Object { Get-Process -Id $_.Id -ErrorAction SilentlyContinue })

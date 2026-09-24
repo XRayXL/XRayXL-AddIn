@@ -1,12 +1,6 @@
-// Everything xlfCaller can say, decoded without Excel.
-//
-// A live probe proves the common callers: a cell formula, a macro, an event and
-// Application.Run. It cannot reach the rest: a graphic-object caller needs a real mouse click
-// on a shape, and Application.Run on a button's macro is not a click. So src/core/caller.cpp's
-// DecodeCaller is pure, and this feeds it a synthetic XLOPER12 of every kind.
-//
-// A unit test of a decoder, not evidence about Excel: what each xltype means is Microsoft's
-// documentation.
+// Everything xlfCaller can say, decoded without Excel. A live probe cannot reach a graphic-object
+// caller, which needs a real mouse click, so DecodeCaller is pure and fed a synthetic XLOPER12 of
+// every kind. What each xltype means is Microsoft's documentation.
 //
 // Built by XRayXL.sln into build\x64\Release\unit\.
 #include <windows.h>
@@ -16,10 +10,8 @@
 #include "xlcall.h"
 #include "caller.h"
 
-// ReadCaller is not exercised here and cannot be: Excel12 is imported from
-// the host process, and there is no host. The stub exists only to let the
-// translation unit link, and it returns "failed" so that anything which did
-// reach it would be loudly wrong rather than quietly plausible.
+// Excel12 comes from the host process, and there is none: the stub only lets this link, and
+// returns failed so anything that reached it would be loudly wrong.
 extern "C" int __cdecl Excel12(int, LPXLOPER12, int, ...) { return xlretFailed; }
 extern "C" int __stdcall Excel12v(int, LPXLOPER12, int, LPXLOPER12[]) { return xlretFailed; }
 
@@ -60,7 +52,7 @@ int main()
 {
     std::printf("decoding every xlfCaller answer, no Excel involved\n\n");
 
-    // ---- a cell formula: the Stage 2 case --------------------------------
+    // ---- a cell formula ---------------------------------------------------
     {
         XLOPER12 op{}; op.xltype = xltypeSRef;
         op.val.sref.count = 1;
@@ -100,9 +92,7 @@ int main()
         XLOPER12 op{}; op.xltype = xltypeRef;
         op.val.mref.lpmref = &mref;
         op.val.mref.idSheet = 0;
-        // One area, ONE CELL: last == first. Named for what it is -- it was
-        // called "array-formula ref" while testing a single cell, which is how
-        // the multi-cell case went untested for so long.
+        // One area, one cell: last == first.
         Check("xltypeRef, single cell C5", op, "[Book1]Sheet2", "cell", "[Book1]Sheet2!C5");
 
         // One area, many cells: what a CSE array formula produces. Both corners must be
@@ -111,14 +101,13 @@ int main()
         Check("xltypeRef, multi-cell C5:E7", op, "[Book1]Sheet2", "cell", "[Book1]Sheet2!C5:E7");
         mref.reftbl[0].rwLast = 0; mref.reftbl[0].colLast = 0;
 
-        // A reference carrying no entries names no cell -- and must still
-        // say SOMETHING. This case caught `what` being left empty, which in a
-        // trace is indistinguishable from never having asked.
+        // A reference with no entries names no cell, and must still say something: an empty
+        // `what` reads as never having asked.
         mref.count = 0;
         Check("ref with count 0", op, "[Book1]Sheet2", "none", "emptyref");
     }
 
-    // ---- A BUTTON. The case a live probe cannot reach. -------------------
+    // ---- a button: the case a live probe cannot reach --------------------
     {
         std::vector<XCHAR> name = Pascal(L"GoButton");
         XLOPER12 op{}; op.xltype = xltypeStr;
@@ -133,10 +122,9 @@ int main()
         Check("graphic object, null str", op, nullptr, "name", "(unnamed)");
     }
 
-    // ---- THE REMAINING ROWS OF THE SDK TABLE -----------------------------
-    // Each reduces to a shape handled above, but each is a separate ROW in
-    // and so gets its own case: the table and
-    // this file should map one to one, or a row can quietly have no test.
+    // ---- the remaining rows of the SDK table -----------------------------
+    // Each reduces to a shape handled above but gets its own case, so the table and this file
+    // map one to one and no row quietly lacks a test.
     {
         // "A conditional formatting expression | A reference to the cell to
         // which the formatting condition is applied."
@@ -150,16 +138,14 @@ int main()
         Check("ON.DOUBLECLICK trap", op, "[Book1]Sheet1", "cell", "[Book1]Sheet1!B2");
 
         // "A command associated with an xlcOnEnter ... | A reference to the
-        // cell or cells being entered." CELLS -- so a range, not just a cell.
+        // cell or cells being entered." Cells, so a range, not just a cell.
         op.val.sref.ref.rwLast = 3; op.val.sref.ref.colLast = 2;
         Check("ON.ENTER trap, a range being entered", op, "[Book1]Sheet1", "cell", "[Book1]Sheet1!B2:C4");
     }
     {
         // "Auto_Open, AutoClose, Auto_Activate or Auto_Deactivate macro | The
-        // name of the calling sheet." A STRING, so it decodes down the same
-        // path as a graphic object -- which is why the trace reads
-        // `object:[Book1]Sheet1` for an Auto macro and why that is correct
-        // rather than a misclassification.
+        // name of the calling sheet." A string, so it decodes like a graphic object:
+        // `object:[Book1]Sheet1` for an Auto macro is correct, not a misclassification.
         auto s = Pascal(L"[Book1]Sheet1");
         XLOPER12 op{}; op.xltype = xltypeStr; op.val.str = s.data();
         Check("Auto_Open: the calling sheet's name", op, nullptr, "name", "[Book1]Sheet1");
@@ -196,7 +182,7 @@ int main()
         op.val.array.columns = 4; op.val.array.lparray = four;
         Check("menu command", op, nullptr, "menu", "1/2/3/4");
 
-        // Three is NOT a menu, and must not be reported as one.
+        // Three is not a menu, and must not be reported as one.
         op.val.array.columns = 3; op.val.array.lparray = four;
         Check("three elements is not a menu", op, nullptr, "array", "3");
 
@@ -230,8 +216,7 @@ int main()
         XLOPER12 miss{}; miss.xltype = xltypeMissing;
         Check("missing", miss, nullptr, "none", "nil");
 
-        // xltypeBool is 0x4. (0x100 is xltypeNil -- getting that wrong is
-        // exactly the sort of thing this harness is for.)
+        // xltypeBool is 0x4; 0x100 is xltypeNil.
         XLOPER12 boolean{}; boolean.xltype = xltypeBool; boolean.val.xbool = 1;
         Check("a type we have not seen", boolean, nullptr, "unknown", "0x4");
     }

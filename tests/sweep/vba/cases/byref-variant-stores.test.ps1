@@ -1,13 +1,6 @@
-# A `ByRef Variant` that is only written has three store opcodes, not one.
-#
-# A write-only parameter emits no load, so its type comes from the store. store = load + 32
-# reaches 774 = 742+32; the other two ByRef Variant stores, 783 and 787, sit above opcodes that
-# name no type.
-#
-# The right-hand side chooses which is emitted: a number takes 774, `Set` takes 783, and
-# anything needing a full copy (String, Variant, array) takes 787. The cases vary the parameter
-# type under each of those shapes: only a `ByRef Variant` produces 783 or 787, and every `ByVal
-# Variant` produces 1477.
+# A write-only `ByRef Variant` is typed from whichever of its three stores the right-hand side
+# picks (774 number, 783 Set, 787 full copy); store = load + 32 reaches only 774, since the other
+# two sit above loads that name no type.
 $case = @{ Name='byref-variant-stores'
      Setup=@'
 ' --- the three ByRef Variant stores, one per right-hand side --------------
@@ -73,9 +66,7 @@ End Sub
         if ($t.framesOpened -ne $t.framesClosed) {
             return "LEAK: opened $($t.framesOpened), closed $($t.framesClosed)" }
         $entry = Get-FirstEntryByName $t.rows
-        # The expected text is written out per procedure rather than derived, so
-        # the test knows the answer it is asserting rather than agreeing with
-        # whatever the tracer produced.
+        # written out, not derived, so the test cannot just agree with the tracer
         $want = @{
             'S_VarNum'   = 'Variant&'
             'S_VarSet'   = 'Variant&'
@@ -93,8 +84,7 @@ End Sub
         foreach ($fn in $want.Keys) {
             if (-not $entry.ContainsKey($fn)) { $bad += "$fn=MISSING"; continue }
             $got = [string]$entry[$fn].typetext
-            # Exact, so a ByVal reported as ByRef fails: `Variant` and `Variant&`
-            # are different answers and the & is the whole point of the family.
+            # exact, so a ByVal reported as ByRef fails
             if ($got -ne $want[$fn]) { $bad += "$fn=$got (want $($want[$fn]))" }
         }
         if ($bad.Count -gt 0) { return "wrong store type: $($bad -join '; ')" }

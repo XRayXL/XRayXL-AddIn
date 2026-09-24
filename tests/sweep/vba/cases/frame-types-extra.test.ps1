@@ -89,14 +89,12 @@ End Sub
         if ($t.framesOpened -ne $t.framesClosed) {
             return "LEAK: opened $($t.framesOpened), closed $($t.framesClosed)" }
         $entry = Get-FirstEntryByName $t.rows
-        # A specific class type is still an Object at the p-code level -- the
-        # class NAME is compile-time, exactly as an Enum's is.
+        # a class name is compile-time only, like an Enum's, so the p-code says Object
         foreach ($fn in @('T_ClsRange','T_ClsSheet')) {
             if ($entry[$fn].typetext -ne 'Object') {
                 return "$fn signature was [$($entry[$fn].typetext)], expected Object" }
         }
-        # Optional with a non-Variant default: the CALLER materialises the
-        # default, so it reads as an ordinary value of the declared type.
+        # the caller materialises a non-Variant Optional default, so it reads as a plain value
         if ($entry['T_OptStr'].args -ne 'a1:String="OPTDEF"') {
             return "T_OptStr omitted-default args were [$($entry['T_OptStr'].args)]" }
         if ($entry['T_OptDbl'].args -ne 'a1:Double=3.5') {

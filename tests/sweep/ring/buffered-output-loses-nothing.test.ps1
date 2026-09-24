@@ -1,15 +1,5 @@
-# A HEALTHY RING LOSES NOTHING AND KEEPS FILE ORDER.
-#
-# The ring is what the hot path deposits into and a background thread drains;
-# sized for the burst, it must deliver the same complete, ordered trace as a
-# synchronous write. It is the control the starvation cases are measured against.
-#
-# The lean driver makes exactly 800 leaf activations plus its own frame: 801
-# opened, 801 closed, so 1602 entry/exit rows. With a 64 MB ring:
-#   * every one of those rows is in the file, reconciling with the disarm totals,
-#   * XRayXL_Disarm reports zero drops,
-#   * no holes in the producer's `input` sequence,
-#   * seq strictly increasing (Read-TraceFile throws otherwise).
+# A healthy ring loses nothing and keeps file order: the control the starvation cases are measured
+# against. The lean driver makes 800 leaf activations plus its own frame: 1602 entry/exit rows.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 . (Join-Path $PSScriptRoot '_driver.ps1')

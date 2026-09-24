@@ -1,9 +1,5 @@
-# One-shot install: copy the freshly built XLL into a single load-from folder. The add-in is one
-# native XLL with no runtime dependencies beyond Windows.
-#
-# Point Excel's Add-ins list at build\addin\XRayXL64.xll (XRayXL32.xll for a 32-bit build) once;
-# re-running this after a rebuild refreshes it in place. Close Excel first: a loaded XLL is
-# locked.
+# Copies the built XLL into one load-from folder. Point Excel's Add-ins list at
+# build\addin\XRayXL64.xll once; re-running after a rebuild refreshes it in place.
 param(
     [string]$Config  = "Release",
     [ValidateSet('x64', 'Win32')][string]$Platform = "x64",
@@ -28,7 +24,7 @@ if (-not (Test-Path $xll)) {
 $version = Get-XRayVersion -Root $Root
 Assert-XRayResourceVersion -Xll $xll -Version $version
 
-# Refuse to run while the target XLL is loaded (Windows locks a mapped module).
+# Windows locks a mapped module, so a loaded target XLL cannot be overwritten.
 if (Test-Path (Join-Path $Target $leaf)) {
     try {
         $s = [System.IO.File]::Open((Join-Path $Target $leaf), 'Open','ReadWrite','None'); $s.Close()

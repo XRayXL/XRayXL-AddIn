@@ -1,13 +1,9 @@
-# A rendered array is whole: it opens with a type and bounds, carries every element and closes.
-#
-# Sixty-four doubles at fifteen significant digits is roughly 1300 characters, and a buffer that
-# cut them would lose the closing `}` first, leaving what reads as a complete array that happens
-# to end. Both columns are checked on the same arrays, because they have separate buffers.
+# A rendered array is whole, however wide: a buffer that cut it would lose the closing `}`
+# first and still look like an array. Both columns are checked, since they have separate buffers.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
-# 64 elements of about fourteen characters each: wider than any fixed buffer the columns
-# once had, so a cut would show.
+# 64 elements of about fourteen characters each, so a fixed-size buffer would cut them
 $moduleCode = @'
 ' Wide DOUBLES: %.15g gives about fourteen characters each.
 Public Function WideDblRet() As Double()
@@ -101,7 +97,6 @@ try {
 
     $rows = @(Read-TraceRows $sx.ProcId)
 
-    # Every rendered array, whichever column produced it, as one list.
     $seen = @(
         @{ Where='arg'; Fn='WideDblArg'; Text=(ArgsOf $rows 'WideDblArg'); Wide=$true  }
         @{ Where='arg'; Fn='WideStrArg'; Text=(ArgsOf $rows 'WideStrArg'); Wide=$true  }
@@ -120,21 +115,18 @@ try {
     }
 
     # ---- it reached the decoder at all -------------------------------------
-    # An array the walk refused renders as a raw qword, which would make every
-    # assertion below vacuously true. This says so first.
+    # a refused array renders as a raw qword, making every assertion below vacuous
     $missing = @($seen | Where-Object { $_.Text -notmatch '\[-?\d+\.\.-?\d+\]\{' })
     Check 'every-array-was-decoded-as-an-array' ($missing.Count -eq 0) `
           ("not rendered as an array: " + $(if ($missing.Count) { (@($missing | ForEach-Object { "$($_.Where)/$($_.Fn)='$($_.Text)'" }) -join ' | ') } else { 'none' }))
 
-    # ---- THE CASE THIS FILE EXISTS FOR: it closes --------------------------
+    # ---- the case this file exists for: it closes --------------------------
     $unclosed = @($seen | Where-Object { $_.Text -and ($_.Text -notmatch '\}$') })
     Check 'every-rendered-array-closes-its-brace' ($unclosed.Count -eq 0) `
           ("unclosed: " + $(if ($unclosed.Count) { (@($unclosed | ForEach-Object { "$($_.Where)/$($_.Fn) ends '$($_.Text.Substring([Math]::Max(0,$_.Text.Length-24)))'" }) -join ' | ') } else { 'none' }))
 
     # ---- and it carries every element ----------------------------------------
-    #
-    # Arrays are not truncated. Counting elements by commas is only valid once
-    # the brace check passes, so this is a separate case.
+    # counting by commas is only valid once the brace check passes, so a separate case
     $short = @()
     foreach ($s in $seen) {
         if (-not $s.Text) { continue }
@@ -146,18 +138,14 @@ try {
     Check 'every-array-carries-all-its-elements' ($short.Count -eq 0) `
           ("short: " + $(if ($short.Count) { $short -join ' | ' } else { 'none' }))
 
-    # The control: three Longs fit anything. The arguments column prefixes its slot, as in
-    # `a1:Ref&=Long[1..3]{1,2,3}`, so the array text is matched where it sits rather than
-    # anchored to the start of the field.
+    # the control: three Longs fit anything; the args column prefixes its slot, so not anchored
     $ctl = @($seen | Where-Object { -not $_.Wide })
     $ctlBad = @($ctl | Where-Object { $_.Text -notmatch 'Long\[1\.\.3\]\{1,2,3\}$' })
     Check 'the-narrow-control-renders-whole' ($ctlBad.Count -eq 0) `
           ("control: " + (@($ctl | ForEach-Object { "$($_.Where)='$($_.Text)'" }) -join ' | '))
 
     # ---- and the two columns agree about the same array ---------------------
-    # Same declaration, same bounds, same element type -- read twice by two
-    # decoders. They have disagreed before (bounds, element caps, the BSTR
-    # limits), each time silently.
+    # two decoders read the same array, and a disagreement between them would be silent
     $pairs = @(
         @{ Name='Double'; A=(ArgsOf $rows 'WideDblArg'); R=(RetOf $rows 'WideDblRet') }
         @{ Name='String'; A=(ArgsOf $rows 'WideStrArg'); R=(RetOf $rows 'WideStrRet') }

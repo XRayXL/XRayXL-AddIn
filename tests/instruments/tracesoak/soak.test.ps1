@@ -1,15 +1,6 @@
-# What one arming costs over a long session: arm once, then recalculate a complex sheet whose
-# formulas reach XLL functions and VBA in another workbook. A per-call, per-row or per-span leak
-# shows here.
-#
-# The same workload runs twice in the same process, disarmed and then armed, and the difference
-# in growth per cycle is reported, because Excel grows on its own. Both phases follow a
-# discarded warm-up. The control runs first and Excel's growth decelerates, so the attributed
-# figure is conservative; a negative one means "not distinguishable from Excel".
-#
-# No threshold is asserted; it fails only if Excel dies or the workload cannot run. It is paced,
-# because flat out it finds the limits of VBA's string space rather than anything about the
-# tracer.
+# What one arming costs over a long session, where a per-call, per-row or per-span leak shows. The
+# workload runs disarmed then armed after a discarded warm-up, and growth per cycle is compared
+# because Excel grows on its own; nothing is asserted. Paced, or it finds VBA's string-space limits.
 #
 #    XRAY_SOAK_SECONDS   seconds per measured phase (default 180; two phases)
 #    XRAY_SOAK_WARMUP    discarded warm-up seconds  (default 60)
@@ -30,10 +21,8 @@ try {
     Set-XRaySessionDefaults $sx
     Clear-XRayStaleTraces $sx.ProcId
 
-    # ---- BOOK B: the OTHER workbook, holding VBA the model calls ----------
-    # The cross-workbook case is the one a single-book soak would miss: the
-    # calling cell lives in A, the procedure lives in B, and every entry row
-    # has to attribute the frame to B while the caller stays A.
+    # ---- book B: the other workbook, holding VBA the model calls ----------
+    # A single-book soak would miss this: the calling cell lives in A, the procedure in B.
     $libCode = @'
 Public Function LB_Price(ByVal r As Double, ByVal t As Double) As Double
     LB_Price = Exp(-r * t) * 100#
@@ -61,7 +50,7 @@ End Function
     ) -Cells @{ 'A1' = '=LB_Price(0.03,2)'; 'A2' = '=LB_Deep(6)' }
     $libLeaf = (Get-XRayMacroBook 'SoakLib').Leaf
 
-    # ---- BOOK A: the model -- XLL + own VBA + cross-book VBA --------------
+    # ---- book A: the model -- XLL + own VBA + cross-book VBA --------------
     $modelCode = @'
 Public Function MA_Vol() As Double
     Application.Volatile
@@ -106,10 +95,9 @@ Private Sub Worksheet_Calculate()
     z = MA_Leg(5)
 End Sub
 '@
-    # A COMPLEX SHEET: own VBA, cross-workbook VBA, and XLL functions in the
-    # same dependency graph. TxCallsBack re-enters Excel through xlUDF, so
-    # XLL frames genuinely nest while the VBA patches are live. Arrays spill,
-    # so each gets its own column.
+    # Own VBA, cross-workbook VBA and XLL functions in one dependency graph. TxCallsBack re-enters
+    # Excel through xlUDF, so XLL frames nest while the VBA patches are live. Arrays spill, so each
+    # gets its own column.
     $cells = @{
         'A1'  = '=MA_Vol()'
         'A2'  = '=MA_Chain(9)'
@@ -135,10 +123,8 @@ End Sub
 
     $threads = Enable-MultiThreadedCalc $app
 
-    # One cycle = one full recalculation of both books plus one macro run, identical in both
-    # phases. Rebuild, not Calculate: CalculateFull serves a non-volatile UDF from its last
-    # result. Emits nothing, since it is called bare inside the phase loop and output would pile
-    # up.
+    # One cycle is a full rebuild of both books plus one macro run. Rebuild, not Calculate:
+    # CalculateFull serves a non-volatile UDF from its last result. Emits nothing, or output piles up.
     function Invoke-SoakCycle {
         $t0 = [Diagnostics.Stopwatch]::StartNew()
         [void]$app.CalculateFullRebuild()
@@ -149,9 +135,8 @@ End Sub
         if ($rest -gt 0) { Start-Sleep -Milliseconds $rest }
     }
 
-    # Runs cycles for $Seconds and returns first/last samples plus the count. The first sample
-    # is taken after the first $SampleEvery cycles, past the phase's own transient. Returns one
-    # object and emits nothing; the caller prints progress.
+    # The first sample follows the first $SampleEvery cycles, past the phase's own transient.
+    # Returns one object and emits nothing; the caller prints progress.
     function Measure-SoakPhase([string]$Label, [int]$Seconds) {
         $sw = [Diagnostics.Stopwatch]::StartNew()
         $n = 0; $first = $null; $last = $null
@@ -163,9 +148,7 @@ End Sub
                 $s = Get-ProcSample -ProcessId $sx.ProcId -At $n
                 if (-not $s) { throw "excel is gone during the $Label phase at cycle $n" }
                 if (-not $first) { $first = $s } else { $last = $s }
-                # One line per sample, but only every 20th is kept: a 180s phase
-                # at 200 cycles a second is thousands of samples, and a curve
-                # nobody can read is just a bigger log.
+                # Only every tenth sample goes into the curve: a curve nobody can read is just a bigger log.
                 if ((($n / $SampleEvery) % 10) -eq 0) {
                     $curve.Add(("{0,-8} cycles={1,6} private={2}MB working={3}MB handles={4}" -f `
                                 $Label, $n, $s.PrivateMB, $s.WorkingMB, $s.Handles))
@@ -185,12 +168,12 @@ End Sub
         }
     }
 
-    # ---- BOTH SOURCES ON, and CHECKED --------------------------------------
+    # ---- both sources on, and checked --------------------------------------
     # both sources must actually trace, or the figures measure nothing
     $bad = Set-XRayDepthAll $sx
     if ($bad) { Complete-Test -Fail -Detail $bad }
 
-    # ---- PHASE 0: warm-up, DISCARDED --------------------------------------
+    # ---- phase 0: warm-up, discarded --------------------------------------
     # First-touch costs -- JIT of the VBA, the XLL's first calls, Excel's own
     # caches -- all land here so neither measured phase carries them.
     [void](Measure-SoakPhase 'warmup' $WarmupSeconds)
@@ -199,13 +182,12 @@ End Sub
         foreach ($line in $Phase.Curve) { Write-Output $line }
     }
 
-    # ---- PHASE 1: the CONTROL. Loaded, not armed --------------------------
-    # Loaded-but-disarmed is the right control: it isolates TRACING from
-    # merely having the add-in in the process.
+    # ---- phase 1: the control, loaded but not armed -----------------------
+    # This isolates tracing from merely having the add-in in the process.
     $control = Measure-SoakPhase 'control' $PhaseSeconds
     Write-SoakCurve $control
 
-    # ---- PHASE 2: ARMED, once, for the whole phase ------------------------
+    # ---- phase 2: armed, once, for the whole phase ------------------------
     $pressed = Invoke-XRayCommand $sx 'XRayXL_Arm'
     if ($pressed -ne 'pressed') { Complete-Test -Fail -Detail "arm refused: $pressed" }
     $armed = Measure-SoakPhase 'armed' $PhaseSeconds
@@ -214,11 +196,9 @@ End Sub
     # drops shrink the per-row denominator, and only the disarm reports them (-1 = disarm faulted)
     $dropped = Invoke-XRayDisarm $sx
 
-    # ---- ROWS: the other denominator --------------------------------------
-    # Counted once, after disarm, when the ring has drained. Per-cycle is what
-    # the two phases share; per-row is what makes the figure comparable to a
-    # differently shaped workload. Streamed, not loaded -- this file runs to
-    # tens of megabytes.
+    # ---- rows: the other denominator --------------------------------------
+    # Per-row makes the figure comparable to a differently shaped workload. Counted after disarm,
+    # once the ring has drained.
     $rows = 0
     $csv = Get-XRayTraceCsv $sx.ProcId
     if (Test-Path $csv) {
@@ -232,7 +212,7 @@ End Sub
         [math]::Round((($armed.Last.PrivateMB - $armed.First.PrivateMB) / $rows) * 100000, 2)
     } else { 0 }
 
-    # ---- WHAT IS ATTRIBUTABLE TO TRACING ----------------------------------
+    # ---- what is attributable to tracing ----------------------------------
     $mbAttr      = [math]::Round($armed.MBPer1000      - $control.MBPer1000, 1)
     $handlesAttr = [math]::Round($armed.HandlesPer1000 - $control.HandlesPer1000, 1)
 

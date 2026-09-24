@@ -1,9 +1,6 @@
-# AN ADD-IN UNLOADED AND LOADED AGAIN WHILE ARMED.
-#
-# XRayXL takes no reference on an add-in it hooks, so unloading one really
-# unloads it: holding it would change when someone else's DLL goes away. Loaded
-# again at the same address, its code carries no detour while the tracer still
-# counts the export as hooked, so the late arm has to notice and patch it again.
+# An add-in unloaded and loaded again while armed must still be traced: XRayXL holds no reference on
+# it, so it really unloads, and reloaded at the same address its code has no detour while the tracer
+# still counts the export as hooked.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

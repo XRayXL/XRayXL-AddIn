@@ -1,14 +1,9 @@
-# Where was it thrown, and who caught it.
-#
-# Without an outcome, an error unwind and a clean return give identical exit rows. A chain reads
-# outwards from the throwing frame:
+# The outcome column says where an error was thrown and who caught it; without it an unwind and
+# a clean return give identical exit rows.
 #
 #      Thrower   outcome threw       the raise happened here
 #      Middle    outcome unwound     it ran nothing after the raise
 #      Outer     outcome handled     it ran again, so it caught it
-#
-# `unwound` is asserted first because no coincidence can fake it: a frame closed while an error
-# was in flight and had run nothing since.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -92,12 +87,10 @@ try {
     Check 'passthrough-unwound'  ($m -eq 'unwound') "E_Middle outcome='$m'"
     Check 'catcher-says-handled' ($o -eq 'handled') "E_Outer outcome='$o'"
 
-    # THE NEGATIVE CONTROL. Without it, a bug that stamped every row `threw`
-    # would satisfy the first assertion and look like a pass.
+    # the negative control: a bug stamping every row `threw` would otherwise pass
     Check 'clean-calls-say-returned' (($c -eq 'returned') -and ($ci -eq 'returned')) `
           "E_Clean='$c' E_CleanInner='$ci'"
 
-    # Every exit row must carry an outcome.
     $missing = @($exits | Where-Object { -not $_.outcome })
     Check 'every-exit-row-carries-an-outcome' ($missing.Count -eq 0) `
           "rows without outcome: $($missing.Count) of $($exits.Count)"

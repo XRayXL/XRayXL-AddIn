@@ -1,8 +1,5 @@
-# A ByRef array too big to write out, changed by the callee.
-#
-# The entry value is refused, so nothing it could be compared against exists. The exit read
-# is refused too, and must be counted as declined rather than as unchanged, and the refusal
-# log must count the arrays a reader lost, not the exit copy nobody asked for.
+# A ByRef array too big to write out, changed by the callee, counts as declined, not unchanged:
+# there is no entry value to compare. The refusal log counts only arrays a reader lost.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

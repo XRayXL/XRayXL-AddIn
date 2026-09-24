@@ -1,15 +1,6 @@
-# The p-code length table fits this build. A wrong length does not throw: it steps into the
-# middle of an operand and types the wrong parameter with confidence. Two facts:
-#
-#    1. The opcode set is the one the table describes. The dispatch table's equivalence
-#       partition (for every slot, the lowest slot sharing its handler) names no address,
-#       so it survives rebasing, and the arm log says whether it matched.
-#    2. The table walks real compiler output cleanly. The case runs varied VBA (typed and
-#       Variant arithmetic, arrays, objects, a Property, error handling, loops, string
-#       work) and requires every procedure to walk from offset 0 to a clean exit with no
-#       resynchronisation.
-#
-# AsLoaded, from a saved workbook: p-code compiled by Excel on open is what a user has.
+# The p-code length table fits this build: the opcode set matches, and varied VBA compiled by
+# Excel on open walks cleanly. A wrong length does not throw; it types the wrong parameter with
+# confidence.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -107,8 +98,7 @@ Public Sub Drive()
     c.Drive
 End Sub
 '@
-    # A CLASS, not a standard module: Property, Event and RaiseEvent only
-    # compile in one, and they are three of the shapes being asserted.
+    # a class, because Property, Event and RaiseEvent only compile in one
     New-XRayMacroBook $sx 'pcode' @(
         @{ Kind = 2; Name = 'CFit'; Code = $src }
         @{ Kind = 1; Name = 'MFit'; Code = $driveCode }
@@ -120,8 +110,8 @@ End Sub
     if (-not $armLine) { Complete-Test -Fail -Detail 'VBA never reported an arm outcome' }
 
     # ---- 1. the opcode set ------------------------------------------------
-    # The derivation line carries the partition either way, so the assertion
-    # can tell "matched" from "the line never appeared".
+    # the handler partition names no address, so it survives rebasing; the line carries it
+    # either way, so "matched" is told from "never appeared"
     $partLine = @(Get-Content $paths.Log | Select-Object -Skip $mark |
                   Select-String 'partition=0x') | Select-Object -Last 1
     Check 'partition-line-is-reported' ($null -ne $partLine) 'no partition= in the arm log'
@@ -131,7 +121,7 @@ End Sub
               ($txt -match 'known opcode set') `
               (($txt -split '\s+' | Where-Object { $_ -like 'partition=*' }) -join ' ')
     }
-    # A degraded session says so in as many words; types would be absent.
+    # a degraded session says so in as many words; types would be absent
     $unknownSet = @(Get-Content $paths.Log | Select-Object -Skip $mark |
                     Select-String 'UNKNOWN OPCODE SET')
     Check 'types-were-not-degraded-off' ($unknownSet.Count -eq 0) `
@@ -151,11 +141,11 @@ End Sub
     if ($walkLine) {
         $m = [regex]::Match([string]$walkLine.Line, '(\d+) of (\d+) procedure\(s\) walked cleanly')
         $clean = [int]$m.Groups[1].Value; $walks = [int]$m.Groups[2].Value
-        # Something must have been walked, or "100%" is vacuous.
+        # something must have been walked, or "100%" is vacuous
         Check 'the-vba-was-actually-walked' ($walks -ge 8) "walks=$walks"
         Check 'every-procedure-walked-cleanly' ($clean -eq $walks -and $walks -gt 0) `
               "$clean of $walks walked cleanly (offset 0 to a clean exit, no resynchronisation)"
-        # Good news is INFO. WARNING is the fuzzer's oracle, so a clean walk must not raise one.
+        # WARNING is the fuzzer's oracle, so a clean walk must not raise one
         Check 'a-clean-walk-is-info-not-a-warning' ([string]$walkLine.Line -match ' INFO ') `
               ([string]$walkLine.Line)
     }
@@ -164,15 +154,13 @@ End Sub
     Check 'no-p-code-warning-after-a-clean-walk' ($pcodeWarnings.Count -eq 0) `
           (($pcodeWarnings | ForEach-Object { $_.Line }) -join ' | ')
 
-    # A length that was USED and then broke the walk is the worse defect, and
-    # it names itself. Silence is the assertable state.
+    # a length used and then broken names itself; silence is the assertable state
     $proven = @(Get-Content $paths.Log | Select-Object -Skip $mark2 |
                 Select-String 'LENGTHS PROVEN WRONG')
     Check 'no-length-was-proven-wrong' ($proven.Count -eq 0) `
           (($proven | ForEach-Object { $_.Line }) -join ' | ')
 
-    # The collapse alarm must not have fired -- and if it ever does, its own
-    # words are the most useful thing this test can report.
+    # if the collapse alarm fires, its own words are the most useful report
     $collapse = @(Get-Content $paths.Log | Select-Object -Skip $mark2 |
                   Select-String 'THE LENGTH TABLE DOES NOT FIT THIS BUILD')
     Check 'table-fits-this-build' ($collapse.Count -eq 0) `

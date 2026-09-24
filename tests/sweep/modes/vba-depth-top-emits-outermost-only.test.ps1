@@ -1,7 +1,5 @@
-# VBA DEPTH=TOP means TOP-LEVEL ONLY: a three-deep VBA chain
-# called from a cell emits rows for the depth-1 frame alone -- the function
-# Excel called -- while the totals still count every frame, so the trace
-# thins but the accounting does not.
+# VBA DEPTH=TOP emits rows for the depth-1 frame of a cell-called chain alone, while the totals
+# still count every frame: the trace thins but the accounting does not.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -52,7 +50,7 @@ End Function
     if (-not $totLine) { $problems += 'no totals line after disarm' }
     else {
         $t = ConvertFrom-XRayTotals $totLine
-        # COUNTED, not emitted: the accounting must still see all three frames.
+        # Counted, not emitted: the accounting must still see all three frames.
         if ($t.framesOpened -lt 3) { $problems += "totals counted only $($t.framesOpened) frames -- ON mode must not thin the accounting" }
         if ($t.framesOpened -ne $t.framesClosed) { $problems += "LEAK: opened $($t.framesOpened), closed $($t.framesClosed)" }
     }

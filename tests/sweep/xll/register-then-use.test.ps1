@@ -1,12 +1,5 @@
-# Register an XLL, then use it immediately: the call must be traced.
-#
-# The realistic shape is a macro or loader that calls Application.RegisterXLL and at once runs
-# one of the functions it registered.
-#
-# It does not prove there is no race. Registrations are hooked by a worker thread a moment
-# later, and a CalculateFull straight after RegisterXLL can land in that window. The window is
-# accepted because the log reports it, so an untraced use passes only when the log's applied
-# batch came after the use began.
+# Register an XLL, then use it at once: the call must be traced. Registrations are hooked by a
+# worker a moment later, so an untraced use passes only when the log reports it fell in that window.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -23,31 +16,24 @@ try {
     $armLine = Wait-LogLine $paths.Log 'armed \d+ of|nothing armed|could not' $mark
     if ($armLine -notmatch 'armed \d+ of') { Complete-Test -Fail -Detail "arm: $armLine" }
 
-    # The freeze method decides whether patching a registration is affordable: the system-wide
-    # thread snapshot is far slower per patch than the process-scoped one.
-    #
-    # Searched from the top of the log, not from this test's mark: MinHook is initialised once
-    # per process (g_minhookReady in src/xll/xllhook.cpp), so under -SessionMode Reuse the line
-    # was written by an earlier test's arm.
+    # The freeze method decides whether patching a registration is affordable. Searched from the top
+    # of the log: MinHook initialises once per process, so under reuse an earlier arm wrote the line.
     $freezeLine = Wait-LogLine $paths.Log 'minhook: ' 0 15
     $fastOk = [bool]($freezeLine -match 'process-scoped')
     Write-TestCase -Name 'minhook-process-scoped-freeze' -Pass:$fastOk -Fail:(-not $fastOk) -Detail "$freezeLine"
 
-    # A COPY, because Excel keys a loaded add-in by path, so the same bytes
-    # under a new name are a genuinely new module registering afresh.
+    # A copy, because Excel keys a loaded add-in by path: the same bytes under a new name register afresh.
     $source = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\build\x64\Release\TracedAddin\TracedAddin64.xll')).Path
     # A per-run name: a repeat in a reused session would otherwise meet its own still-loaded copy.
     $second = Join-Path $sx.WorkDir ("UseNow_{0}_{1}.xll" -f $sx.ProcId, [guid]::NewGuid().ToString('N').Substring(0, 8))
     Copy-Item $source $second -Force
     $leaf = Split-Path $second -Leaf
 
-    # No pause between registering and using. Two paths, because they race differently:
-    # Application.Run carries enough COM overhead that the worker usually wins, while a cell
-    # formula plus CalculateFull is far quicker off the mark. The recalc goes first, so the Run
-    # does not hand the worker a head start. Different arguments before the load, so its rows
-    # cannot be counted as the use after it.
+    # No pause between registering and using, on two paths that race differently: Application.Run's
+    # COM overhead usually lets the worker win, a formula plus CalculateFull is quicker. Different
+    # arguments before the load keep its rows from counting as the use.
     $ws = $app.ActiveSheet
-    $ws.Range('A1').Formula = '=TxB(1,1)'      # set BEFORE the XLL loads, so the
+    $ws.Range('A1').Formula = '=TxB(1,1)'      # set before the XLL loads, so the
     $app.CalculateFull()                       # recalc below is the first thing
     $markLoad = Get-LogLength $paths.Log
     $regOk = [bool]$app.RegisterXLL($second)
@@ -79,10 +65,8 @@ try {
     $fromNew = @($runEntries | Where-Object { $_.module -ieq $leaf }).Count
     $fromOld = @($runEntries | Where-Object { $_.module -ieq 'TracedAddin64.xll' }).Count
 
-    # THE REPORTED WINDOW IS ACCEPTED. Registrations are patched as one batch
-    # a moment later, and the log says calls in between were not traced. A use with
-    # no rows at all passes only if that batch was applied AFTER the use began; a
-    # missing row with no window, or after it closed, is still a failure.
+    # The reported window is accepted: a use with no rows passes only if the batch was applied
+    # after the use began.
     $appliedAt = $null
     $applied = @(Get-Content $paths.Log | Select-Object -Skip $markLoad |
                  Select-String 'register watch: applied .*NOT traced') | Select-Object -First 1
@@ -114,9 +98,8 @@ try {
             -Detail ("rows from {0}: {1}; rows from the original XLL: {2}; window: {3}" -f $leaf, $fromNew, $fromOld, $appliedText)
     }
 
-    # The cell that was calculated with no pause after RegisterXLL. This is the
-    # path that loses the race when registrations are hooked asynchronously.
-    # The same three outcomes as the Run, judged on TxB(4,5) at A1 alone.
+    # The cell calculated with no pause after RegisterXLL, the path that loses the race; the same
+    # three outcomes as the Run, judged on TxB(4,5) at A1 alone.
     $cellEntries = @($rows | Where-Object { $_.kind -eq 'entry' -and (Get-CallerCell $_) -ieq 'A1' -and $_.proc -ieq 'TxB' -and $_.args -ceq 'a1:B=4 a2:B=5' })
     $cellNew = @($cellEntries | Where-Object { $_.module -ieq $leaf }).Count
     $cellOld = @($cellEntries | Where-Object { $_.module -ieq 'TracedAddin64.xll' }).Count
@@ -126,8 +109,8 @@ try {
     Write-TestCase -Name 'immediate-recalc-is-traced' -Pass:$cellOk -Fail:(-not $cellOk) `
         -Detail ("A1 showed '$cellValue' (expect 45); TxB(4,5) entries at A1 from {0}: {1}, from the original XLL: {2}; window: {3}{4}" -f $leaf, $cellNew, $cellOld, $appliedText, $(if ($cellWindow) { ' (untraced inside it, accepted)' } else { '' }))
 
-    # A SKIP when neither use reached the new copy traced: every other check still
-    # has to hold, but the case this file exists for never ran.
+    # A skip when neither use reached the new copy traced: every other check still has to hold,
+    # but the case this file exists for never ran.
     $runOk = $tracedOk -or $wentToOld -or $runWindow
     $exercised = ($fromNew -gt 0) -or ($cellNew -gt 0)
     if ($fastOk -and $valueOk -and $runOk -and $cellOk) {

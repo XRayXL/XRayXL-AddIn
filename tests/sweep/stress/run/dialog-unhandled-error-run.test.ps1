@@ -21,8 +21,8 @@ End Sub
         if ($t.framesOpened -lt 3) { return "expected >=3 frames, got $($t.framesOpened)" }
         $why = Assert-VbaTraced $t 'RaiseTop','RaiseMid','RaiseLeaf'; if ($why) { return $why }
         $null }
-     # One chain, three deep. NO outcome expected: the dialog's End button kills these frames,
-     # and what a frame closed that way reads is a documented limitation (docs/TraceRowModel.md).
+     # One chain, three deep, with no outcome expected: End kills these frames, and what a frame
+     # closed that way reads is a documented limitation (docs/TraceRowModel.md).
      Calls=@(
         @{ Function='RaiseTop';  Depth='1'; Parent=-1 }
         @{ Function='RaiseMid';  Depth='2'; Parent=0 }

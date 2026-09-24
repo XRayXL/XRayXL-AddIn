@@ -1,9 +1,6 @@
-# Drives arming and the settings from Application.Run while the ribbon add-in is connected. Each change
-# makes the ribbon call IRibbonUI::Invalidate, a call back into Office; the assertion is that no COM
-# entry point faulted. A contained fault is a line in the LOG at ERROR, not a crash file.
-#
-# Sessions here are hidden, and Excel builds the ribbon only where there is a window, so this normally
-# exercises the notification path and not the call into Office. The verdict says which run it was.
+# Drives arming and settings from Application.Run while the ribbon is connected; each change makes the
+# ribbon call IRibbonUI::Invalidate back into Office, and no COM entry point may fault. Hidden sessions
+# build no ribbon, so this usually exercises only the notification path; the verdict says which.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 . (Join-Path $PSScriptRoot '_ribbon_common.ps1')

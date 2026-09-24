@@ -1,7 +1,6 @@
-# BREAKPOINTS is a VBA setting that adds one column, `breaks`, to the trace file. Off -- the
-# default -- the file is exactly as it always was; on, the header gains `breaks` and every VBA
-# exit row carries its count, 0 when nothing stopped, while every other row leaves it empty.
-# A stop itself needs a person at the editor, so it is not driven here.
+# BREAKPOINTS adds a `breaks` column: off (the default) the file is unchanged; on, every VBA exit row
+# carries its count, 0 when nothing stopped, and other rows leave it empty. A stop needs a person at
+# the editor, so it is not driven here.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

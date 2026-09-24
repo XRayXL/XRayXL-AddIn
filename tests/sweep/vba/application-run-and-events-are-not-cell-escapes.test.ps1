@@ -1,16 +1,5 @@
-# APPLICATION.RUN AND SHEET EVENTS ARE NOT WORKSHEET-FUNCTION ENTRIES.
-#
-# The escape boundary is "Excel started this frame to compute a cell", found
-# by xlfCaller naming a calling cell that differs from the frame beneath. Two kinds
-# of entry are NOT cells, and so must NOT read `unhandled`:
-#
-#   Application.Run "Macro"   xlfCaller is #REF!, so a run macro is not a cell entry.
-#   Worksheet_Change          an event has no calling cell either.
-#
-# An unhandled error in either propagates as VBA rather than becoming a cell's
-# #VALUE!, so its frame reads `threw`/`unwound`, never `unhandled`. Excel still pops
-# its modal error dialog for these (even under On Error Resume Next -- StretchXL.md);
-# the watchdog dismisses them and the test declares them expected.
+# An error in an Application.Run macro or a sheet event is not a cell escape: neither has a
+# calling cell, so neither frame may read `unhandled`.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -72,10 +61,7 @@ try {
     $armLine = Wait-LogLine $paths.Log 'VBA tracing: ' $mark
     if ($armLine -notmatch 'ARMED') { Complete-Test -Fail -Detail "did not arm: $armLine" }
 
-    # An unhandled error in an Application.Run macro or a sheet event pops Excel's
-    # modal error dialog even under On Error Resume Next; the watchdog dismisses it
-    # and this test declares the dialogs expected (Write-DialogsHandled) so they do
-    # not turn its PASS into a FAIL.
+    # these errors pop a modal dialog even under On Error Resume Next; declared expected below
     $dlgBefore = @(Get-SessionDialogs).Count
     try { $app.Run($leaf + '!RunDriver') | Out-Null } catch {}
     try { $app.Run($leaf + '!ChangeDriver') | Out-Null } catch {}
@@ -88,18 +74,15 @@ try {
 
     $rows = @(Read-TraceRows $sx.ProcId)
 
-    # One run of each, and each reads threw: an entry with no calling cell is not a cell escape
-    # (docs/TraceRowModel.md). "Not unhandled" alone would pass a wrong `returned`.
+    # asserts threw, since "not unhandled" alone would pass a wrong `returned`
     $rt = @(ExitsOf $rows 'RunThrower')
     Check 'application-run-macro-was-traced-once' ($rt.Count -eq 1) "RunThrower rows: $($rt.Count)"
     Check 'application-run-error-reads-threw' `
           (($rt.Count -eq 1) -and ($rt[0].outcome -eq 'threw')) `
           "RunThrower=$(OutcomesOf $rows 'RunThrower') -- must propagate as VBA, reading threw"
 
-    # THE EVENT'S ERROR ENDS IN EXCEL'S MODAL DIALOG, and pressing End there fires no
-    # opcode: the frame stays open until disarm flushes it, and a flushed frame is closed
-    # as if still running (docs/TraceRowModel.md). So `returned` with trust `flush` is the
-    # documented answer here -- what matters is that it is not a cell escape.
+    # End on the event's dialog fires no opcode, so disarm flushes the frame as if still
+    # running: `returned` with trust `flush` (docs/TraceRowModel.md).
     $ev = @(ExitsOf $rows 'Worksheet_Change')
     Check 'sheet-event-was-traced-once' ($ev.Count -eq 1) "Worksheet_Change rows: $($ev.Count)"
     Check 'event-error-ends-at-the-dialog-and-flushes' `

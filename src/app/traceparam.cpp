@@ -59,9 +59,9 @@ namespace
         wcsncpy_s(out, cap, t, _TRUNCATE);
     }
 
-    // A SOURCE-LESS setting lands its word in whichever slot the caller used
-    // -- SetTraceParam("BUFFERSIZE", n) puts it in the Source slot -- so the
-    // value is whatever follows the word. nullptr when this is not that word.
+    // A source-less setting lands its word in whichever slot the caller used
+    // (SetTraceParam("BUFFERSIZE", n) puts it in the Source slot), so the value is whatever follows
+    // it. nullptr when this is not that word.
     LPXLOPER12 ValueAfterWord(LPXLOPER12 srcArg, LPXLOPER12 nameArg, LPXLOPER12 valArg,
                               const wchar_t* word)
     {
@@ -145,9 +145,8 @@ namespace
             : L"FORMAT=CSV (one row a line, values as text; takes effect at next arm)");
     }
 
-    // LOGLEVEL is source-less and, unlike the trace params, settable AT ANY
-    // TIME: it controls the log, not the trace, so it is not refused while
-    // armed. Same return convention.
+    // LOGLEVEL is source-less and, unlike the trace params, not refused while armed: it controls
+    // the log, not the trace.
     LPXLOPER12 HandleLogLevelParam(LPXLOPER12 srcArg, LPXLOPER12 nameArg, LPXLOPER12 valArg)
     {
         LPXLOPER12 v = ValueAfterWord(srcArg, nameArg, valArg, L"LOGLEVEL");
@@ -174,9 +173,8 @@ namespace
         if (CalledFromCell())
             return EchoStr(L"#Err - call via Application.Run, not from a cell");
 
-        // LOGLEVEL first, because it is settable while armed; then the two
-        // source-less words that do refuse. Each returns its own echo or
-        // nullptr, falling through to the ordinary Source/Name/Value path.
+        // LOGLEVEL first, because it is settable while armed. Each returns its own echo, or nullptr
+        // to fall through to the ordinary Source/Name/Value path.
         if (LPXLOPER12 r = HandleLogLevelParam(srcArg, nameArg, valArg)) return r;
         if (LPXLOPER12 r = HandleBufferSizeParam(srcArg, nameArg, valArg))   return r;
         if (LPXLOPER12 r = HandleBufferWhenFullParam(srcArg, nameArg, valArg)) return r;
@@ -240,10 +238,8 @@ namespace
         return EchoStr(echo);
     }
 
-    // The XLOPER-grid mechanics are xlgrid.h. None of these is registered
-    // thread-safe, so Excel calls them on its main thread; thread-local keeps
-    // that true should one ever be.
-    // 128 characters a cell: the longest answer is an error message, and one cut short misleads.
+    // None of these is registered thread-safe, so Excel calls them on its main thread; thread-local
+    // keeps that true should one ever be. 128 characters a cell: an error cut short misleads.
     __declspec(thread) app::XlGrid<32, 128> t_param;
 
     void       CellStr (int i, const wchar_t* text) { t_param.Str(i, text); }
@@ -252,9 +248,8 @@ namespace
 
     LPXLOPER12 GetTraceParamBody(LPXLOPER12 srcArg, LPXLOPER12 nameArg)
     {
-        // SYMMETRIC: each returns exactly the value SetTraceParam took, so a
-        // cell can read it and set it back. Live capacity, drops and pauses
-        // answer a different question and live on the summary.
+        // Each returns exactly the value SetTraceParam took, so a cell can read it and set it back.
+        // Live capacity, drops and pauses answer a different question and live on the summary.
         if (NamesWord(srcArg, nameArg, L"BUFFERSIZE"))
         {
             wchar_t sz[32]; FormatBufferW(core::modes::GetBufferBytes(), sz, 32);
@@ -296,7 +291,7 @@ namespace
         const core::modes::Source srcs[2] = { core::modes::Source::Xll, core::modes::Source::Vba };
         wchar_t v[24];
 
-        // Source AND Name -> the one value.
+        // Source and Name -> the one value.
         if (!both && haveName) { ValueTextW(s, p, v, 24); return CellEcho(v); }
 
         // Source only -> that source's settings: Name, Value.

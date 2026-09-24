@@ -1,28 +1,13 @@
-# StretchXL TestKit -- the helper a PowerShell test dot-sources to implement
-# the contract (StretchXL.md). A test's whole obligation is:
+# StretchXL TestKit: a test dot-sources it to meet the contract in StretchXL.md.
 #
 #     . (Join-Path $PSScriptRoot '..\..\TestKit.ps1')   # or wherever it lives
 #     $sx = Connect-TestExcel
 #     ... do exactly one thing against $sx.App ...
 #     Complete-Test -Pass            # or -Fail 'why' / -Skip 'why'
 #
-# The contract, from the test's side:
-#   environment in : STRETCH_SESSION_HWND present  => bind to exactly that
-#                    Excel (by window handle, never GetActiveObject -- which
-#                    binds "some Excel" rather than this one);
-#                    absent => standalone: the kit starts an Excel of its own,
-#                    and closes it, because the party who started a session
-#                    closes it. Under a manager the kit never closes: the
-#                    measured close-down belongs to the manager.
-#   stdout out     : one mandatory 'STRETCH verdict=...' line (Complete-Test),
-#                    optional 'STRETCH case=...' lines before it
-#                    (Write-TestCase). Anything else is captured log.
-#   release        : whatever COM references the test acquires it releases --
-#                    Complete-Test releases what the kit handed out; process
-#                    exit sweeps up honest stragglers.
-#
-# This file has no parameters and takes no action when dot-sourced; it only
-# defines functions and reads the environment.
+# With STRETCH_SESSION_HWND set, the kit binds to that Excel by window handle (never
+# GetActiveObject, which binds "some Excel") and leaves the measured close to the
+# manager. Without it, the kit starts its own Excel and closes it.
 
 Set-StrictMode -Off
 $ErrorActionPreference = 'Stop'
@@ -44,10 +29,8 @@ $script:ExitPollMs = 250
 $script:DefaultSettleSeconds = 3
 
 # --- native plumbing --------------------------------------------------------
-# AccessibleObjectFromWindow(OBJID_NATIVEOM) on the EXCEL7 child window is the
-# published way to get the object model of one specific Excel from its window.
-# The walk is XLMAIN -> XLDESK -> EXCEL7, and EXCEL7 only exists once a
-# workbook does, which is why the session baseline includes one empty workbook.
+# AccessibleObjectFromWindow(OBJID_NATIVEOM) on EXCEL7 gets one specific Excel's object
+# model; EXCEL7 exists only once a workbook does, hence the baseline empty workbook.
 if (-not ('SXKit.Native' -as [type])) {
     Add-Type -Name Native -Namespace SXKit -MemberDefinition @'
 [System.Runtime.InteropServices.DllImport("user32.dll", SetLastError=true)]
@@ -63,12 +46,10 @@ $script:SxSession = $null
 function Clear-ComStragglers {
     <#
     .SYNOPSIS
-        Release un-rooted COM temporaries now. Every dot in a chain like
-        $sx.App.Workbooks.Item(1) creates a wrapper nobody holds, and process
-        exit does not reliably release them, which leaves Excel alive after
-        its close. Collect, drain the finalizers, collect the emptied wrappers.
-        Complete-Test calls this; a long test that churns objects may too.
-        Variables still in scope stay rooted and stay the test's to release.
+        Release un-rooted COM temporaries now. Each dot in $sx.App.Workbooks.Item(1)
+        makes a wrapper nobody holds, and process exit does not reliably release
+        them, leaving Excel alive after its close. Variables in scope stay the
+        test's to release.
     #>
     [GC]::Collect()
     [GC]::WaitForPendingFinalizers()
@@ -77,12 +58,9 @@ function Clear-ComStragglers {
 
 function Get-TestWorkDir {
     <#
-      Where this test writes its workbooks: one directory per test, inside the
-      directory that already holds that session's add-in output.
-
-      Managed and standalone each have one source and neither falls back to the
-      other: under the manager a missing value means the manager is broken,
-      and writing somewhere else instead would hide that.
+      One directory per test, inside the session's add-in output directory.
+      No fallback between managed and standalone: a missing value under the
+      manager means the manager is broken, and writing elsewhere would hide it.
     #>
     param([Parameter(Mandatory)][bool]$Managed)
 
@@ -247,11 +225,9 @@ function Connect-TestExcel {
 function Get-SessionDialogs {
     <#
     .SYNOPSIS
-        The lines the manager's watchdog has dismissed-and-recorded so far on
-        this worker (newest last). A dialog-aware test snapshots the count
-        before a step and reads the delta after; one that decides the dialogs
-        were expected keeps its PASS by calling Write-DialogsHandled --
-        otherwise the manager turns a PASS with dialogs into a FAIL.
+        The dialogs the manager's watchdog has dismissed so far on this worker,
+        newest last. A test that expected them calls Write-DialogsHandled to
+        keep its PASS; otherwise the manager turns it into a FAIL.
     #>
     if ([string]::IsNullOrEmpty($env:STRETCH_DIALOG_LOG)) { return @() }
     return @(Get-Content $env:STRETCH_DIALOG_LOG -ErrorAction SilentlyContinue)
@@ -300,11 +276,9 @@ function Write-TestCase {
 function Complete-Test {
     <#
     .SYNOPSIS
-        Emit the mandatory verdict line and finish the test. Releases the COM
-        references the kit handed out; standalone, also closes the Excel the
-        kit started (under a manager the measured close belongs to the
-        manager). Exits the process with 0: the verdict line carries the
-        result, and a nonzero exit means a test that crashed.
+        Emit the verdict line, release the kit's COM references, close a
+        standalone Excel, and exit 0: the verdict line carries the result, and
+        a nonzero exit means the test crashed.
     #>
     [CmdletBinding()]
     param(
@@ -344,11 +318,9 @@ function Complete-Test {
             }
         }
         else {
-            # Close the workbooks this test opened, then release the kit's refs: a book left
-            # open is recalculated into the next test's trace. Every book except the baseline
-            # goes, identified by name, since an unsaved Workbooks.Add() looks just like the
-            # baseline. Without a known baseline the "has a Path" rule applies. DisplayAlerts is
-            # off only around the closes.
+            # A book left open is recalculated into the next test's trace, so every book but the
+            # baseline goes, matched by name: an unsaved Workbooks.Add() looks just like it.
+            # Without a known baseline, only books with a Path are closed.
             try {
                 $ap = $sess.App
                 if ($ap) {

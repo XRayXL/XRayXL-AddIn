@@ -12,13 +12,8 @@ End Function
 '@
      Invoke=@{ Formula='=T_UHF()' }
      Expect={ param($t)
-        # A TRULY unhandled unwind, driven from a cell rather than
-        # Application.Run. Run puts up the modal VBA error dialog and waits for
-        # a human, which is untestable from a script; a UDF that raises becomes
-        # #VALUE! and unwinds silently. Same unwind, no dialog.
-        #
-        # Three frames are released at once with nothing executing afterwards,
-        # so only the flush at Disarm can close them.
+        # From a cell because under Application.Run the same unwind waits on a modal dialog.
+        # Nothing runs afterwards, so only the flush at Disarm can close the three frames.
         if ($t.faults -gt 0) { return "$($t.faults) faults during an unhandled unwind" }
         if ($t.framesOpened -lt 1) { return "the UDF was never traced at all" }
         if ($t.framesOpened -ne $t.framesClosed) {

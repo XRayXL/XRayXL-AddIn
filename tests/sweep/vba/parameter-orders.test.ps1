@@ -1,19 +1,11 @@
-# The same types in different orders: fixed permutations, in the gate.
-#
-# The argument label is the frame slot, and a `ByVal Variant` occupies three, so in `(Variant,
-# Long)` the Long is `a4` and in `(Long, Variant)` it is `a1`. Wrong slot arithmetic still
-# produces something that looks like a value.
-#
-# Fixed rather than random, so a slot-arithmetic regression fails every run and names the same
-# case each time. Each value carries its position (a Long at position 3 holds 1003), so a
-# transposition fails.
+# Every parameter lands on its own slot whatever the order: a ByVal Variant takes three slots,
+# and wrong slot arithmetic still yields something that looks like a value. Fixed permutations,
+# so a failure names the same case every run; each value encodes its position.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
-# The permutations. Each entry is the ordered parameter list of one generated
-# Sub: a declared type and a mechanism. The set is chosen so the awkward
-# members -- the three-slot ByVal Variant, and the types whose REPORTED name
-# differs from the declared one -- appear first, last and in the middle.
+# the awkward members (the three-slot ByVal Variant, and types reported under another name)
+# appear first, last and in the middle
 $Orders = @(
     @{ N='P1'; P=@('ByVal:Variant','ByVal:Long','ByVal:String') }            # 3-slot first
     @{ N='P2'; P=@('ByVal:Long','ByVal:Variant','ByVal:String') }            # 3-slot middle
@@ -29,13 +21,8 @@ $Orders = @(
     @{ N='PC'; P=@('ByRef:String','ByVal:Boolean','ByRef:Variant','ByVal:Single') }
 )
 
-# Declared type -> VBA declaration, the value planted at position k, the text
-# the decoder must produce, the name it REPORTS, and how many slots it costs.
-#
-# The reported name is not always the declared one, and that is asserted rather
-# than worked around: a Boolean is held in an I2 so it reports as Integer, and a
-# ByRef LongLong goes through opcode 747 -- "eight bytes by reference" -- which
-# fires for LongLong, LongPtr and arrays alike and so asserts no type.
+# The reported name is asserted, not worked around: a Boolean is held in an I2 so reports
+# Integer, and a ByRef LongLong goes through opcode 747, which LongPtr and arrays share, so `Ref&`.
 $TypeTable = @{
     'Long'     = @{ Decl='Long';     Val={param($k) "$(1000+$k)"};         Text={param($k) "$(1000+$k)"};          Rep={param($r) if($r){'Long&'}else{'Long'}} }
     'Integer'  = @{ Decl='Integer';  Val={param($k) "$(100+$k)"};          Text={param($k) "$(100+$k)"};           Rep={param($r) if($r){'Integer&'}else{'Integer'}} }
@@ -67,8 +54,7 @@ try {
             $mech, $tn = $spec -split ':'
             $byRef = ($mech -eq 'ByRef')
             $ti = $TypeTable[$tn]
-            # A ByVal Variant is a 24-byte VARIANT: THREE slots. A ByRef Variant
-            # is one, because the slot holds a pointer.
+            # a ByVal Variant is a 24-byte VARIANT; a ByRef one is a pointer
             $slots = if ((-not $byRef) -and $tn -eq 'Variant') { 3 } else { 1 }
             $params += [pscustomobject]@{
                 Idx=$k; TypeName=$tn; T=$ti; ByRef=$byRef; Slot=$slot
@@ -80,9 +66,7 @@ try {
             $m = if ($_.ByRef) { 'ByRef' } else { 'ByVal' }
             "$m p$($_.Idx) As $($_.T.Decl)" }) -join ', '
 
-        # Every parameter is READ: a parameter the body never reads emits no
-        # typed load and has no recoverable type, which would fail this for a
-        # reason that is not a defect.
+        # every parameter is read: an unread one has no typed load, so no recoverable type
         [void]$sb.AppendLine("Public Sub $($o.N)($decl)")
         foreach ($p in $params) {
             [void]$sb.AppendLine("    Dim t$($p.Idx) As $($p.T.Decl)")
@@ -105,15 +89,9 @@ try {
     [void]$sb.AppendLine("End Sub")
     $moduleCode = $sb.ToString()
 
-    # ---- OPTION BASE, in its own module ------------------------------------
-    #
-    # `Dim a(3)` is not one thing. Under the default base 0 it is 0..3 -- FOUR
-    # elements -- and under `Option Base 1` it is 1..3, three. A bare count
-    # cannot be matched back to the `a(3)` somebody wrote, and that is why both
-    # columns state both bounds rather than a count.
-    #
-    # Two modules, the SAME declaration, so the difference is the directive and
-    # nothing else.
+    # ---- Option Base, in its own module ------------------------------------
+    # `Dim a(3)` is 0..3 under base 0 and 1..3 under base 1, so a bare count could not be
+    # matched to the source; the same declaration in two modules isolates the directive.
     $baseCode = @'
 Option Base 1
 Public Sub OB1(a() As Long)
@@ -176,7 +154,7 @@ End Sub
     Check 'every-ordering-was-traced' ($missing.Count -eq 0) `
           ("missing: " + $(if ($missing.Count) { $missing -join ',' } else { 'none' }))
 
-    # ---- argcount counts PARAMETERS, whatever the slots did ----------------
+    # ---- argcount counts parameters, whatever the slots did ----------------
     $badCount = @()
     foreach ($pr in $plan) {
         if (-not $entry.ContainsKey($pr.Name)) { continue }
@@ -187,7 +165,7 @@ End Sub
     Check 'argcount-is-parameters-not-slots-in-every-order' ($badCount.Count -eq 0) `
           ($(if ($badCount.Count) { $badCount -join ' | ' } else { 'all correct' }))
 
-    # ---- EVERY PARAMETER, AT ITS SLOT, IN EVERY ORDER ----------------------
+    # ---- every parameter, at its slot, in every order ----------------------
     $wrong = @(); $checked = 0
     foreach ($pr in $plan) {
         if (-not $entry.ContainsKey($pr.Name)) { continue }
@@ -204,9 +182,7 @@ End Sub
     Check 'every-parameter-lands-on-its-own-slot-in-every-order' ($wrong.Count -eq 0) `
           ("checked=$checked " + $(if ($wrong.Count) { ($wrong | Select-Object -First 3) -join ' | ' } else { 'all correct' }))
 
-    # The order-specific assertion. P1/P2/P3 are the same three types in three orders; a ByVal
-    # Variant costs three slots, so the Long sits at a4, a1 and a1. Naming them means the
-    # failure says which order broke.
+    # P1/P2/P3 are the same three types in three orders, named so a failure says which broke
     $p1 = if ($entry.ContainsKey('P1')) { [string]$entry['P1'].args } else { '' }
     $p2 = if ($entry.ContainsKey('P2')) { [string]$entry['P2'].args } else { '' }
     $p3 = if ($entry.ContainsKey('P3')) { [string]$entry['P3'].args } else { '' }
@@ -214,15 +190,12 @@ End Sub
           (($p1 -match 'a4:Long=1002') -and ($p2 -match 'a1:Long=1001') -and ($p3 -match 'a1:Long=1001')) `
           ("Variant first: '$p1' | middle: '$p2' | last: '$p3'")
 
-    # ---- OPTION BASE: the same declaration, two meanings --------------------
+    # ---- Option Base: the same declaration, two meanings --------------------
     Write-Output ''
     Write-Output 'Option Base -- Dim a(3) declared identically in two modules:'
     Write-Output ("  base 0  " + (ArgsOf $rows 'OB0'))
     Write-Output ("  base 1  " + (ArgsOf $rows 'OB1'))
 
-    # THE POINT: a bare count could not tell these apart. `Dim a(3)` is four
-    # elements under base 0 and three under base 1, so `[4]` and `[3]` would
-    # both be true and neither would match the source.
     Check 'option-base-0-reports-its-real-lower-bound' `
           ((ArgsOf $rows 'OB0') -match '\[0\.\.3\]') `
           ("Dim a(3) under base 0 is 0..3, four elements: " + (ArgsOf $rows 'OB0'))

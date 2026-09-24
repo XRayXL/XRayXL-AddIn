@@ -1,14 +1,5 @@
-# A PAUSED RING LOSES NOTHING, EVEN WHEN STARVED.
-#
-# BUFFERWHENFULL=PAUSE is the answer to "I would rather throttle the calc than
-# lose a row." Same 16 KB ring and fat rows as the starvation case, but a full
-# ring makes the traced thread wait for the drain instead of dropping. So the
-# file must come out complete: every frame present, no hole in the `input`
-# sequence, and zero drops from XRayXL_Disarm and on the disarm log line.
-#
-# The pause count proves the mode did something: a ring this small forces the
-# producer to wait, so pauses > 0; zero would mean nothing about backpressure
-# was tested.
+# A paused ring loses nothing, even when starved: BUFFERWHENFULL=PAUSE makes the traced thread wait
+# for the drain instead of dropping. Pauses must be above zero, or no backpressure was tested.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 . (Join-Path $PSScriptRoot '_driver.ps1')

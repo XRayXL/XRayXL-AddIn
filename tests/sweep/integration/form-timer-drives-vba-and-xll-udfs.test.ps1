@@ -1,23 +1,15 @@
-# A UserForm with a timer, end to end: VBA tracing is not confined to UDFs reached from a
-# recalc, and form code itself appears.
+# A UserForm and an OnTime timer, end to end: VBA tracing reaches form code and event-driven VBA,
+# not only UDFs from a recalc. One trace file must hold:
 #
-# A standard-module Sub instantiates a UserForm and calls its method Arm, which schedules
-# Application.OnTime. The handler XR_TimerTick dirties the UDF inputs and calls
-# Worksheet.Calculate on a sheet holding one VBA UDF and one XLL UDF. One trace file must hold:
-#
-#   UserForm_Initialize   FORM EVENT CODE -- the interpreter invokes it as part
-#                         of loading the form, not via a call opcode. THIS is the
-#                         row that proves "form VBA is in the trace".
-#   Arm                   a FORM METHOD, called through the form instance
-#   XR_TimerTick          a plain Sub entered by the TIMER (OnTime), not a cell
-#                         and not Application.Run -- general, event-driven VBA
-#   XR_TimerUdf           a VBA UDF, called from cell A1 during the recalc
-#   XR_TimerHelper        called BY the UDF -- VBA nesting inside a UDF
+#   UserForm_Initialize   form event code, run by loading the form rather than a call opcode
+#   Arm                   a form method, called through the form instance
+#   XR_TimerTick          a Sub entered by the timer, neither a cell nor Application.Run
+#   XR_TimerUdf           a VBA UDF from cell A1
+#   XR_TimerHelper        called by the UDF, nested inside it
 #   TxB                   the XLL UDF in cell B1, source=XLL
 #
-# OnTime, not a shown form with a timer control: a shown form needs a pumped message loop, which
-# a COM driver cannot reliably provide. The form is never .Show'd; Initialize fires on first
-# member access.
+# OnTime, not a shown form: that needs a pumped message loop a COM driver cannot reliably provide.
+# Initialize fires on first member access.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -86,9 +78,8 @@ try {
     $armLine = Wait-LogLine $paths.Log 'VBA tracing: ' $mark
     if ($armLine -notmatch 'ARMED') { Complete-Test -Fail -Detail "did not arm: $armLine" }
 
-    # Reset the completion latch, kick the form, then let Excel idle so OnTime
-    # fires. Poll the latch rather than guess a sleep -- OnTime lands on the
-    # next idle, and a light cell read between sleeps is how Excel gets it.
+    # Poll the latch rather than sleep: OnTime lands on the next idle, and a light cell read is how
+    # Excel gets one.
     $ws.Range('Z1').Value = ''
     $app.Run($leaf + '!XR_StartForm') | Out-Null
     $fired = Wait-XRayCondition { ([string]$ws.Range('Z1').Value2) -eq 'done' } 12 250
@@ -105,15 +96,15 @@ try {
     $vNames  = @($vEntry | ForEach-Object { $_.function })
     $xNames  = @($xEntry | ForEach-Object { $_.function })
 
-    # ---- FORM EVENT CODE is in the trace (the headline claim) -------------
+    # ---- form event code is in the trace (the headline claim) -------------
     Check 'form-initialize-traced-as-vba' ($vNames -contains 'UserForm_Initialize') `
           ("VBA entries: " + ($vNames -join ','))
 
-    # ---- the form's own METHOD ran and was traced ------------------------
+    # ---- the form's own method ran and was traced ------------------------
     Check 'form-method-traced-as-vba' ($vNames -contains 'Arm') `
           ("VBA entries: " + ($vNames -join ','))
 
-    # ---- the TIMER handler -- VBA entered by neither a cell nor Run -------
+    # ---- the timer handler: VBA entered by neither a cell nor Run ---------
     Check 'timer-handler-traced-as-vba' ($vNames -contains 'XR_TimerTick') `
           ("VBA entries: " + ($vNames -join ','))
 
@@ -129,7 +120,7 @@ try {
     Check 'vba-udf-nests-its-helper' (($helper.Count -ge 1) -and ($helperParent -eq $udfSpan) -and ($udfSpan -ne '')) `
           ("XR_TimerHelper parent=$helperParent, XR_TimerUdf span=$udfSpan")
 
-    # ---- the XLL UDF, in the SAME trace file, source=XLL ------------------
+    # ---- the XLL UDF, in the same trace file, source=XLL ------------------
     $txb = @($xEntry | Where-Object { $_.function -eq 'TxB' })
     Check 'xll-udf-traced-from-cell' (($txb.Count -ge 1) -and ($txb[0].caller -eq 'cell')) `
           ("TxB count=$($txb.Count) caller='$(if ($txb.Count) { $txb[0].caller } else { '' })'  (XLL entries: " + ($xNames -join ',') + ")")

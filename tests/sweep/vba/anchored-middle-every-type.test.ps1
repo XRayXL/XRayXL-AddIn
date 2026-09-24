@@ -1,23 +1,11 @@
-# Two known parameters, and every declared type between them.
-#
-# Three parameters. The first and third are always `ByVal As Long` carrying 1001 and 3003. The
-# middle one is swept through every type VBA can declare, as both a Sub and a Function, since a
-# Function has a result slot at [R14-8] and a Sub does not.
-#
-# The assertion carries no table of type names, only a relationship: whatever sits in the
-# middle, the first parameter reads `a1:Long=1001` and the last reads `Long=3003`. The argument
-# label is a frame slot index, and a `ByVal Variant` occupies three slots, so the third
-# parameter lands at `a5`; reading the wrong slot still yields a number, which the two distinct
-# anchors catch.
-#
-# These bodies are four statements with no call, so `)~` or a `?` is a failure here. ParamArray
-# is absent: it must be the last parameter.
+# Whatever type sits between two known Long parameters, in a Sub or a Function, both still read
+# right: a middle of the wrong slot width shifts the last one, and a wrong slot still yields a
+# number, which only distinct anchors catch.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
-# Id, the middle's declaration, the driver's local, how it is initialised, and
-# how the body READS it. Every body reads all three parameters: an unread one
-# emits no typed load and would come back `?` for a reason that is not a defect.
+# Every body reads all three parameters: an unread one has no typed load and would read `?`.
+# ParamArray is absent because it must be last.
 $Middles = @(
   @{ Id='Byte';     Decl='ByVal m As Byte';      Local='As Byte';      Init='= 7'          }
   @{ Id='Integer';  Decl='ByVal m As Integer';   Local='As Integer';   Init='= 7'          }
@@ -130,7 +118,7 @@ try {
     Check 'every-middle-type-was-traced' ($missing.Count -eq 0) `
           ("missing: " + $(if ($missing.Count) { $missing -join ',' } else { 'none' }))
 
-    # ---- THE ANCHORS. No expected-type table needed. ----------------------
+    # ---- the anchors: no expected-type table needed ----------------------
     $lost = @()
     foreach ($c in $cases) {
         if (-not $entry.ContainsKey($c.Name)) { continue }
@@ -141,13 +129,13 @@ try {
     Check 'both-anchors-survive-every-middle-type' ($lost.Count -eq 0) `
           ($(if ($lost.Count) { $lost -join ' | ' } else { "$($cases.Count) cases, both anchors intact" }))
 
-    # ---- argcount is PARAMETERS, not slots: three, always -----------------
+    # ---- argcount is parameters, not slots: three, always -----------------
     $badCount = @($cases | Where-Object { $entry.ContainsKey($_.Name) -and [int]$entry[$_.Name].argcount -ne 3 } |
                   ForEach-Object { "$($_.Name)=$($entry[$_.Name].argcount)" })
     Check 'argcount-is-three-whatever-the-middle-costs-in-slots' ($badCount.Count -eq 0) `
           ($(if ($badCount.Count) { $badCount -join ' ' } else { 'all 3' }))
 
-    # ---- A THREE-PARAMETER BODY MUST DECODE WITHOUT RESYNCHRONISING -------
+    # ---- a four-statement body with no call must not resynchronise --------
     $resynced = @($cases | Where-Object { $entry.ContainsKey($_.Name) -and $entry[$_.Name].typetext -match '~$' } |
                   ForEach-Object { "$($_.Name)=$($entry[$_.Name].typetext)" })
     Check 'no-resynchronisation-on-a-four-statement-body' ($resynced.Count -eq 0) `
@@ -159,9 +147,7 @@ try {
     Check 'every-parameter-typed-because-the-body-reads-all-three' ($untyped.Count -eq 0) `
           ($(if ($untyped.Count) { $untyped -join ' ' } else { 'no untyped position' }))
 
-    # ---- WHAT EACH MIDDLE COST IN SLOTS, reported not asserted ------------
-    # The slot-consumption table is the thing being learnt, and a ByVal Variant
-    # taking three is the case the anchors exist for.
+    # ---- what each middle cost in slots, reported not asserted ------------
     Write-Output ''
     Write-Output 'slots consumed by the middle (from where 3003 landed):'
     foreach ($c in $cases) {

@@ -1,8 +1,5 @@
-# Calls with NO CALLING CELL: Application.Run of a command, Application.Run
-# and Application.Evaluate of a UDF, and genuine re-entry through Evaluate.
-# The unambiguous assertion is that the macro really ran (its own counter
-# moved); what the trace attributes to a cell-less call is reported into the
-# captured log.
+# Calls with no calling cell: Application.Run and Evaluate of a command and of UDFs, and re-entry
+# through Evaluate. The macro must really run, and a cell-less call must read caller='none'.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

@@ -1,9 +1,6 @@
-# ADDING XRAYXL AGAIN TO AN EXCEL THAT HAS IT LOADED KEEPS ITS SESSION.
-#
-# Excel calls xlAutoOpen again when a loaded add-in is registered again. The
-# log, the crash handlers and the pin belong to the process and are set up
-# once. A second pass that reopens the log truncates the session's record, and
-# one that installs the crash filter again makes it call itself.
+# Registering XRayXL again in an Excel that has it loaded keeps its session: Excel calls xlAutoOpen
+# again, and the log, crash handlers and pin are per-process. Reopening the log would truncate the
+# session's record, and installing the crash filter again would make it call itself.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

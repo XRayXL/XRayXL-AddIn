@@ -12,9 +12,8 @@ namespace core
 {
     namespace
     {
-        // "A1" from a zero-based row and column. Excel's column letters are
-        // bijective base-26 -- there is no zero digit -- so 26 is Z and 27 is
-        // AA, which a plain base-26 conversion gets wrong.
+        // Column letters are bijective base-26, with no zero digit: 26 is Z and 27 is AA, which a
+        // plain base-26 conversion gets wrong.
         void RefText(int row0, int col0, char* out, int outSize)
         {
             char rev[8]; int n = 0;
@@ -26,8 +25,7 @@ namespace core
             _snprintf_s(out, outSize, _TRUNCATE, "%s%d", col, row0 + 1);
         }
 
-        // str[0] is the length, characters follow, no null terminator.
-        // (`pascal` is taken: windef.h defines it as a calling convention.)
+        // Not named `pascal`: windef.h defines that as a calling convention.
         void Utf8From(const XCHAR* pstr, char* out, int outSize)
         {
             out[0] = 0;
@@ -35,9 +33,8 @@ namespace core
             NarrowUtf8(pstr + 1, pstr[0], out, outSize);
         }
 
-        // "none:ref" says the caller was the macro dialog, an Auto macro, an
-        // event or the VBE. "none:err<N>" is something else entirely and should
-        // be looked at rather than filed under the same heading.
+        // "none:ref" is the macro dialog, an Auto macro, an event or the VBE; "none:err<N>" is
+        // something else and must not be filed under the same heading.
         const char* ErrName(int e) { return ExcelErrShortName(e); }
 
         double NumOf(const XLOPER12& x)
@@ -47,9 +44,6 @@ namespace core
             if (t == xltypeInt) return static_cast<double>(x.val.w);
             return 0.0;
         }
-
-        // One element of a toolbar or menu array, by its own type. A custom toolbar puts its name
-        // where a built-in one puts a number, so a string is quoted and never reads as a number.
 
         // Excel's own quoting rule:
         //
@@ -91,6 +85,8 @@ namespace core
             out[j] = 0;
         }
 
+        // A custom toolbar puts its name where a built-in one puts a number, so a string is quoted
+        // and never reads as a number.
         void ElemText(const XLOPER12& x, char* out, int cap)
         {
             const int t = x.xltype & kXlTypeMask;
@@ -158,10 +154,8 @@ namespace core
             break;
 
         case xltypeRef:
-            // reftbl[0] only. A caller with more than one area would need a
-            // multi-area array formula, which Excel refuses to enter; if one
-            // ever arrives, the first area is a true statement about where the
-            // formula is rather than a guess.
+            // reftbl[0] only: Excel refuses to enter a multi-area array formula, and the first area
+            // would still be true.
             if (caller.val.mref.lpmref != nullptr && caller.val.mref.lpmref->count >= 1)
             {
                 r0 = caller.val.mref.lpmref->reftbl[0].rwFirst;
@@ -173,10 +167,7 @@ namespace core
 
         case xltypeStr:
         {
-            // A macro run from a graphic object. The string is that object's
-            // NAME and the only attribution such a call has -- there is no
-            // cell, and putting the name in the cell column would be a
-            // confident wrong one.
+            // A graphic object's name: the only attribution the call has, and never a cell.
             char name[512];
             Utf8From(caller.val.str, name, sizeof(name));
             // Empty from a non-empty name means it did not fit, not that there is none.
@@ -205,9 +196,7 @@ namespace core
 
         case xltypeErr:
         {
-            // #REF! is the documented answer for "not called from a sheet" --
-            // the macro dialog, an Auto macro, an event handler, the VBE,
-            // Application.Run, DDE/OLE. An ANSWER, not a failure.
+            // #REF! is the documented answer for "not called from a sheet": an answer, not a failure.
             const char* e = ErrName(caller.val.err);
             if (e) Say(out, "none", "%s", e);
             else   Say(out, "none", "err%d", caller.val.err);
@@ -233,8 +222,7 @@ namespace core
 
         if (r0 < 0 || c0 < 0)
         {
-            // A zero-count SRef/Ref reaches here having set nothing, and caller.h promises `what`
-            // is never empty.
+            // A zero-count SRef/Ref reaches here having set nothing, and `kind` is never empty.
             if (!out.kind[0]) Say(out, "none", "emptyref");
             return;
         }
@@ -256,8 +244,7 @@ namespace core
         // "A1", so the cell is written only when the sheet resolved.
         if (sheetName && sheetName[0])
         {
-            // ONE FIELD: "[Book1]Sheet1!B2", or "…!B2:D4" for a CSE range, and
-            // QUOTED EXACTLY WHERE EXCEL QUOTES IT.
+            // Quoted exactly where Excel quotes it, so the text pastes back.
             char pre[512];
             QuoteSheetPrefix(sheetName, pre, sizeof(pre));
             Say(out, "cell", "%s!%s", pre, ref);
@@ -285,9 +272,7 @@ namespace core
             return;
         }
 
-        // Asked for separately, and only the reference kinds have one.
-        // xlCoerce is never used: it fails with xlretUncalced on an
-        // uncalculated cell.
+        // Never xlCoerce: it fails with xlretUncalced on an uncalculated cell.
         char sheet[512] = { 0 };
         bool nameDidNotFit = false;
         const int t = caller.xltype & kXlTypeMask;
@@ -310,8 +295,7 @@ namespace core
         DecodeCaller(&caller, sheet, out);
         Excel12(xlFree, nullptr, 1, &caller);
 
-        // Said AFTER the decode so DecodeCaller stays pure and offline-testable:
-        // it is handed a sheet name or not, and knows nothing of why.
+        // After the decode, so DecodeCaller stays pure: it is handed a sheet name or not, never why.
         if (nameDidNotFit && !out.isCell) Say(out, "none", "nametoolong");
     }
 }

@@ -12,10 +12,8 @@
     TestTimeoutSeconds = 3000
     ModulesOfInterest = @('xrayxl', 'vbe7')
 
-    # Every session writes into its own directory. Without this the add-in
-    # writes to the shared %TEMP%\XRayXL, keyed by pids Windows recycles, where
-    # files pile up without limit and every "newest trace for this pid" lookup
-    # scans them all. tests\sweep\suite.psd1 sets it only for tests\sweep\.
+    # Otherwise the add-in writes to the shared %TEMP%\XRayXL, keyed by recycled pids, where
+    # files pile up. tests\sweep\suite.psd1 sets it only for tests\sweep\.
     SessionEnvironment = @{
         XRAYXL_OUTPUT_DIR = '{SessionDir}'
 
@@ -26,9 +24,7 @@
     # Same trap, same guard -- see tests\sweep\suite.psd1.
     RequireNotOlderThan = @{
         '..\..\..\build\addin\XRayXL64.xll' = '..\..\..\build\x64\Release\XRayXL\XRayXL64.xll'
-        # ...and the BUILD must not be older than the SOURCE it came from, or a
-        # build that FAILED leaves the previous binary for the deploy to copy,
-        # the two timestamps agree, and the run certifies code never compiled.
+        # A failed build leaves the previous binary for the deploy to copy.
         '..\..\..\build\x64\Release\XRayXL\XRayXL64.xll' = '..\..\..\src'
     }
 }

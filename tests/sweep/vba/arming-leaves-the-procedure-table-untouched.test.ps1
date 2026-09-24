@@ -42,7 +42,7 @@ try {
     $app = $sx.App
     Set-XRaySessionDefaults $sx
     $paths = Get-XRayPaths $sx.ProcId
-    # A later arm releases the previous table as it starts, which swamps the growth (-10.7 MB under Reuse).
+    # a later arm releases the previous table as it starts, which swamps the growth
     $earlierArms = @(Select-String -Path $paths.Log -SimpleMatch 'VBA tracing: ARMED' -ErrorAction SilentlyContinue).Count
     if ($earlierArms -gt 0) {
         Complete-Test -Skip -Detail "not the first VBA arm in this Excel ($earlierArms earlier), and only a first arm measures this"
@@ -58,8 +58,7 @@ try {
 
     # VBE7 loaded and the module compiled, so the arm is the only thing measured.
     $app.Run($leaf + '!AT_Warm') | Out-Null
-    # The Process object is held for the whole test: a handle read off a temporary
-    # one is closed whenever that object is collected, and the read then fails.
+    # held for the whole test: a handle off a collected Process object is closed
     $proc = [Diagnostics.Process]::GetProcessById($sx.ProcId)
     $handle = $proc.Handle
 

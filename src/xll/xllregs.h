@@ -10,7 +10,7 @@ namespace xll
     struct Regs
     {
         ULONG64  ireg[4];      // +0x00  rcx, rdx, r8, r9  -- integer/pointer args 0..3
-        double   xmm[4];       // +0x20  xmm0..xmm3        -- floating args, BY POSITION
+        double   xmm[4];       // +0x20  xmm0..xmm3        -- floating args, by position
         ULONG64  rax;          // +0x40  integer return
         double   xmmRet;       // +0x48  xmm0 on return
         ULONG64* stackArgs;    // +0x50  -> the caller's 5th argument onward
@@ -24,9 +24,8 @@ namespace xll
     static_assert(offsetof(Regs, xmmRet)    == 0x48, "xllthunk.asm assumes xmmRet at +0x48");
     static_assert(offsetof(Regs, stackArgs) == 0x50, "xllthunk.asm assumes stackArgs at +0x50");
 
-    // Position picks the index, type picks the register file -- they are not
-    // competing numbering schemes: the SECOND argument of f(int, double, ...)
-    // is in XMM1, not XMM0. Beyond the fourth, arguments are on the stack.
+    // Position picks the index, type picks the register file: the second argument of
+    // f(int, double, ...) is in XMM1, not XMM0. Beyond the fourth, arguments are on the stack.
     inline ULONG64 IntArgAt(const Regs& r, int pos)
     {
         if (pos < 4) return r.ireg[pos];

@@ -24,7 +24,7 @@ namespace xll
             case L'L': return Kind::PtrInt16;       // pointer to boolean
             case L'M': return Kind::PtrInt16;
             case L'N': return Kind::PtrInt32;
-            case L'O': return Kind::ArrayTriple;    // THREE slots
+            case L'O': return Kind::ArrayTriple;    // three slots
             case L'P': return Kind::OperNarrow;
             case L'Q': return Kind::OperWide;
             case L'R': return Kind::OperNarrow;
@@ -81,8 +81,6 @@ namespace xll
 
             if (ReturnIsVoid(c))
             {
-                // Nothing to read out of a register. returnKind == Void is the
-                // signal DescribeReturn reads.
                 p.returnKind = Kind::Void;
             }
             else
@@ -97,7 +95,7 @@ namespace xll
             i += wide ? 2 : 1;
         }
 
-        // `typeIndex` walks the string and `abi` walks the ABI slots, and they differ: a '%' is
+        // `i` walks the string and `abi` walks the ABI slots, and they differ: a '%' is
         // part of its code, and an O takes three slots.
         int abi = 0;
         for (; typeText[i] != 0; )
@@ -137,9 +135,7 @@ namespace xll
             }
             ++p.paramCount;
 
-            // One type code, one ABI slot -- or THREE for O: u16*/i32* rows,
-            // then cols, then the double array. Only the first carries the
-            // code, and only it renders.
+            // O takes three slots (rows*, cols*, the doubles); only the first renders.
             const int width = (k == Kind::ArrayTriple) ? 3 : 1;
             if (abi + width > Plan::kMaxAbiSlots) { p.firstBadCode = '+'; return p; }
             for (int t = 0; t < width; t++, abi++)

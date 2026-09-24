@@ -1,9 +1,5 @@
-# A real error swallowed by On Error Resume Next in the same frame.
-#
-# A benign object-model raise and a real error caught in place are indistinguishable at the
-# raise (same opcode, 497, same registers), and both let the frame run on to its own exit, so
-# both read `returned`. This pins that, and fails loudly on `threw`, which would mean the tracer
-# thought the error escaped.
+# A real error swallowed by On Error Resume Next in its own frame reads `returned`, never
+# `threw`: at the raise it is indistinguishable from a benign object-model raise.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -47,16 +43,13 @@ try {
     $outcome = if ($r.Count -and $r[0].outcome) { $r[0].outcome } else { '(no row)' }
     $wrote = [string]$wb.Worksheets.Item(1).Range('A1').Value2
 
-    # The macro DID run to completion (A1 written), so the error was handled.
+    # A1 is written only after the error, so the macro ran on past it
     Check 'macro-ran-past-the-error' ($wrote -eq 'after') "A1='$wrote' (statement after the swallowed error ran)"
-    # By design. `outcome` reports errors that pass up the stack. An error raised and swallowed
-    # inside one frame never crosses a frame boundary, and `handled` is reserved for a frame
-    # that caught an error thrown below it. Reading Err.Number to relabel this would add a
-    # hot-path COM read.
+    # By design: `handled` is for a frame that caught an error thrown below it, and relabelling
+    # this would need a COM read of Err.Number on the hot path.
     Check 'same-frame-resume-next-reads-returned' ($outcome -eq 'returned') `
           "P2_ResumeNext outcome='$outcome' -- an error that never left its own frame must read 'returned'; 'handled' means a frame caught something thrown below it"
-    # The one plainly-wrong reading: the code caught the error and carried on, so
-    # it did NOT escape.
+    # the one plainly wrong reading: the error did not escape
     Check 'does-not-read-threw' ($outcome -ne 'threw') "P2_ResumeNext outcome='$outcome' -- must not read as an escaped throw"
 
     $checkFails = Get-XRayCheckFailures

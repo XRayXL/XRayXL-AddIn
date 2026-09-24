@@ -1,14 +1,5 @@
-# A VBA UDF THAT RETURNS AN ARRAY AND SPILLS.
-#
-# A UDF returning an array is how a modern sheet computes -- the result spills
-# across several cells from one anchor. Two things are exercised the scalar UDF
-# tests never reach: the CALLER of a spilled result (the anchor cell) and the
-# decode of an ARRAY return value. The UDF calls a helper per element so the
-# nesting is real.
-#
-#   P8_Spill  =P8_Spill(3) in A1, returns a 3-element array -> spills
-#   P8_Weight called three times                            -> nested, returned
-#
+# A UDF whose array result spills names its anchor cell as caller and decodes its array return,
+# which scalar UDF tests never reach; a helper per element makes the nesting real.
 # Spill needs a recent Excel; the UDF's own return is the same whether or not it spills.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')

@@ -20,22 +20,16 @@ End Sub
      Invoke=@{ Name='T_EndA'; Args=@(); MayRaise=$true }
      Then=@{ Name='T_AfterEnd' }
      Expect={ param($t)
-        # `End` does not unwind -- it tears the VBA session down. No handler
-        # runs, no exit opcode need fire, and there may be no "next statement
-        # at a higher rsp" to close the abandoned frames on the way past.
-        #
-        # The follow-up call is the real test: if the three abandoned frames
-        # were never closed, the clean 2-deep chain nests on top of them and
-        # the depth comes out around 5 instead of 3.
+        # `End` tears the session down with no handler or exit opcode, so the follow-up call is
+        # the real test: unclosed frames would push its clean chain deeper.
         if ($t.faults -gt 0) { return "$($t.faults) faults across End" }
         if ($t.maxDepth -gt 4) {
             return "DRIFT after End: depth reached $($t.maxDepth); nothing here nests past 3" }
         if ($t.framesOpened -ne $t.framesClosed) {
             return "LEAK across End: opened $($t.framesOpened), closed $($t.framesClosed)" }
 
-        # The only place `abandoned` comes from. Excel cannot take a running procedure away (a
-        # user break arrives as trappable error 18, and an XLL is merely asked to stop), so the
-        # End opcode is the single trigger and this is the test that pins the word.
+        # The only source of `abandoned`: a user break is trappable error 18, and an XLL is only
+        # asked to stop, so End is the single trigger.
         $ended = @($t.rows | Where-Object { $_.kind -eq 'exit' -and $_.function -like 'T_End*' })
         if ($ended.Count -lt 3) { return "expected 3 killed frames, saw $($ended.Count)" }
         $notAbandoned = @($ended | Where-Object { $_.outcome -ne 'abandoned' })
@@ -43,7 +37,7 @@ End Sub
             return ("End killed frames that do not read 'abandoned': " +
                     (($notAbandoned | ForEach-Object { "$($_.function)=$($_.outcome)" }) -join ',')) }
 
-        # And the frames of the LATER, clean call must not have caught it.
+        # the later, clean call must not have caught it
         $after = @($t.rows | Where-Object { $_.kind -eq 'exit' -and $_.function -like 'T_AfterEnd*' })
         $wrong = @($after | Where-Object { $_.outcome -ne 'returned' })
         if ($wrong.Count) {

@@ -1,12 +1,6 @@
-# The same parameter list in a class and a form.
-#
-# A class or form procedure is a COM method, so a Function returns its value through a trailing
-# `[out, retval]` argument slot while the call itself returns an HRESULT. That slot is not a
-# parameter: `argcount` must not include it, for any return type.
-#
-# `ZeroRetVal` is in the exit-opcode family but does not end a procedure: it zeroes the result
-# at entry, and is emitted only for a return type that needs it (String, Variant, Object). The
-# type walk must not stop on it.
+# The same parameters read identically in a class and a form, whose Functions return through a
+# trailing `[out, retval]` slot that is not a parameter. `ZeroRetVal` is in the exit-opcode
+# family but ends nothing, so the type walk must not stop on it.
 $case = @{ Name='frame-returns-container'
      ClassSetup=@'
 Public Function K_Var(ByVal a As Long, Optional b As Variant) As Variant
@@ -97,8 +91,7 @@ End Sub
         $all = @('K_Var','K_Long','K_Str','K_Obj','K_Dbl','K_Sub','U_Var','U_Sub')
         foreach ($fn in $all) { if (-not $e.ContainsKey($fn)) { return "$fn never entered" } }
 
-        # ONE PARAMETER LIST, SIX RETURN TYPES, TWO CONTAINERS, ONE ANSWER --
-        # and identical to what `frame-returns` asserts for a standard module.
+        # identical to what `frame-returns` asserts for a standard module
         $supplied = 'a1:Long=287454020 a2:Variant&=Integer(42)'
         foreach ($fn in $all) {
             $r = $e[$fn][0]

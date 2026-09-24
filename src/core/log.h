@@ -13,14 +13,13 @@ namespace Log
 {
     enum class Level { Debug = 0, Info = 1, Warning = 2, Error = 3 };
 
-    // Truncates and opens the log for this session. XRAYXL_LOGLEVEL is read
-    // ONCE, here, so start-up can be followed at DEBUG before any SetLevel call
-    // has had the chance to run.
+    // Truncates and opens the log for this session. XRAYXL_LOGLEVEL is read once, here, so start-up
+    // can be followed at debug level before any SetLevel call can run.
     void Open(const std::wstring& path);
     std::wstring Path();                               // empty until Open
 
-    // Settable at any time, including while armed: it controls the LOG, not the
-    // trace (the LOGLEVEL trace parameter).
+    // Settable at any time, even while armed: it controls the log, not the trace (the LOGLEVEL
+    // trace parameter).
     void  SetLevel(Level lvl);
     Level GetLevel();
     const char* LevelName(Level lvl);                  // "DEBUG".."ERROR"

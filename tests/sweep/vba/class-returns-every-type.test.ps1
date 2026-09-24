@@ -1,8 +1,5 @@
-# Return values out of a class module, one per type.
-#
-# Class and form Functions all leave through exit opcode 1664 whatever they return, and a class
-# Sub through 504, so the exit cannot name the type and the store opcode does. One Function per
-# type is exercised, and the opcode each uses is reported.
+# A class Function returns its value, for every type: class exits use one opcode whatever they
+# return, so only the store opcode can name the type.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -164,7 +161,7 @@ try {
     $rows  = @(Read-TraceRows $sx.ProcId)
     $exits = @($rows | Where-Object { ($_.kind -eq 'exit' -and $_.source -eq 'VBA') })
 
-    # Every typed Function must have run, or the report below is about nothing.
+    # every typed Function must have run, or the report below is about nothing
     $want = @('RByte','RInteger','RLong','RSingle','RDouble','RCurrency',
               'RString','RBoolean','RVariant','RVariantArr','RVariantStr',
               'RLongArr','RLongArrBusy','RObject','RSub','PGet','RLongNested','RStringMoved','RObjectFromFn')
@@ -173,12 +170,10 @@ try {
     Check 'every-typed-function-ran' ($missing.Count -eq 0) `
           ("missing: " + ($missing -join ',') + " | saw: " + ($seen -join ','))
 
-    # ---- WHAT THE TRACER CURRENTLY REPORTS -------------------------------
+    # ---- what the tracer reports -------------------------------
     Write-Output ''
     Write-Output 'returns by declared type:'
-    # EVERY row per procedure, not just the first. Several of these produce TWO
-    # exit rows and the first one showed an empty result -- which is a fact
-    # about WHEN the result exists, and invisible if only one row is printed.
+    # every row per procedure: some produce two exits, and when the result exists matters
     foreach ($w in $want) {
         $r = @($exits | Where-Object { $_.function -eq $w })
         if (-not $r.Count) { Write-Output ("  {0,-12} (no exit row)" -f $w); continue }
@@ -196,15 +191,8 @@ try {
     $distinct = @($unmapped | ForEach-Object { $_.Groups[1].Value })
     Write-Output ("=> {0} distinct unmapped opcode(s) across {1} declared types" -f $distinct.Count, $want.Count)
 
-    # A value is decoded, or the gap is named: a return the tracer cannot decode must be counted
-    # with its opcode.
-    #
-    # A Sub has no result and must not be given one. In a Sub the slot at [R14-8] is a local:
-    # RSub's body is `Dim z As Long: z = 1`, which must not read as ret='1'. Exit opcode 504
-    # maps to None, so the store is never consulted.
-    #
-    # RString, RVariant and RObject each produce two entry/exit pairs with distinct spans. VBA
-    # counts its own calls, to tell two real calls from two frames for one activation.
+    # VBA counts its own calls, to tell two real calls from two frames for one activation.
+    # A Sub's result slot is a local, so RSub's `z = 1` must not read as ret='1'.
     $vbaCalls = [int]($app.Run($leaf + '!XRGetStringCalls'))
     $strEntries = @($rows | Where-Object { ($_.kind -eq 'entry' -and $_.source -eq 'VBA') -and $_.function -eq 'RString' }).Count
     Check 'activation-count-matches-vba' ($strEntries -eq $vbaCalls) `
@@ -216,17 +204,15 @@ try {
           (($subRows.Count -ge 1) -and ($subWithRet.Count -eq 0)) `
           ("RSub rows: " + (@($subRows | ForEach-Object { "ret='$($_.ret)' type='$($_.rettype)'" }) -join ' | '))
 
-    # The typed returns must decode, and correctly. Boolean reads as Integer (-1/0) by the row
-    # model. Values as well as types, because a decoder that reads the right slot with the wrong
-    # width still produces a number.
+    # values as well as types: the right slot at the wrong width still yields a number.
+    # Boolean reads as Integer (-1/0) by the row model.
     $expect = @{
         RByte     = @('7',      'Byte')
         RInteger  = @('1234',   'Integer')
         RLong     = @('123456', 'Long')
         RSingle   = @('1.5',    'Single')
         RDouble   = @('2748.5', 'Double')
-        # Exact, four decimals: Currency is an integer scaled by 10,000, rendered in integer
-        # arithmetic because `%.10g` cannot hold its 19 significant digits.
+        # Currency is rendered in integer arithmetic: `%.10g` cannot hold its 19 digits
         RCurrency = @('9.9900', 'Currency')
         RBoolean  = @('-1',     'Integer')
         PGet      = @('99',     'Long')
@@ -245,12 +231,8 @@ try {
     Check 'measured-types-decode-with-the-right-value' ($wrong.Count -eq 0) `
           ($wrong -join ' ; ')
 
-    # ---- VARIANT, INCLUDING WHEN IT HOLDS AN ARRAY ------------------------
-    #
-    # A Variant holding an Array stores through the SAME opcode as a scalar one,
-    # so the store cannot distinguish them and the mapping must not try. The
-    # VARIANT's own type tag is what knows: an array must read as an array, a
-    # string in a Variant as a string.
+    # ---- Variant, including when it holds an array ------------------------
+    # an array and a scalar Variant share a store opcode; only the VARIANT's own tag tells them apart
     $vScalar = @($exits | Where-Object { $_.function -eq 'RVariant' })
     $vArray  = @($exits | Where-Object { $_.function -eq 'RVariantArr' })
     $vString = @($exits | Where-Object { $_.function -eq 'RVariantStr' })
@@ -264,7 +246,7 @@ try {
           (($vString.Count -ge 1) -and ($vString[0].ret -match 'in a variant')) `
           ("RVariantStr ret='$($vString[0].ret)' type='$($vString[0].rettype)'")
 
-    # ---- OBJECT -----------------------------------------------------------
+    # ---- object -----------------------------------------------------------
     # Nothing is a real answer for an object: `Set RObject = Nothing`.
     $obj = @($exits | Where-Object { $_.function -eq 'RObject' })
     Check 'object-decodes' `
@@ -278,10 +260,7 @@ try {
     $withRet = @($exits | Where-Object { $_.ret })
     $nUnmapped = 0
     if ($totals -match 'returnsUnmapped=(\d+)') { $nUnmapped = [int]$Matches[1] }
-    # A Sub is neither decoded nor unmapped -- it HAS no result, and that is a
-    # third correct outcome rather than a gap. Counting it as one would demand
-    # a return value from the one procedure that cannot have one, so the case
-    # could only ever be satisfied by the decoder inventing something.
+    # a Sub has no result, a third correct outcome; demanding one would reward invention
     $subs = @($want | Where-Object { $_ -eq 'RSub' }).Count
     Check 'nothing-is-silently-undecoded' `
           (($withRet.Count + $nUnmapped + $subs) -ge $want.Count) `

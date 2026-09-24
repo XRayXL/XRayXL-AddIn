@@ -2,26 +2,22 @@
 #include <string>
 #include <vector>
 
-// Enumerating what Excel has registered, by asking the documented API. No stack
-// walk, no .pdata, no candidate scoring, no calibration -- so nothing here
-// depends on a derived address, and the hazards of stack walking do not arise.
+// What Excel has registered, from the documented API, so nothing depends on a derived address.
 
 namespace xll
 {
     struct Registration
     {
         std::wstring module;      // full path as Excel reports it
-        std::wstring procedure;   // pxProcedure -- the EXPORT name
+        std::wstring procedure;   // pxProcedure -- the export name
         std::wstring typeText;
     };
 
-    // Application.RegisteredFunctions, including for add-ins whose exports are
-    // a jump table. NOT GET.WORKSPACE(44), which returns the paths of loaded
-    // add-ins rather than the registration table.
+    // Application.RegisteredFunctions, which covers exports that are a jump table. Not
+    // GET.WORKSPACE(44): that lists loaded add-in paths, not registrations.
     bool Enumerate(std::vector<Registration>& out, std::string& log);
 
-    // WHERE ARMING GOES. A total cannot say which round-trip is expensive, so
-    // the two calls are timed separately and reported at every arm.
+    // The two round-trips timed separately, because a total cannot say which is expensive.
     struct ResolveCost
     {
         long long regIdUs  = 0;   // xlfRegisterId, plus its xlFree
@@ -36,10 +32,8 @@ namespace xll
     const char* XlRetName(int rc);
     ResolveCost TakeResolveCost();   // reads and resets
 
-    // pxProcedure is the export and pxFunctionText is what goes in a cell; an add-in that
-    // generates its exports makes them differ. Resolved inside the C API: xlfRegisterId, then
-    // xlfGetDef. Empty if the chain does not resolve, and the caller falls back to the export
-    // name.
+    // pxFunctionText, the name used in a cell, which differs from the export when an add-in
+    // generates its exports. Empty if xlfRegisterId then xlfGetDef does not resolve it.
     std::wstring ResolveFunctionText(const std::wstring& module,
                                      const std::wstring& procedure,
                                      const std::wstring& typeText);

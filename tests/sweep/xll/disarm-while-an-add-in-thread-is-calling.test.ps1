@@ -1,9 +1,5 @@
-# DISARM WHILE A THREAD OF THE ADD-IN'S OWN IS CALLING ONE OF ITS EXPORTS.
-#
-# Excel is not the only caller of an XLL. TracedAddin runs a worker that calls
-# TxHammered in a loop, and the session is armed and disarmed under it many
-# times. A detour torn down while that thread is inside it leaves the thread to
-# call a trampoline that no longer exists, so Excel surviving is the assertion.
+# Disarm while a thread of the add-in's own calls one of its exports: a detour torn down under that
+# thread leaves it calling a trampoline that no longer exists, so Excel surviving is the assertion.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

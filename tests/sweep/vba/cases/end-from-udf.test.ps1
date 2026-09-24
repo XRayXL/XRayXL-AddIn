@@ -1,5 +1,5 @@
-# `End` from a cell UDF. Unclosed frames only show in the NEXT call, so the
-# follow-up chain (defined here) is what is asserted.
+# `End` from a cell UDF leaves no stale frames. Unclosed frames only show in the next call, so
+# the follow-up chain is what is asserted.
 $case = @{ Name='end-from-udf'
      Setup=@'
 Public Function T_EndF() As Double
@@ -23,8 +23,8 @@ End Sub
         if ($t.framesOpened -ne $t.framesClosed) {
             return "LEAK: opened $($t.framesOpened), closed $($t.framesClosed)" }
 
-        # `end-statement` pins the killed frames' outcome. Write nothing to the
-        # pipeline here: any output is taken as the failure reason.
+        # `end-statement` pins the killed frames' outcome. Write nothing to the pipeline here:
+        # any output is taken as the failure reason.
         $ended = @($t.rows | Where-Object { $_.kind -eq 'exit' -and $_.function -like 'T_EndF*' })
         $killed = "killed by End: " +
                   ((($ended | ForEach-Object { "$($_.function)=$($_.outcome)" }) -join ','))

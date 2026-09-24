@@ -3014,8 +3014,7 @@ End Sub
      Expect={ param($t)
         $e = $t.rows | Where-Object { ($_.kind -eq 'entry' -and $_.source -eq 'VBA') -and $_.function -eq 'Huge' } | Select-Object -First 1
         if (-not $e) { return "no row for Huge" }
-        # Either it walked and got the type, or it declined and said nothing.
-        # What it must never do is claim a WRONG type for the parameter.
+        # Either it walked and got the type, or it declined and said nothing; never a wrong type.
         if ($e.typetext -and $e.typetext -notmatch '^(Long|\?)$') {
             return "implausible signature for a one-Long procedure: [$($e.typetext)]" }
         $null }

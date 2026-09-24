@@ -11,10 +11,8 @@ namespace xll
 {
     struct Target
     {
-        // Shared with xllthunk.asm, and these two must stay first, in order: the thunk reads
-        // [rbx+0] for the function to call and [rbx+8] for the stack-argument count. The
-        // static_asserts below pin it.
-        void*    original = nullptr;     // +0x00 slot's old value, or MinHook trampoline
+        // Shared with xllthunk.asm: these two stay first, in order; the static_asserts below pin it.
+        void*    original = nullptr;     // +0x00 MinHook trampoline
         INT32    argCount = 0;           // +0x08 ABI argument slots (= plan.slotCount)
         INT32    reserved = 0;           // +0x0C
         // --------------------------------------------------------------------
@@ -49,10 +47,8 @@ namespace xll
     static_assert(offsetof(Target, argCount) == 8,
                   "xllthunk.asm reads TGT_ARGCOUNT at [rbx+8]");
 
-    // All-or-nothing per target, and never throw. Install CREATES the detour
-    // and QUEUES its enable; ApplyQueued patches everything queued under ONE
-    // thread freeze, where MH_EnableHook per target would freeze and thaw every
-    // thread in the process each time.
+    // All-or-nothing per target, and never throw. Install creates the detour and queues its enable;
+    // ApplyQueued patches the batch under one thread freeze rather than one per target.
     bool Install(Target* t, std::string& why);
     bool ApplyQueued(std::string& why);
     // Disables every detour; none is removed. Returns how many stayed enabled.
@@ -67,8 +63,7 @@ namespace xll
     enum class Reloaded { No, Repatched, Refused };
     Reloaded RepatchIfReloaded(Target* t, std::string& why);
 
-    // A fixed array, so a Target* captured by a running thunk can never dangle
-    // mid-call.
+    // A fixed array, so a Target* captured by a running thunk can never dangle mid-call.
     Target* Allocate();
     void Publish(Target* t);
 
@@ -94,13 +89,10 @@ namespace xll
     };
     Declines& DeclineCounts();
 
-    // WHERE ARMING'S PER-FUNCTION TIME GOES. The batch shares ONE thread
-    // freeze, so the rest is per-function work and a total cannot say which
-    // part. At a few thousand registrations that difference decides whether this
-    // design scales, so it is split rather than argued about.
+    // Arming's per-function time, split because a total cannot say which part to fix.
     struct InstallCost
     {
-        long long stubUs   = 0;   // MakeStub: the 24-byte trampoline of our own
+        long long stubUs   = 0;   // MakeStub: our 24-byte entry stub
         long long createUs = 0;   // MH_CreateHook: MinHook's trampoline + disasm
         long long queueUs  = 0;   // MH_QueueEnableHook: bookkeeping only
         int       calls    = 0;

@@ -1,31 +1,14 @@
 ; XRayXL -- the shared thunk for a patched VBA dispatch slot.
 ;
-; HOW A SLOT IS ENTERED. The interpreter dispatches with
-; `jmp qword ptr [rbx+rax*8]`, so a handler is entered by JMP: there is no
-; return address, and every register the interpreter is using is live.
-;
-; The stub calls here instead of jumping: push-the-original-and-`ret` forges a return address,
-; which CET shadow stacks fast-fail on, past any SEH. So the per-slot stub does:
+; The interpreter enters a handler by JMP, so every register and flag is live and all are saved.
+; The stub calls here and then tail-jumps to the original, because push-and-`ret` would forge a
+; return address, which CET shadow stacks fast-fail on:
 ;
 ;       call  XRayVbaBosThunk          <- real call, shadow stack balanced
 ;       jmp   qword ptr [rip+original]  <- tail jump, rsp exactly as it was
 ;
-; We return normally and the stub performs the tail jump, so the interpreter sees its original
-; rsp on entry to the real handler.
-;
-; Everything is saved: the general-purpose registers, RFLAGS, and (SAVE_FP below) xmm0-xmm5 with
-; MXCSR. The interpreter jumped here, so no register can be assumed dead.
-;
-; FLAGS are saved too: a dispatch site is a computed branch and we cannot prove
-; the flags are dead across it.
-;
-; ALIGNMENT. The interpreter's rsp at a dispatch site has no guaranteed
-; alignment, so rsp is aligned explicitly before the call and restored from rbx
-; afterwards rather than by unwinding the pushes.
-;
-; rbx is passed to the handler as a second argument: the interpreter's state is on the stack
-; below it, and r14 there is the VBA frame base. Offsets down from rbx, in push order; fifteen
-; pushes follow the one that establishes rbx, so the last slot is -0x78:
+; The dispatch rsp has no guaranteed alignment, so rsp is aligned before the call and restored
+; from rbx. rbx goes to the handler as its second argument; offsets down from it, in push order:
 ;
 ;   [rbx-08] rax   [rbx-30] r10   [rbx-58] r12
 ;   [rbx-10] rcx   [rbx-38] r11   [rbx-60] r13
@@ -33,18 +16,14 @@
 ;   [rbx-20] r8    [rbx-48] rsi   [rbx-70] r15
 ;   [rbx-28] r9    [rbx-50] rdi   [rbx-78] flags
 ;
-; Keep this table and the pushes below in step, and count them when either changes: a wrong
-; offset still reads valid memory, just the wrong register.
+; Keep this table and the pushes in step: a wrong offset still reads valid memory, just the
+; wrong register.
 
-; Unwind info. Both PROCs are FRAME with .endprolog before the pushes, so the unwind info
-; describes an empty prologue and nothing may unwind through these frames. HookFilter in
-; vbatrace.cpp guarantees that by returning EXCEPTION_EXECUTE_HANDLER for every exception code.
-;
-; If that ever changes, add a .pushreg for each push and a .setframe rbx, 0 after `mov rbx,
-; rsp`, with .endprolog below them, in the same change.
-;
-; HookFilter cannot catch a stack overflow in the saves before the first call; the fixed
-; 264-byte frame keeps that within the interpreter's own margin.
+; The unwind info describes an empty prologue, so nothing may unwind through these frames;
+; HookFilter in vbatrace.cpp handles every code. If that changes, add a .pushreg per push and
+; .setframe rbx, 0 after `mov rbx, rsp`, before .endprolog, in the same change.
+; A stack overflow in the saves is not caught; the fixed 264-byte frame keeps it within the
+; interpreter's own margin.
 
 option casemap:none
 
@@ -102,13 +81,9 @@ endm
 
 
 ; --------------------------------------------------------------------------
-; Floating-point state. The interpreter reaches a handler by JMP, so the ABI's volatile-register
-; rule does not apply, and the C++ hook does clobber xmm0-xmm5 (a double passed to _snprintf_s,
-; memcpy). A live Double there would come back wrong with no fault. xmm6-xmm15 are preserved by
-; the callee. MXCSR is saved because the CRT's float formatting can change rounding and mask
-; bits.
-;
-; Layout above rsp, which is 16-aligned here so movaps is safe:
+; Entered by JMP, so the volatile-register rule does not apply: the hook clobbers xmm0-xmm5 and a
+; live Double would come back wrong. MXCSR too, as CRT float formatting can change it.
+; Layout above rsp, 16-aligned here so movaps is safe:
 ;   [rsp+00..1F]  shadow space for the callee (must be first)
 ;   [rsp+20..7F]  xmm0..xmm5
 ;   [rsp+80..83]  mxcsr
@@ -137,8 +112,7 @@ RESTORE_FP macro
 endm
 
 ; --------------------------------------------------------------------------
-; void XRayVbaBosThunk(void)   -- entered by CALL from a per-slot stub.
-; One shape for every hook: save everything, call the recorder, restore.
+; Entered by CALL from a per-slot stub.
 HOOK_THUNK MACRO thunkName, recorder
 thunkName PROC FRAME
     .endprolog
@@ -146,7 +120,8 @@ thunkName PROC FRAME
     lea     rcx, [rbx + 16]     ; rcx = the interpreter's rsp at the dispatch
     mov     rdx, rbx            ; rdx = top of the saved register block
     and     rsp, -16
-    SAVE_FP                     ; xmm0-5 + mxcsr, and the callee's shadow space
+    SAVE_FP
+
     call    recorder
     RESTORE_FP
     RESTORE_ALL

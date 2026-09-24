@@ -1,7 +1,5 @@
-// UNIT TEST for emit::csv::Fragment / FragmentSize / kHeader -- the row-to-CSV formatter,
-// checked from the INSIDE, with no Excel and no file. The suites' reader-contract
-// test checks the same format from the outside (a real trace file); this pins it
-// at the source: column count, order, escaping, and the header string.
+// Unit test for emit::csv::Fragment / FragmentSize / kHeader, the row-to-CSV formatter, with no Excel
+// and no file: the reader-contract test checks the format from outside, this pins it at the source.
 //
 // Built by XRayXL.sln into build\x64\Release\unit\; it needs only rowcsv.cpp.
 
@@ -98,9 +96,8 @@ int main()
         Check(f.size() == 20, "fragment has 20 fields");
         Check(f[0] == "entry" && f[1] == "XLL" && f[8] == "F" && f[18] == "604",
               "fields land in column order");
-        // THE COLUMNS THAT MOVED, pinned by POSITION here and by NAME in the
-        // header check above: between them, a field that slides one place along
-        // cannot pass both.
+        // Pinned by position here and by name in the header check above: a field that slides one
+        // place along cannot pass both.
         Check(f[3] == "4" && f[4] == "2", "parent and depth are 4 and 5, beside span");
         Check(f[11] == "cell" && f[12] == "[B.xlsm]S1!A1", "caller and callerref are 12 and 13");
         Check(f[17] == "returned", "outcome is column 18, after rettype");

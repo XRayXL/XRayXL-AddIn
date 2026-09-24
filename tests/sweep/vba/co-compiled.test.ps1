@@ -1,19 +1,9 @@
-# INTEGRATION: every case's VBA compiled into ONE module. The per-case files
-# prove each behaviour against a module containing only itself; this proves the
-# sensitive ones with every other case's procedures present, because module
-# content can matter to name resolution.
-#
-# Three representatives run through full arm/invoke/disarm cycles in one
-# session: nesting-3 (call chains), names-of-many (the case most sensitive to
-# name resolution), frame-types (the widest procedure population). Their
-# unchanged Expect blocks must hold with the full module present.
+# Representative cases still pass with every case's VBA compiled into one module, since module
+# content can matter to name resolution; each case file alone tests a module holding only itself.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
-# HARVEST: the per-case files are the single source of truth; collect every
-# case from them (each sets $case and returns early under
-# $StretchCollectOnly). Compile order is filename order; module content, not
-# ordering, is what this test varies.
+# the case files are the single source of truth; each returns early under $StretchCollectOnly
 $allCases = @()
 $StretchCollectOnly = $true
 foreach ($caseFile in (Get-ChildItem (Join-Path $PSScriptRoot 'cases') -Filter '*.test.ps1' | Sort-Object Name)) {
@@ -30,9 +20,7 @@ try {
     Set-XRaySessionDefaults $sx
     $paths = Get-XRayPaths $sx.ProcId
 
-    # The case table asserts names against the leaf 'VbaRun.xlsm'; a per-pid
-    # subdirectory keeps the path unique across parallel sessions. Every case's
-    # setup goes into ONE module, in file order: that co-compilation is the variable.
+    # cases assert names against the fixed leaf 'VbaRun.xlsm'
     New-XRayMacroBook $sx 'vbacc' @(@{ Kind = 1; Name = 'Cases'; Code = @($allCases | ForEach-Object { $_.Setup }) }) `
         -SheetName 'Sheet1' -Leaf 'VbaRun.xlsm'
     $book = Get-XRayMacroBook

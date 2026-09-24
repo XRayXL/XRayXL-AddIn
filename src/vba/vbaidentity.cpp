@@ -10,8 +10,7 @@ namespace vba
 {
     namespace
     {
-        // x64 layouts from the published prior art (Azzopardi's VBATrace), cross-checked by the
-        // invariants each structure carries. Offsets, not addresses.
+        // x64 layouts after Azzopardi's VBATrace, each checked by the structure's own invariants.
 
         // RTMI / p-code trailer
         constexpr std::uint32_t kRtmi_pParent      = 0x00;
@@ -21,9 +20,7 @@ namespace vba
         constexpr std::uint32_t kPar_marker        = 0x20;   // kMarker or kMarkerFromDisk
         constexpr std::uint32_t kPar_marker2       = 0x28;   // == 0
         constexpr std::uint32_t kPar_pListEntry    = 0x30;
-        // WORD, not ULONG32. The published x64 struct declares this field and its
-        // neighbour as 32-bit; on this build they are two 16-bit counts packed
-        // together. Read from the live structure, not from the declaration.
+        // Not ULONG32 as the published struct declares: two 16-bit counts are packed here.
         constexpr std::uint32_t kPar_nProcs        = 0x40;   // WORD
         constexpr std::uint32_t kPar_procMap       = 0x48;
 
@@ -95,8 +92,7 @@ namespace vba
             }
         }
 
-        // Address tests and guarded readers: core/safemem.h. A trailer is
-        // 4-aligned, and the alignment is stated at each call site.
+        // A trailer is 4-aligned; the alignment is stated at each call site.
         using core::InRangeAndAligned;
         using core::RdU64;
         using core::RdU32;
@@ -173,8 +169,7 @@ namespace vba
             }
             __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
 
-            // Leaf only: the full path is noise in a trace row, and the
-            // workbook name is what a user recognises.
+            // Leaf only: the workbook name is what a user recognises.
             const wchar_t* leaf = tmp;
             for (const wchar_t* p = tmp; *p; ++p)
                 if (*p == L'\\' || *p == L'/') leaf = p + 1;
@@ -182,10 +177,8 @@ namespace vba
             return core::NarrowUtf8(leaf, -1, dst, cap) > 0;
         }
 
-        // A WORKBOOK THAT WAS NEVER SAVED has no filename, and VBE7 keeps an internal id --
-        // ten hex digits on this build -- in the field where one would be. Said as what it is,
-        // because "006cd206e1" otherwise reads as a workbook a user could go and look for.
-        // Anything that could be a file name is left exactly as it was read.
+        // An unsaved workbook has a hex id where the filename would be. Tagged, or "006cd206e1"
+        // reads as a file a user could look for; anything else is left as read.
         void MarkIfUnsaved(char* name, int cap)
         {
             const int n = static_cast<int>(strlen(name));
@@ -269,11 +262,6 @@ namespace vba
         return member ? n : 0;
     }
 
-    // The same walk as Resolve, minus the requirement that a NAME come out of
-    // it. Diagnostics need the addresses even when the name step fails, and a
-    // walk that gives up early would hide exactly the structure being looked
-    // for. Nothing here is on the hot path.
-
     bool Resolve(std::uint64_t trailer, Identity& out)
     {
         out = Identity{};
@@ -284,9 +272,7 @@ namespace vba
         if (!RdU64(trailer + kRtmi_pParent, parent) || !InRangeAndAligned(parent, 8))
         { Decline(IdDecline::ParentUnreadable); return false; }
 
-        // The parent's two constant markers. This is the first real proof that
-        // we are looking at the structure we think we are, rather than at
-        // whatever happened to be at that address.
+        // The markers are the first proof this is the structure, not whatever was at the address.
         std::uint64_t m1 = 0, m2 = 1;
         if (!RdU64(parent + kPar_marker, m1) || !RdU64(parent + kPar_marker2, m2))
         { Decline(IdDecline::ParentUnreadable); return false; }
@@ -335,9 +321,7 @@ namespace vba
             return false;
         }
 
-        // Which procedure of this module are we? The parent's procMap is an
-        // array of trailers, one per procedure, and our index into it is the
-        // index of our name.
+        // Our index in procMap, the parent's array of trailers, is the index of our name.
         int found = -1;
         if (InRangeAndAligned(procMap, 8))
         {
@@ -355,7 +339,8 @@ namespace vba
             return false;
         }
 
-        // Names. A failure past this point still yields the fields we DID get.
+        // A failure past this point still yields the fields we did get.
+
         bool any = false;
         if (InRangeAndAligned(ppszNames, 8) && static_cast<std::uint32_t>(found) < nameCount)
         {

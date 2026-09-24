@@ -1,19 +1,12 @@
-# Is `ticks` a measurement, or an upper bound? The row says which.
+# `trust` says whether `ticks` is a measurement or an upper bound: a frame is stamped when it
+# closes, and only the exit opcode closes it at the activation's real end.
 #
-# CloseFrame stamps a row with the time it runs, and only one of its callers runs when the
-# activation actually ends:
-#
-#    exit opcode        fires at the end of the activation      -> a MEASUREMENT
-#    stack-pointer      fires at the NEXT statement, at a        -> an UPPER BOUND
+#    exit opcode        fires at the end of the activation      -> a measurement
+#    stack-pointer      fires at the next statement, at a        -> an upper bound
 #      backstop         higher rsp
-#    flush at disarm    fires at the end of the session          -> an UPPER BOUND
+#    flush at disarm    fires at the end of the session          -> an upper bound
 #
-# A fully unhandled unwind fires no exit opcodes (docs/TraceRowModel.md), so every frame in a
-# blown-up call chain is closed by the backstop. The number is kept: the frame ended at or
-# before that instant.
-#
-# The unhandled error is raised from a cell, not Application.Run, which would open Excel's modal
-# VBA error dialog. In a formula it becomes #VALUE! and unwinds silently.
+# The error is raised from a cell because under Application.Run it would open a modal dialog.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -50,7 +43,7 @@ try {
         return '(none)'
     }
 
-    # AsLoaded: the formulas are in the saved workbook, which is what a user has.
+    # the formulas are in the saved workbook, which is what a user has
     New-XRayMacroBook $sx 'Ticks' @(
         @{ Kind=1; Name='TickCase'; Code=$moduleCode }
     ) @{
@@ -77,7 +70,7 @@ try {
     $rows   = @(Read-TraceRows $sx.ProcId)
     $exits  = @($rows | Where-Object { ($_.kind -eq 'exit' -and $_.source -eq 'VBA') })
 
-    # The unwind has to have actually happened, or everything below is vacuous.
+    # the unwind has to have actually happened, or everything below is vacuous
     Check 'the-unhandled-call-really-blew-up' ($a2 -eq '#VALUE!') "A2 held '$a2' (expected #VALUE!)"
     Check 'the-clean-call-really-worked'      ($a1 -eq '21')      "A1 held '$a1' (expected 21)"
 
@@ -90,30 +83,27 @@ try {
     $boomRows  = @($exits | Where-Object { $_.function -like 'T_Boom*' })
     $fineRows  = @($exits | Where-Object { $_.function -like 'T_Fine*' })
 
-    # ---- the clean chain is MEASURED --------------------------------------
+    # ---- the clean chain is measured --------------------------------------
     $fineNotExit = @($fineRows | Where-Object { (ClosedBy $_) -ne 'exit' })
     Check 'clean-calls-are-measured' (($fineRows.Count -ge 2) -and ($fineNotExit.Count -eq 0)) `
           ("T_Fine rows: " + (@($fineRows | ForEach-Object { "$($_.function)=$(ClosedBy $_)" }) -join ','))
 
-    # ---- the unwound chain is BOUNDED -------------------------------------
-    # This is the assertion the whole change exists for: a fully unhandled
-    # unwind fires no exit opcodes, so its frames MUST be marked as bounded.
+    # ---- the unwound chain is bounded -------------------------------------
+    # a fully unhandled unwind fires no exit opcodes (docs/TraceRowModel.md)
     $boomBounded = @($boomRows | Where-Object { (ClosedBy $_) -in @('backstop','flush') })
     Check 'unhandled-unwind-is-marked-bounded' `
           (($boomRows.Count -ge 1) -and ($boomBounded.Count -eq $boomRows.Count)) `
           ("T_Boom rows: " + (@($boomRows | ForEach-Object { "$($_.function)=$(ClosedBy $_)" }) -join ','))
 
     # ---- and it is not marking everything ---------------------------------
-    # A change that stamped every row `backstop` would satisfy the case above.
+    # stamping every row `backstop` would satisfy the case above
     Check 'not-everything-is-bounded' ($fineRows.Count -gt 0) `
           ("measured rows: {0}, bounded rows: {1}" -f `
             @($exits | Where-Object { (ClosedBy $_) -eq 'exit' }).Count,
             @($exits | Where-Object { (ClosedBy $_) -ne 'exit' }).Count)
 
     # ---- the totals and the rows must agree -------------------------------
-    # Two independent measures of the same thing: the counter is incremented in
-    # CloseFrame, the token is written in EmitRow. If they disagree, one of them
-    # is lying and the disagreement says so.
+    # the counter and the row token are set in different places, so disagreement exposes one
     $tBackstop = 0; $tFlush = 0
     if ($totals -match 'closedByBackstop=(\d+)') { $tBackstop = [int]$Matches[1] }
     if ($totals -match 'closedByFlush=(\d+)')    { $tFlush    = [int]$Matches[1] }
@@ -127,15 +117,13 @@ try {
     Check 'the-thrower-is-still-named' ($threw.Count -ge 1) `
           ("threw: " + (@($threw | ForEach-Object { $_.function }) -join ','))
 
-    # An uncaught error must not contaminate what comes after. Nothing catches the A2 error, so
-    # the chain ends when the shadow stack empties, and the in-flight flag must clear with it.
-    # Asserted on the clean rows in A1, which would otherwise read `unwound`.
+    # The uncaught A2 error must not leak into later calls: the in-flight flag clears when the
+    # shadow stack empties, or the clean A1 rows would read `unwound`.
     $fineWrong = @($fineRows | Where-Object { $_.outcome -ne 'returned' })
     Check 'an-uncaught-error-does-not-leak-into-later-calls' ($fineWrong.Count -eq 0) `
           ("clean rows: " + (@($fineRows | ForEach-Object { "$($_.function): ticks=$($_.ticks) trust=$($_.trust)" }) -join ' | '))
 
-    # ...and the escape is COUNTED, so `threw` exceeding `handled` is explained
-    # rather than left as an unexplained shortfall.
+    # the escape is counted, so `threw` exceeding `handled` is explained
     $escaped = 0
     if ($totals -match 'errEscaped=(\d+)') { $escaped = [int]$Matches[1] }
     Check 'the-escape-is-counted' ($escaped -ge 1) `

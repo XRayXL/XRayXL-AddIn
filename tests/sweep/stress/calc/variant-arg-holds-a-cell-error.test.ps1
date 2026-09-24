@@ -58,7 +58,7 @@ End Function
 
         $tagOf = { param($r) ($r.args -match '(?:^|\s)a1:[^=\s]*="([^"]*)"') | Out-Null; $Matches[1] }
 
-        # ---- an error VALUE in a Variant parameter -------------------------
+        # ---- an error value in a Variant parameter -------------------------
         $want = @{ 'na' = '#N/A'; 'div0' = '#DIV/0!'; 'value' = '#VALUE!'; 'num' = '#NUM!' }
         $seen = @{}
         foreach ($r in @($entries | Where-Object { $_.function -eq 'TakeV' })) {
@@ -66,25 +66,22 @@ End Function
         }
         foreach ($k in $want.Keys) {
             if (-not $seen.ContainsKey($k)) { return "TakeV('$k') never traced" }
-            # THE FAILURE THIS EXISTS FOR. `Missing` and an Excel error are BOTH
-            # VT_ERROR, told apart only by the exact SCODE -- an omitted Optional
-            # is DISP_E_PARAMNOTFOUND. Loosen that and every #N/A in a sheet
-            # reads as "parameter omitted": a supplied argument reported as an
-            # absent one.
+            # `Missing` and an Excel error are both VT_ERROR, told apart only by the SCODE (an omitted
+            # Optional is DISP_E_PARAMNOTFOUND); loosen that and every #N/A reads as omitted.
             if ($seen[$k] -eq 'Missing') {
                 return "$k : an Excel error rendered as 'Missing' -- a supplied argument reported as omitted" }
             if ($seen[$k] -ne $want[$k]) {
                 return "$k : argument rendered [$($seen[$k])], expected $($want[$k])" }
         }
 
-        # ---- a REFERENCE is an object, and must not be "fixed" into a value --
+        # ---- a reference is an object, and must not be "fixed" into a value --
         $ref = @($entries | Where-Object { $_.function -eq 'RefV' })
         if ($ref.Count -eq 0) { return 'RefV never traced' }
         $refArg = ArgOf $ref[0] 2
         # With OBJECTS on the Range is described, so the two shapes read:
         #
-        #    =TakeV("na", NA())   ->  #N/A                      the parameter HOLDS the error
-        #    =RefV("ref", A1)     ->  Range(...!A1)=#N/A        it holds a RANGE whose value is
+        #    =TakeV("na", NA())   ->  #N/A                      the parameter holds the error
+        #    =RefV("ref", A1)     ->  Range(...!A1)=#N/A        it holds a Range whose value is
         #
         # Both are `IsError` to VBA. Only one of them is an error value, and the row must not
         # conflate them.
@@ -100,7 +97,7 @@ End Function
         if ($saw['na'] -ne '"Error"') {
             return "VBA called the value argument $($saw['na']), not Error -- the fixture no longer tests what it claims" }
 
-        # ---- the same error as a RETURN value ------------------------------
+        # ---- the same error as a return value ------------------------------
         $give = @($exits | Where-Object { $_.function -eq 'GiveErr' })
         if ($give.Count -eq 0) { return 'GiveErr never traced' }
         if ([string]$give[0].ret -ne '#N/A') {

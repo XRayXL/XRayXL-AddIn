@@ -14,8 +14,8 @@ End Sub
         if ($t.dialogs -lt 1) { return "no dialog recorded" }
         $why = Assert-VbaTraced $t 'Worksheet_Change'; if ($why) { return $why }
         $null }
-     # The handler and the raise, nothing else. NO outcome expected: the dialog's End button
-     # kills both frames, and what they then read is a documented limitation (docs/TraceRowModel.md).
+     # The handler and the raise, with no outcome expected: End kills both frames, and what they
+     # then read is a documented limitation (docs/TraceRowModel.md).
      Calls=@(
         @{ Function='Worksheet_Change'; Depth='1'; Parent=-1 }
         @{ Function='Boom';             Depth='2'; Parent=0 } )

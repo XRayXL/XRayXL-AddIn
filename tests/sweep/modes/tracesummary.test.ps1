@@ -24,8 +24,8 @@ Public Function S_Other() As Double
     S_Other = 1
 End Function
 '@
-    # FIVE calls to S_Add, one to S_Other, one to the XLL's TxB -- distinct
-    # counts, so a summary that mixed them up could not pass by accident.
+    # Five calls to S_Add, one to S_Other, one to TxB: distinct counts, so a summary that mixed them
+    # up could not pass by accident.
     New-XRayMacroBook $sx 'Summary' @(
         @{ Kind=1; Name='M'; Code=$srcM }
     ) @{
@@ -43,7 +43,7 @@ End Function
     [void](Wait-LogLine $paths.Log 'VBA tracing: ' $mark)
     Invoke-XRayRecalc $app
 
-    # ---- READ IT WHILE STILL ARMED ----------------------------------------
+    # ---- read it while still armed ----------------------------------------
     $sum = Summary $null
     $h = $sum.Header
     Check 'has-header' (($null -ne $h) -and ($h.Source -eq 'Source') -and ($h.Function -eq 'Function') -and ($h.Calls -eq 'Calls')) `
@@ -70,7 +70,7 @@ End Function
     Check 'xll-function-listed' ($null -ne $txb) "functions: $seen"
     if ($txb) { Check 'xll-source-is-XLL' ($txb.Source -eq 'XLL') "source='$($txb.Source)'" }
 
-    # ---- THE WILDCARD FILTER ----------------------------------------------
+    # ---- the wildcard filter ----------------------------------------------
     $names = @((Summary 'S_*').Rows | ForEach-Object { $_.Function })
     Check 'filter-keeps-matches' (($names -contains 'S_Add') -and ($names -contains 'S_Other')) ($names -join ',')
     Check 'filter-drops-non-matches' ($names -notcontains 'TxB') ($names -join ',')
@@ -78,8 +78,7 @@ End Function
     $names = @((Summary 'S_A*').Rows | ForEach-Object { $_.Function })
     Check 'filter-is-a-wildcard-not-a-prefix' (($names -contains 'S_Add') -and ($names -notcontains 'S_Other')) ($names -join ',')
 
-    # A filter that matches nothing SAYS so, rather than returning an empty
-    # grid that reads as a broken formula.
+    # A filter that matches nothing says so, rather than returning an empty grid that reads as broken.
     $names = @((Summary 'ZZZ_NOTHING*').Rows | ForEach-Object { $_.Function })
     Check 'empty-result-says-so' (($names -join ',') -match 'nothing matches the filter') ($names -join ',')
 
@@ -89,7 +88,7 @@ End Function
     $names = @((Summary "[$($book.Leaf)]*").Rows | ForEach-Object { $_.Function })
     Check 'filter-matches-a-workbook-module' (($names -contains 'S_Add') -and ($names -notcontains 'TxB')) ($names -join ',')
 
-    # ---- SHAPE, THROUGH A SHEET -------------------------------------------
+    # ---- shape, through a sheet -------------------------------------------
     # Application.Run flattens, so the column count is asserted where it is
     # real: an oversized array formula pads with #N/A.
     $ws.Range('F1:K3').FormulaArray = '=XRayXL_GetTraceSummary("S_A*")'
@@ -100,8 +99,8 @@ End Function
     Check 'sheet-is-exactly-4-wide' ($j1 -eq '#N/A') "J1='$j1'"
     Check 'sheet-lists-the-match' ($h2 -eq 'S_Add') "H2='$h2'"
 
-    # THE COUNT ITSELF, read last and just before disarm: nothing calls TxB after it,
-    # so the summary and the trace must agree exactly.
+    # The count itself, read last and just before disarm: nothing calls TxB after it, so the summary
+    # and the trace must agree exactly.
     $finalTxb = @((Summary $null).Rows | Where-Object { $_.Function -eq 'TxB' }) | Select-Object -First 1
     $lossy = Stop-XRayTrace $sx
     if ($lossy) { Complete-Test -Fail -Detail $lossy }

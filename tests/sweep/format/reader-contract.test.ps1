@@ -1,16 +1,10 @@
-# The trace-file contract, proven negatively: feed Read-TraceFile doctored files and assert it
-# refuses each one the way docs/TraceRowModel.md promises. Needs no arming and never binds the
-# session; the good-file corpus is real rows from real traced sessions.
-#
-# The header is restated literally here rather than read from $script:TraceHeader, so this file
-# is an independent witness of the format.
+# The trace-file contract, proven negatively: Read-TraceFile must refuse each doctored file the way
+# docs/TraceRowModel.md promises. The header is restated literally, so this is an independent witness.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
 $hdr = 'seq,input,kind,source,span,parent,depth,thread,qpc,module,function,proc,typetext,caller,callerref,argcount,args,ret,rettype,outcome,ticks,trust'
-# `input` (col 2) is the producer's emit sequence; here it has a HOLE at 3 --
-# input 1,2,4,5 across four rows means one row was dropped, exactly what the
-# reader must accept (holes are drops) while still requiring uniqueness.
+# `input` has a hole at 3: holes are drops, which the reader must accept while still requiring uniqueness.
 $good = @(
     '1,1,entry,XLL,74079595921409,,,17248,2759222870812,TracedAddin64.xll,TxB,TxB,"B,B",cell,[XllCase_10020.xlsx]Sheet1!A1,2,a1:B=2 a2:B=3,,,,,'
     '2,2,exit,XLL,74079595921409,,,17248,2759222871416,TracedAddin64.xll,TxB,TxB,,,,,,23,Q,returned,604,exit'
@@ -18,9 +12,7 @@ $good = @(
     '4,5,exit,VBA,1,0,1,17212,2767391816836,[err-resume-next-1000.xlsm]M,Go,0x25E154EF3E4,,,,,,,,returned,4541,exit'
 )
 
-# This test never binds an Excel, so it has no $sx to take a WorkDir from --
-# but it still writes files, and they belong with every other test's output
-# rather than loose in the shared work root.
+# No Excel is bound, so there is no $sx.WorkDir, but the files still belong with every test's output.
 $dir = Get-TestWorkDir -Managed ([bool]$env:STRETCH_TEST_ID)
 $script:failed = 0
 
@@ -60,7 +52,7 @@ try {
     else { Write-TestCase 'accepts-empty-session' -Fail -Detail "got $($rows.Count) rows"; $script:failed++ }
 } catch { Write-TestCase 'accepts-empty-session' -Fail -Detail $_.Exception.Message; $script:failed++ }
 
-# A MISSING file means "never armed" -- an empty result and no throw.
+# A missing file means "never armed": an empty result and no throw.
 try {
     $rows = @(Read-TraceFile (Join-Path $dir 'never-existed.csv'))
     if ($rows.Count -eq 0) { Write-TestCase 'missing-file-is-empty-not-fault' -Pass }
@@ -112,10 +104,8 @@ Expect-Refusal 'refuses-nonnumeric-qpc' 'non-numeric qpc' `
 Expect-Refusal 'refuses-torn-row' 'columns|non-numeric|unknown kind|bad input' `
     (New-TraceFile 'torn.csv' (@($hdr) + $good[0], '2,ex'))
 
-# A ROW SHORT BY EXACTLY ONE COLUMN is the one that gets through everything
-# else. Import-Csv pads it with $nulls that read as empty fields, so every
-# value after the missing one is silently off by one and the row looks merely
-# blank -- which is a confident wrong answer, not a gap.
+# A row short by exactly one column gets through everything else: Import-Csv pads it with nulls, so
+# every later value is off by one and the row looks merely blank.
 Expect-Refusal 'refuses-row-short-by-one' 'columns' `
     (New-TraceFile 'short.csv' (@($hdr) + ($good[1] -replace ',604,exit$', ',604')))
 

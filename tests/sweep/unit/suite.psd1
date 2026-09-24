@@ -1,7 +1,6 @@
 @{
-    # THE UNIT TESTS: console programs XRayXL.sln builds from the product's own
-    # sources. Each .test.ps1 runs one with no Excel and reports its checks as
-    # cases; the session the manager starts around it goes unused.
+    # Console programs built from the product's own sources: each runs with no Excel,
+    # so the session the manager starts around it goes unused.
     TestTimeoutSeconds = 300
 
     # An exe older than the source it is built from would certify code that was

@@ -1,4 +1,4 @@
-// UNIT TEST for xll::Parse (xll/xlltypeplan.cpp): '%' widens only the codes the
+// Unit test for xll::Parse (xll/xlltypeplan.cpp): '%' widens only the codes the
 // C API gives a wide form -- C D F G K O. After any other code the registration
 // is malformed, and must be declined rather than traced as if the '%' were absent.
 //

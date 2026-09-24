@@ -1,5 +1,5 @@
-// UNIT TEST for vba::Derive (vba/vbaderive.cpp): no handler may be patched in
-// two roles. The patcher emits one stub per ORIGINAL handler, so an exit slot
+// Unit test for vba::Derive (vba/vbaderive.cpp): no handler may be patched in
+// two roles. The patcher emits one stub per original handler, so an exit slot
 // holding the beginning-of-statement handler would share whichever thunk was
 // emitted first.
 //

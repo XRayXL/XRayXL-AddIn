@@ -1,10 +1,5 @@
-# XRayXL_IsArmed: ask before you set, instead of setting and parsing the refusal.
-#
-# Either source counts, because either one refuses a set. The test drives the setter and IsArmed
-# against each other, so the two are shown never to disagree.
-#
-# Asserted from a cell, not through Application.Run: arming happens through a different call, so
-# only a volatile function's cell shows the new answer, and Run recalculates nothing.
+# XRayXL_IsArmed: ask before you set. Either source counts, since either refuses a set. Asserted from
+# a volatile cell, not Application.Run: Run recalculates nothing, so only the cell shows the new answer.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -18,8 +13,7 @@ try {
 
     Check 'false-before-arming' (-not (IsArmed)) "IsArmed said '$(IsArmed)'"
 
-    # A set must be ACCEPTED while it says false -- that is the contract the
-    # caller is relying on.
+    # A set must be accepted while it says false: that is the contract the caller relies on.
     $echo = Set-XRayTraceParam $sx 'XLL' 'DEPTH' 'ALL'
     Check 'set-accepted-while-not-armed' ($echo -notmatch '#Err') $echo
 
@@ -35,7 +29,7 @@ try {
     $echo2 = Set-XRayTraceParam $sx 'XLL' 'DEPTH' 'TOP'
     Check 'set-refused-while-armed' ($echo2 -match '#Err') $echo2
 
-    # ---- VOLATILE: a CELL must notice, without being edited ---------------
+    # ---- volatile: a cell must notice, without being edited ---------------
     $ws = $app.ActiveSheet
     $ws.Range('A1').Formula = '=XRayXL_IsArmed()'
     Invoke-XRayRecalc $app
@@ -54,9 +48,8 @@ try {
     Check 'set-accepted-again-after-disarm' ($echo3 -notmatch '#Err') $echo3
 
     # ---- the VBA source alone must also count -----------------------------
-    # Either source refuses a set, so IsArmed has to be true when only VBA is
-    # armed. A version that asked the XLL side only would pass everything above.
-    # VBA can arm only once VBE7 is in the process, which nothing here forces.
+    # Either source refuses a set, so IsArmed must be true when only VBA is armed; asking the XLL
+    # side alone would pass everything above. VBA can arm only once VBE7 is in the process.
     $vbeLoaded = $false
     try { $vbeLoaded = [bool]((Get-Process -Id $sx.ProcId).Modules | Where-Object { $_.ModuleName -ieq 'VBE7.DLL' }) } catch {}
     [void](Set-XRayTraceParam $sx 'XLL' 'DEPTH' 'OFF')

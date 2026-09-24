@@ -1,7 +1,5 @@
-# The VBA regression driver: identity, the shadow stack, nesting and recursion. Each .test.ps1
-# is self-contained: it carries its own case data and hands it here. Each case gets its own
-# workbook built from its own Setup and its own arm/disarm, so the totals are attributable to it
-# alone.
+# The VBA case driver. Each case gets its own workbook and its own arm/disarm, so the totals are
+# attributable to it alone.
 #
 #    Setup    VBA appended to the standard module (may define several procs)
 #    Invoke   what the harness runs, as an Application.Run name + args
@@ -10,10 +8,7 @@
 #    Expect   a scriptblock given the parsed totals; returns $null or a reason
 #    Why      what the case is really testing, for the failure message
 #
-# Expectations are arithmetic, because VBA's own semantics give the answer in advance. A `For i
-# = 1 To n ... Next i` body of K statements costs K+1 beginning-of-statement opcodes per
-# iteration, plus one for the `For` and one for `End Sub`. Cases assert ranges where the exact
-# constant is not the point, and exact equality where it is.
+# Expectations are arithmetic, because VBA's own semantics give the answer in advance.
 
 function Invoke-VbaCase($Case) {
     . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
@@ -26,10 +21,8 @@ function Invoke-VbaCase($Case) {
         Set-XRaySessionDefaults $sx
         $paths = Get-XRayPaths $sx.ProcId
 
-        # The case table asserts names against the leaf 'VbaRun.xlsm', so the leaf
-        # stays fixed and a pid-keyed subdirectory keeps parallel sessions apart.
-        # A class or form module goes in before 'Cases', which news them up: the
-        # same signature has a different frame in each kind of container.
+        # Cases assert names against the fixed leaf 'VbaRun.xlsm'. Class and form go in before
+        # 'Cases', which news them up.
         $components = @()
         if ($c.ClassSetup) { $components += @{ Kind = 2; Name = 'CCase'; Code = $c.ClassSetup } }
         if ($c.FormSetup)  { $components += @{ Kind = 3; Name = 'UFCase'; Code = $c.FormSetup } }
@@ -44,11 +37,9 @@ function Invoke-VbaCase($Case) {
         $armLine = Wait-LogLine $paths.Log 'VBA tracing: ' $mark
         if ($armLine -notmatch 'ARMED') { Complete-Test -Fail -Detail "did not arm: $armLine" }
 
-        # Invoke. A cell formula where the case says so -- an unhandled error
-        # in a UDF becomes #VALUE! and unwinds silently, where the same error
-        # under Application.Run raises the modal VBA dialog. Otherwise
-        # Application.Run, QUALIFIED with the workbook, because an unqualified
-        # name resolves against whatever Excel considers active.
+        # A formula case exists because an unhandled error in a UDF unwinds silently, where under
+        # Application.Run it raises a modal dialog. Run is qualified: a bare name resolves against
+        # whatever Excel considers active.
         $ran = $true; $err = ''
         try {
             if ($c.Invoke.Formula) {
@@ -62,10 +53,8 @@ function Invoke-VbaCase($Case) {
             }
         } catch { $ran = $false; $err = $_.Exception.Message }
 
-        # An optional SECOND call inside the same arming session: drift only
-        # shows up after the disturbance, and a fresh arm resets the shadow
-        # stack, so a follow-up in a separate case would test nothing.
-        # A follow-up that did not run fails the test, or the case asserts an undisturbed session.
+        # Same arming session: drift shows only after the disturbance, and a fresh arm resets the
+        # shadow stack. A follow-up that did not run fails, or the case would assert nothing.
         if ($c.Then) {
             try {
                 $q2 = "$bookLeaf!" + $c.Then.Name
@@ -85,7 +74,7 @@ function Invoke-VbaCase($Case) {
         $names = Read-XRayNames $paths.Log $mark2
         $rows = Select-BookRows (Read-TraceRows $sx.ProcId) (Split-Path $bookPath -Leaf)
 
-        # A case may RAISE on purpose; what still has to hold is the Expect.
+        # A case may raise on purpose; what still has to hold is the Expect.
         if (-not $ran -and -not $c.Invoke.MayRaise) {
             Complete-Test -Fail -Detail "VBA call failed: $err"
         }
@@ -93,10 +82,8 @@ function Invoke-VbaCase($Case) {
 
         $t = ConvertFrom-XRayTotals $totLine
 
-        # THE TRACER ITSELF MUST NOT HAVE FAULTED. `faults` is a guarded read
-        # declining (normal); `hookFaults` is an exception escaping into the
-        # hook's own SEH frame, and the breaker opening means it happened
-        # repeatedly and tracing stood down.
+        # `faults` is a guarded read declining, which is normal; `hookFaults` is an exception
+        # reaching the hook's SEH frame, and an open breaker means tracing stood down.
         if ($t.hookFaults -gt 0) {
             Complete-Test -Fail -Detail "$($t.hookFaults) hook fault(s) -- the tracer faulted inside a VBA thread"
         }
@@ -107,13 +94,11 @@ function Invoke-VbaCase($Case) {
         $t | Add-Member -NotePropertyName names -NotePropertyValue $names -Force
         $t | Add-Member -NotePropertyName rows -NotePropertyValue $rows -Force
 
-        # Who called the first frame. The driver knows how it invoked the case: a Formula case
-        # is called by its cell, an Application.Run case by nothing on a sheet (kind 'none').
+        # A formula case is called by its cell, an Application.Run case by nothing on a sheet.
         $callerProbs = @(Test-RowInvariants $rows)
         $firstEntry = @($rows | Where-Object { ($_.kind -eq 'entry' -and $_.source -eq 'VBA') } | Select-Object -First 1)
         # Every case runs a procedure, so a trace with no VBA entry lost it, however the totals read.
         if ($firstEntry.Count -eq 0) { Complete-Test -Fail -Detail "no VBA entry row in this workbook's trace (statements=$($t.statements))" }
-        # Calls, when the case knows them: every VBA call in this workbook, in order, and no others.
         if ($c.ContainsKey('Calls')) { $callerProbs += Test-ExpectedTrace $rows $c.Calls 'VBA' }
         if ($firstEntry.Count -eq 1) {
             $expectCaller = if ($c.Invoke.Formula) { 'cell' } else { 'none' }

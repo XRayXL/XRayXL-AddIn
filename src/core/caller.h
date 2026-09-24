@@ -1,17 +1,17 @@
 // Decoding xlfCaller. A cell is only one of the things it can name, and the others are true
 // answers, not errors:
 //
-//   a cell formula          -> a REFERENCE (xltypeSRef, or xltypeRef for a
+//   a cell formula          -> a reference (xltypeSRef, or xltypeRef for a
 //                              multi-cell / array-formula caller)
 //   a macro on a button,
-//   a shape, a picture      -> a STRING: the graphic object's name
-//   a toolbar tool          -> an ARRAY of two numbers, {toolbar, position}
-//   a menu command          -> an ARRAY of four, {bar ID, menu, submenu, command}
+//   a shape, a picture      -> a string: the graphic object's name
+//   a toolbar tool          -> an array of two numbers, {toolbar, position}
+//   a menu command          -> an array of four, {bar ID, menu, submenu, command}
 //   the macro dialog, an
 //   Auto macro, an event,
-//   the VBE, DDE/OLE        -> the ERROR #REF! -- there is no caller on a sheet
+//   the VBE, DDE/OLE        -> the error #REF! -- there is no caller on a sheet
 //   Excel calling for its
-//   own purposes            -> a reference at row 0, column 0, with NO sheet
+//   own purposes            -> a reference at row 0, column 0, with no sheet
 //
 // The last one is a trap: row 0 column 0 decodes to a confident "A1", so a cell is written only
 // when the sheet resolves too.
@@ -21,8 +21,7 @@
 
 namespace core
 {
-    // Never zero-initialise one: `Caller who;`, not `Caller who{}`. Every path sets the leading
-    // bytes and isCell and NUL-terminates each field, so `{}` would memset the struct on every
+    // `Caller who;`, not `{}`: every path NUL-terminates each field, so `{}` would memset it on every
     // traced call for nothing. Keep it under 4 KB, past which MSVC inserts _chkstk probes.
     struct Caller
     {
@@ -46,10 +45,8 @@ namespace core
         // answer, `not-asked` is us never having asked.
         char kind[24];
 
-        // Sized in BYTES, not characters: a sheet name is capped at 31
-        // characters but a workbook name is not, and UTF-8 costs up to four
-        // bytes each. Generous because it is free -- see the note above about
-        // never zero-initialising one.
+        // Bytes, not characters: a workbook name has no length cap and UTF-8 takes up to four
+        // bytes each. Generous because, never zero-initialised, it costs nothing.
         char desc[1024];
 
         // kind == "cell". Kept as a flag so callers need no strcmp.

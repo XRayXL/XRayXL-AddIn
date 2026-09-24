@@ -37,9 +37,7 @@ namespace xll
         }
 
         // ---- strings: four conventions, each with its own reader ------------
-        //
-        // Only the registered code tells them apart; no length check can. All
-        // four are written with the VBA column's quoting.
+        // Only the registered code tells them apart; no length check can.
 
         // Reads up to n bytes, stopping at the page boundary first, so a short
         // string that ends just before unmapped memory is still read. Returns bytes read.
@@ -121,26 +119,21 @@ namespace xll
             return true;
         }
 
-        // Spellings shared with the VBA column (core/excelerr.h). `#ERR?` stays here: this
-        // column must print something in a fixed-width grid, where the VBA column can print the
-        // number.
+        // Spellings shared with the VBA column; an unknown code prints `#ERR?` to fit the fixed-width grid.
         const char* ErrName(int e)
         {
             const char* n = core::ExcelErrName(e);
             return n ? n : "#ERR?";
         }
 
-        // Excel's grid is 1,048,576 rows by 16,384 columns; anything larger is not an array
-        // Excel made, and is refused rather than walked.
+        // Anything larger than Excel's grid is not an array Excel made, so it is refused, not walked.
         bool GridShapeOk(long long rows, long long cols)
         {
             return rows >= 0 && cols >= 0 && rows <= 1048576 && cols <= 16384;
         }
 
-        // One grid shape for an FP, an FP12, a type-O triple and an XLOPER array alike:
-        // "<Elem>[1..<rows>,1..<cols>]", then a level per row. Excel stores rows, so element
-        // (r, c) is at r * cols + c. `cell` returns false when it cannot read element i,
-        // which then reads `?`.
+        // Shared by FP, FP12, the type-O triple and XLOPER arrays; Excel stores them row-major.
+        // `cell` returns false when it cannot read element i, which then reads `?`.
         template <class CellFn>
         bool WriteGrid(ValueWriter& w, const char* elem, long long rows, long long cols, CellFn cell)
         {
@@ -316,9 +309,8 @@ namespace xll
         {
         case Kind::ArrayTriple:
         {
-            // Three slots: the head renders the whole thing, the other two say
-            // so rather than repeating it.
-            if (!s.tripleHead) return;   // the caller renders an O array once, at its first slot
+            // Three slots: the head renders the whole array, the other two write nothing.
+            if (!s.tripleHead) return;
             // xlcall.h has no struct for O: rows*, columns*, then the doubles.
             long long rows = 0, cols = 0;
             if (s.code[1] == '%')

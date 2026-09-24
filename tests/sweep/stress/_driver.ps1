@@ -1,27 +1,14 @@
-# Stress driver: a real workbook per case (event wiring, buttons, class modules, sheet code,
-# cross-workbook dependencies, .xlam add-ins), because in some cases the open itself is the
-# trigger. Each .test.ps1 is self-contained: it carries its own case data and hands it here.
-#
-# The cases are unreasonable on purpose: 500-deep recursion, 60-parameter signatures, a Change
-# handler that calls Calculate and re-enters the interpreter mid-frame, two modules exporting
-# the same procedure name, a procedure body past the p-code walker's ceiling.
-#
-# Every case is also checked for the invariants that must hold no matter what: frames opened ==
-# frames closed, no hook faults, the circuit breaker still closed, and no procedure lost to a
-# full table. A case's own Expect adds only what is specific to it. Excel's lifecycle,
-# deadlines, the dialog watchdog and crash attribution are StretchXL's.
+# Stress driver: a real workbook per case, because for events, buttons, add-ins and cross-workbook
+# dependencies the open itself can be the trigger. Every case is also checked for what must hold
+# regardless: frames balance, no hook faults, the breaker closed, no procedure lost to a full table.
 
-# A1 FROM ROW AND COLUMN NUMBERS. UsedRange.Value2 arrives as a block with no
-# addresses on it, and its top-left is wherever the used range starts -- so the
-# offsets have to be turned back into the addresses a case will ask for.
+# UsedRange.Value2 carries no addresses and starts wherever the used range does, so rebuild them.
 function Get-A1Address([int]$Row, [int]$Col) {
     $s = ''
     $n = [int]$Col
     while ($n -gt 0) {
         $n--
-        # [int] ON BOTH: [Math]::Floor returns a Double, so without it `$n % 26`
-        # is a Double and the char cast fails -- for every column past Z, which
-        # is exactly the range a quick test of A and B does not reach.
+        # [int] on both: [Math]::Floor returns a Double, and the char cast then fails past column Z.
         $s = [char]([int][char]'A' + [int]($n % 26)) + $s
         $n = [int][Math]::Floor($n / 26)
     }
@@ -29,7 +16,6 @@ function Get-A1Address([int]$Row, [int]$Col) {
 }
 
 function Get-VbaEntryNames($Totals) {
-    # The function each VBA entry row names, in trace order.
     return @($Totals.rows | Where-Object { $_.kind -eq 'entry' -and $_.source -eq 'VBA' } | ForEach-Object { $_.function })
 }
 
@@ -45,8 +31,7 @@ function Assert-VbaTraced($Totals, [string[]]$Names) {
 }
 
 function Read-CaseCounters($App, [string]$BookLeaf, [string]$Macro) {
-    # "Name=N;Name=N" from the case's own VBA. Quoted, like every other Application.Run
-    # here: a case's leaf carries hyphens, which Application.Run will not take bare.
+    # Parses "Name=N;Name=N". Quoted: a case's leaf has hyphens, which Application.Run will not take bare.
     $out = @{}
     foreach ($pair in (([string]$App.Run(("'{0}'!{1}" -f $BookLeaf, $Macro))) -split ';')) {
         if ($pair -match '^\s*(\w+)\s*=\s*(-?\d+)\s*$') { $out[$Matches[1]] = [int]$Matches[2] }
@@ -78,7 +63,7 @@ function Invoke-StressCase($Case) {
             }
         }
         if ($spec.SheetCode) {
-            # By CODE NAME, not tab name: event handlers live on the component.
+            # By code name, not tab name: event handlers live on the component.
             $comp = $wb.VBProject.VBComponents.Item($ws.CodeName)
             $comp.CodeModule.AddFromString($spec.SheetCode)
         }
@@ -133,19 +118,15 @@ function Invoke-StressCase($Case) {
         try { $null = $app.Workbooks.Item(1).VBProject }
         catch { Complete-Test -Skip -Detail 'VBA project access is not trusted on this machine' }
 
-        # Per-invocation work dir (session pid + this test process's pid): in a reused session
-        # an earlier invocation of this case may still hold its files open, such as a loaded
-        # .xlam dependency, and SaveAs over the same path fails. Unique paths keep the build
-        # writable...
+        # Unique per invocation: in a reused session an earlier run may still hold these files open
+        # (a loaded .xlam), and SaveAs over them fails.
         $caseDirWork = Join-Path $sx.WorkDir ("stress_{0}_{1}" -f $sx.ProcId, $PID)
         New-Item -ItemType Directory -Force $caseDirWork | Out-Null
         $bookPath = Join-Path $caseDirWork ("{0}.xlsm" -f $c.Name)
         $bookLeaf = Split-Path $bookPath -Leaf
 
-        # ...and closing OUR OWN earlier leftovers by leaf keeps the open
-        # legal (Excel refuses two open workbooks with one name). Only leaves
-        # THIS case owns are touched: the rest of the session's dirt is the
-        # realism reuse mode exists for, and stays.
+        # Close only this case's own leftovers (Excel refuses two open workbooks with one name); the
+        # rest of the session's dirt is the realism reuse mode exists for.
         $ownLeaves = @($bookLeaf)
         if ($c.Deps) {
             foreach ($d in $c.Deps) {
@@ -163,8 +144,7 @@ function Invoke-StressCase($Case) {
 
         [void](New-CaseWorkbook $app $c $bookPath)
 
-        # Dependencies first: they must be OPEN before the case workbook, or
-        # its formulas resolve to #REF! and the trace tests nothing.
+        # Dependencies must be open before the case workbook, or its formulas resolve to #REF!.
         $depLeaves = @()
         if ($c.Deps) {
             foreach ($d in $c.Deps) {
@@ -177,8 +157,7 @@ function Invoke-StressCase($Case) {
             }
         }
 
-        # Workbook_Open must fire while ARMED, so for that trigger the open
-        # happens after arming; everything else opens first.
+        # Workbook_Open must fire while armed, so that trigger opens after arming.
         $wb = $null
         $openWhileArmed = ($c.Trigger.Kind -eq 'Open')
         if (-not $openWhileArmed) {
@@ -186,9 +165,8 @@ function Invoke-StressCase($Case) {
             try { $wb.EnableAutoRecover = $false } catch {}
         }
 
-        # COUNTED TWICE, AND THE DIFFERENCE IS THIS RUN. Opening the workbook already
-        # calculates it, so a volatile UDF has run before arming; this reading is taken
-        # while nothing is armed, so it adds no rows to the trace it will be compared with.
+        # Counted before and after: opening the workbook already calculates it. Read while disarmed,
+        # so it adds no rows to the trace.
         $countersBefore = @{}
         if ($c.Counters -and $wb) {
             try { $countersBefore = Read-CaseCounters $app $bookLeaf $c.Counters }
@@ -202,7 +180,7 @@ function Invoke-StressCase($Case) {
         $armLine = Wait-LogLine $paths.Log 'VBA tracing: ' $mark
         if ($armLine -notmatch 'ARMED') { Complete-Test -Fail -Detail "did not arm: $armLine" }
 
-        # THE TRIGGER.
+        # The trigger.
         $ran = $true; $err = ''
         try {
             $k = $c.Trigger.Kind
@@ -246,14 +224,8 @@ function Invoke-StressCase($Case) {
         $t = ConvertFrom-XRayTotals $totLine
         $t | Add-Member -NotePropertyName rows -NotePropertyValue $rows -Force
 
-        # THE SHEET, SO AN ORACLE DOES NOT HAVE TO RIDE IN THE TRACE.
-        #
-        # Expect gets the sheet as well as the rows, so a case can compare VBA's own
-        # account without calling a traced procedure that would clutter the trace.
-        #
-        # Read AFTER disarm, so nothing here can appear in the trace it is being
-        # compared against. `Value2`, deliberately: it is what the tracer's own
-        # Range description reads, so the two are the same question.
+        # The sheet too, so a case can check VBA's own account without a traced call cluttering the trace.
+        # Read after disarm; Value2 because it is what the tracer's Range description reads.
         # One COM call, not one per cell: most cases never read the sheet.
         $cells = @{}
         try {
@@ -273,10 +245,8 @@ function Invoke-StressCase($Case) {
         } catch { }
         $t | Add-Member -NotePropertyName cells -NotePropertyValue $cells -Force
 
-        # HOW MANY CALLS VBA ITSELF COUNTED. A case whose call count is Excel's to decide --
-        # a recalculation, an event cascade -- counts them in its own VBA and returns them
-        # from this macro as "Name=N;Name=N". Run AFTER disarm, so reading them traces nothing,
-        # and independent of the tracer: the trace is compared against VBA's own tally.
+        # Where the call count is Excel's to decide (a recalc, an event cascade), the case counts calls
+        # in its own VBA; read after disarm, so the trace is compared against an independent tally.
         $counters = @{}
         if ($c.Counters) {
             $after = @{}
@@ -291,11 +261,8 @@ function Invoke-StressCase($Case) {
         $t | Add-Member -NotePropertyName counters -NotePropertyValue $counters -Force
         $t | Add-Member -NotePropertyName book  -NotePropertyValue (Split-Path $bookPath -Leaf) -Force
 
-        # WHO CALLED THE FIRST FRAME. The trigger kind determines it: Calc
-        # reaches a UDF from its cell; every other kind dispatches a macro
-        # or event handler with no caller on a sheet -- kind 'none'.
-        # ActiveX stays value-unasserted (unmeasured); Trigger.FirstCaller overrides.
-        # The caller invariants are asserted on every row regardless.
+        # Calc reaches a UDF from its cell; every other trigger dispatches with no caller on a sheet.
+        # ActiveX is left unasserted; Trigger.FirstCaller overrides.
         $callerProbs = @(Test-RowInvariants $rows)
         # Every case runs VBA, so a trace with no VBA entry lost it, however the totals read.
         if (-not @($rows | Where-Object { $_.kind -eq 'entry' -and $_.source -eq 'VBA' }).Count) {
@@ -326,9 +293,7 @@ function Invoke-StressCase($Case) {
         }
         if ($callerProbs.Count) { Complete-Test -Fail -Detail ($callerProbs -join '; ') }
 
-        # DIALOGS. The manager's watchdog dismissed and recorded them; the
-        # case says whether one was EXPECTED, and this driver keeps the
-        # judgement by declaring dialogs handled either way it decides.
+        # The watchdog dismissed and recorded any dialogs; the case says whether one was expected.
         $dlgSeen = @(Get-SessionDialogs).Count - $dlgBefore
         if ($dlgSeen -gt 0 -and -not $c.Trigger.ExpectDialog) {
             $lastDlg = @(Get-SessionDialogs) | Select-Object -Last 1
@@ -338,8 +303,7 @@ function Invoke-StressCase($Case) {
             Complete-Test -Fail -Detail 'expected a modal dialog, none appeared'
         }
         if ($dlgSeen -gt 0) { Write-DialogsHandled }
-        # The per-case dialog count rides on the totals object: several Expect
-        # blocks assert on it ($t.dialogs -lt 1 => fail).
+        # Several Expect blocks assert on the dialog count.
         $t | Add-Member -NotePropertyName dialogs -NotePropertyValue $dlgSeen -Force
 
         $why = $null
@@ -353,9 +317,8 @@ function Invoke-StressCase($Case) {
         elseif ($t.framesOpened -ne $t.framesClosed) { $why = "frame leak: opened $($t.framesOpened), closed $($t.framesClosed)" }
         elseif ($t.tableFull -gt 0) { $why = "$($t.tableFull) procedures could not be recorded (table full)" }
 
-        # DID EXCEL STILL COMPUTE THE RIGHT ANSWER? Numeric compare with a
-        # tight relative tolerance: formatting differences say nothing about
-        # the tracer, a clobbered xmm register is wrong in the first figures.
+        # Did Excel still compute the right answer? A tight relative tolerance: formatting says nothing
+        # about the tracer, while a clobbered xmm register is wrong in the first figures.
         if (-not $why -and $c.VerifyCells -and $wb) {
             try {
                 $ws2 = $wb.Worksheets('S1')
@@ -382,9 +345,7 @@ function Invoke-StressCase($Case) {
 
         if (-not $why -and $c.Expect) { $why = & $c.Expect $t }
 
-        # Close the case's workbooks clean inside the session -- discard is
-        # the close's meaning, and the worker's Saved sweep is the net, not
-        # the plan.
+        # Close clean inside the session: the worker's Saved sweep is the net, not the plan.
         try {
             $leaves = @($bookLeaf) + $depLeaves
             foreach ($w in @($app.Workbooks)) {

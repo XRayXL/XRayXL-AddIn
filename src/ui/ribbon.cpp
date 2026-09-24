@@ -258,7 +258,7 @@ void RememberRibbonUi(IDispatch* ui)
 
 void ReleaseRibbonUis()
 {
-    // Cleared BEFORE releasing, so a re-entrant teardown finds nothing to do.
+    // Cleared before releasing, so a re-entrant teardown finds nothing to do.
     const int n = g_ribbonCount;
     g_ribbonCount = 0;
     for (int i = 0; i < n; ++i)
@@ -297,15 +297,13 @@ void OnStateChanged()
     else                                    g_dirty.store(true);
 }
 
-// The dispids ARE model::Callback, so a name can only be wrong in one place.
+// The dispids are model::Callback, so a name can only be wrong in one place.
 enum : DISPID {
     DISPID_ONLOAD     = M::CbOnLoad,     DISPID_ONARM     = M::CbOnArm,
     DISPID_ONDISARM   = M::CbOnDisarm,   DISPID_GETENABLED = M::CbGetEnabled,
     DISPID_ONOPTIONS  = M::CbOnOptions,  DISPID_LOADIMAGE = M::CbLoadImage,
     DISPID_ONDIAGNOSTICS = M::CbOnDiagnostics
 };
-
-// The XML is model::kCustomUi -- see the note above.
 
 // defined with the connect plumbing below
 HWND MainWindow();
@@ -336,7 +334,7 @@ void ExplainEmptyArm()
     }
     if (!owner || !IsWindowVisible(owner)) return;
 
-    // The one cause that IS the user's to fix, because they did it on this tab.
+    // The one cause that is the user's to fix, because they did it on this tab.
     const bool vbaOff = !core::modes::VbaEnabled();
 
     wchar_t text[1000];

@@ -6,16 +6,15 @@
 #include "emit/csv.h"
 #include "session.h"
 
-// WHAT EVERY WORKSHEET-CALLABLE EXPORT SHARES. Internal to app/: the three
-// files that implement the XRayXL_* functions include it, nothing else does.
+// What every worksheet-callable export shares. Internal to app/: only the files that implement
+// the XRayXL_* functions include it.
 namespace app
 {
     // #VALUE!, handed back when a body faulted. One place that says so.
     LPXLOPER12 FaultOper();
 
-    // A string reply. Static, because Excel reads the XLOPER12 after we
-    // return; these run one at a time, on whatever thread Application.Run
-    // arrived on.
+    // Static, because Excel reads the XLOPER12 after we return; these run one at a time, on
+    // whatever thread Application.Run arrived on.
     LPXLOPER12 EchoStr(const wchar_t* text);
 
     // The setters refuse a cell caller: a formula that reconfigures the
@@ -26,7 +25,7 @@ namespace app
     // with, so the two can never disagree.
     bool AnythingArmed();
 
-    // EVERY EXPORT RUNS THROUGH THIS: the body, or on a contained fault a logged line
+    // Every export runs through this: the body, or on a contained fault a logged line
     // and #VALUE!. `name` null keeps the fault out of the log, for the probe that faults on
     // purpose. Pointer arguments only, so __try shares its frame with nothing that needs
     // unwinding (C2712).

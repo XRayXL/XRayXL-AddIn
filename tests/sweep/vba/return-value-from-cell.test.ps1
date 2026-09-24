@@ -1,11 +1,6 @@
-# VBA return values: every declared type, arrays, Variants, and the whole stack.
-#
-# A VBA exit row carries the result of the activation it closes, at any depth: the exit opcode
-# names the return kind, scalars and typed arrays are read from [R14-8], and a Variant from the
-# live VARIANT at [R14-0x18].
-#
-# Each cell-visible value is checked against the number Excel itself put in the cell; values at
-# depth 2 and 3 against their planted constants. Every unsupported shape must come back empty.
+# A VBA exit row carries its activation's result, for every declared type, array and Variant,
+# at any depth. Cell-visible values are checked against what Excel put in the cell, deeper ones
+# against planted constants.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -309,7 +304,7 @@ End Function
         Check "$($b.Fn)-reports-i2" (($x.ret -eq $b.Want) -and ($x.rettype -eq 'Integer')) ("ret='{0}' rettype='{1}'" -f $x.ret, $x.rettype)
     }
 
-    # ---- THE STACK: depth 2 and 3, against their planted constants -------
+    # ---- the stack: depth 2 and 3, against their planted constants -------
     foreach ($d in @(
         @{ Fn='R_Inner';  Want='100.25'; Type='Double' }   # depth 3
         @{ Fn='R_Mid';    Want='110.25'; Type='Double' }   # depth 2
@@ -321,7 +316,7 @@ End Function
         Check "$($d.Fn)-returns-at-depth" $ok ("ret='{0}' rettype='{1}' expected {2}" -f $x.ret, $x.rettype, $d.Want)
     }
 
-    # ---- VARIANTS: the held value, a number other than Double named ------------
+    # ---- Variants: the held value, a number other than Double named ------------
     foreach ($v in @(
         @{ Fn='R_Variant';      Want='1234.5'      }
         @{ Fn='R_VariantStr';   Want='"VARSTR"'    }
@@ -336,7 +331,7 @@ End Function
         Check "$($v.Fn)-variant-decoded" (($x.ret -eq $v.Want) -and ($x.rettype -eq 'Variant')) ("ret='{0}' rettype='{1}' expected {2}" -f $x.ret, $x.rettype, $v.Want)
     }
 
-    # ---- VARIANT ARRAYS OF VARIANTS, nested arrays, Range.Value ---------------
+    # ---- Variant arrays of Variants, nested arrays, Range.Value ---------------
     foreach ($v in @(
         @{ Fn='R_ArrMixed';  Want='Variant[0..3]{1234.5,"two",Long(3),TRUE}'   }
         @{ Fn='R_ArrNested'; Want='Variant[0..1]{Variant[0..1]{1234.5,Integer(2)},Integer(3)}' }
@@ -348,8 +343,7 @@ End Function
         Check "$($v.Fn)-variant-array-decoded" (($x.ret -eq $v.Want) -and ($x.rettype -eq 'Variant')) ("ret='{0}' rettype='{1}' expected {2}" -f $x.ret, $x.rettype, $v.Want)
     }
 
-    # Objects: `<Class>@0x<addr>` with OBJECTS on, literally `object` with it off. The address
-    # is what follows one object from an argument to a result.
+    # the address is what follows one object from an argument to a result
     $obj = '^[A-Za-z_][A-Za-z0-9_]*@0x[0-9A-Fa-f]+$'
     $x = Get-Return 'R_Obj'
     if (-not $x) { Check 'R_Obj-has-exit-row' $false 'no paired exit row' }
@@ -364,9 +358,7 @@ End Function
     if (-not $x) { Check 'R_ArrWithObj-has-exit-row' $false 'no paired exit row' }
     else { Check 'R_ArrWithObj-object-in-array' (($x.ret -match '^Variant\[0\.\.1\]\{[A-Za-z_][A-Za-z0-9_]*@0x[0-9A-Fa-f]+,1234\.5\}$') -and ($x.rettype -eq 'Variant')) ("ret='{0}'" -f $x.ret) }
 
-    # THE ROUND TRIP: the object R_ObjRoundTrip hands DOWN as an argument is
-    # the object R_TakesObj hands BACK as its result -- one address on both
-    # rows, which is what lets a reader follow an object through the stack.
+    # the object handed down as an argument comes back as the result, at one address
     $e = @($rows | Where-Object { ($_.kind -eq 'entry' -and $_.source -eq 'VBA') -and $_.function -eq 'R_TakesObj' }) | Select-Object -First 1
     $x = Get-Return 'R_TakesObj'
     if (-not $e -or -not $x) { Check 'R_TakesObj-traced' $false 'entry or exit missing' }
@@ -376,7 +368,7 @@ End Function
         Check 'object-argument-and-return-are-the-same-address' ($argAddr -and ($argAddr -eq $retAddr) -and ($x.rettype -eq 'Object')) ("arg='{0}' ret='{1}'" -f $e.args, $x.ret)
     }
 
-    # ---- TYPED ARRAYS: shape, element type, and the elements ----------------
+    # ---- typed arrays: shape, element type, and the elements ----------------
     foreach ($a in @(
         @{ Fn='R_ArrDbl'; Want='Double[0..2]{1234.5,2,3}';         Type='Double()' }
         @{ Fn='R_ArrLng'; Want='Long[1..3]{1234,5,6}';             Type='Long()'   }
@@ -389,8 +381,7 @@ End Function
         Check "$($a.Fn)-array-decoded" (($x.ret -eq $a.Want) -and ($x.rettype -eq $a.Type)) ("ret='{0}' rettype='{1}' expected {2}" -f $x.ret, $x.rettype, $a.Want)
     }
 
-    # The arrays Excel spilled: the first element is what the cell shows, and
-    # it must agree with what the trace says the array held.
+    # a spilled array's first element is what the cell shows
     foreach ($s in @(@{ Fn='R_ArrDbl'; Cell='E1' }, @{ Fn='R_ArrLng'; Cell='G1' }, @{ Fn='R_Arr2D'; Cell='K1' })) {
         $x = Get-Return $s.Fn
         $first = Get-XRayCellText $ws.Range($s.Cell)
@@ -398,7 +389,7 @@ End Function
         Check "$($s.Fn)-first-element-matches-cell" $ok ("cell={0} trace='{1}'" -f $first, $(if ($x) { $x.ret } else { '' }))
     }
 
-    # ---- STRINGS, against the cells --------------------------------------------
+    # ---- strings, against the cells --------------------------------------------
     foreach ($t in @(
         @{ Fn='R_Str';      Cell='A23'; Want='"XRAYRET"'    }
         @{ Fn='R_StrEmpty'; Cell='A24'; Want='""'            }
@@ -415,7 +406,7 @@ End Function
     if (-not $x) { Check 'R_StrInner-has-exit-row' $false 'no paired exit row' }
     else { Check 'R_StrInner-string-at-depth' (($x.ret -eq '"inner"') -and ($x.rettype -eq 'String')) ("ret='{0}' rettype='{1}'" -f $x.ret, $x.rettype) }
 
-    # ---- SUBS ----------------------------------------------------------------
+    # ---- Subs ----------------------------------------------------------------
 
     foreach ($sub in @('S_Local', 'R_SubTop')) {
         $x = Get-Return $sub

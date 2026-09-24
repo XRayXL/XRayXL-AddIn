@@ -43,20 +43,18 @@ End Function
         if ($t.framesOpened -ne $t.framesClosed) {
             return "frames leaked: $($t.framesOpened)/$($t.framesClosed)" }
 
-        # CONTROL 1. Plain must have been called at all, or there is nothing to
-        # compare against and the case proves nothing.
+        # Control: Plain must have been called at all, or there is nothing to compare against.
         if ($pl -lt 3) {
             return "CONTROL FAILED: Plain called from 3 cells but only $pl activation(s) traced" }
 
-        # CONTROL 2. A real nested call at a different rsp must still nest.
-        # Recursed(3) is 4 activations per call.
+        # Control: a real nested call at a different rsp must still nest. Recursed(3) is 4 activations.
         if ($rc -lt 4) {
             return "CONTROL FAILED: Recursed(3) should nest 4 deep but only $rc activation(s) traced -- a genuine nested call is no longer being opened" }
         if ($t.maxDepth -lt 4) {
             return "CONTROL FAILED: maxDepth $($t.maxDepth), expected >= 4 from Recursed(3)" }
 
-        # THE DEFECT. Identical shape, identical cell count; the only difference
-        # is the GoSub. Anything but equality means rsp is still opening frames.
+        # Identical shape and cell count, differing only by the GoSub: anything but equality means
+        # rsp is still opening frames.
         if ($gs -ne $pl) {
             return "GoSubbed traced $gs times and Plain $pl from the same number of cells -- the GoSub is being counted as a nested call" }
         $null }

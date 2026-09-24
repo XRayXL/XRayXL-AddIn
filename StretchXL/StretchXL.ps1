@@ -1,138 +1,96 @@
 <#
 .SYNOPSIS
-    StretchXL -- a generic harness for testing things that run inside Excel,
-    built around one question: does an Excel session start, do what it is
-    asked, and shut down cleanly?
+    A generic harness for code that runs inside Excel: does a session start,
+    do what it is asked, and shut down cleanly?
 
 .DESCRIPTION
-    See StretchXL.md for the design, the contract and the locked decisions.
-    In short: the manager owns every Excel lifecycle -- start, identity,
-    ledger, deadlines, measured close, dumps -- and each test is its own file
-    in a folder tree, run as its own process, bound to the manager's Excel by
-    window handle. With no -Path, the floor runs: start Excel, add a workbook,
-    close -- the control that proves the infrastructure clean on its own.
+    See StretchXL.md for the design and the test contract. The manager owns
+    every Excel lifecycle; each test is its own *.test.ps1, run as its own
+    process and bound to the manager's Excel by window handle. With no -Path,
+    the floor runs: start Excel, add a workbook, close.
 
-    Results stream to STDOUT one line per result as it happens, and land in a
-    results-<timestamp>.jsonl in -OutDir, whose first line records the full
-    configuration. Nothing here is written with Write-Host: that goes to the
-    information stream, which a pipeline or a scraper never sees.
+    Results go to stdout one line each, and to results-<timestamp>.jsonl in
+    -OutDir. Nothing uses Write-Host, which a pipeline never sees.
 
-    Exit code: 0 only if every result was benign. Any FAIL, TIMEOUT, ERROR,
-    SETUP-FAILED verdict, any CRASH, HANG, EXITED or FAILED outcome, or fewer
-    results than expected, exits 1 -- CI can gate on the exit code with no
-    parsing.
+    Exits 1 on any FAIL, TIMEOUT, ERROR, SETUP-FAILED, CRASH, HANG, EXITED or
+    FAILED result, or fewer results than expected; otherwise 0.
 
 .PARAMETER Parallel
-    Number of Excel sessions running at once. Mandatory -- concurrency is not
-    a detail here. It changes timing, and timing is what this is measuring.
+    Number of Excel sessions at once. Mandatory, because concurrency changes
+    timing, and timing is what is being measured.
 
 .PARAMETER Runs
-    How many times each selected test runs (or, at the floor, the TOTAL number
-    of floor iterations). Workers PARTITION the work; they do not multiply it.
-    A soak is a high -Runs, usually with -RandomOrder.
+    How many times each test runs (at the floor, the total floor iterations).
+    Workers split the work; they do not multiply it.
 
 .PARAMETER Path
-    The tests root: every *.test.ps1 under it (recursively) is a test, and the
-    folder is the selection mechanism -- point at a subfolder to run a subset.
-    Omitted, the floor runs instead: start Excel, add one empty workbook,
-    close. Nothing else at all.
+    Tests root: every *.test.ps1 under it is a test. Point at a subfolder to
+    run a subset. Omitted, the floor runs instead.
 
 .PARAMETER OutDir
-    Where results go. REQUIRED on every run, floor included -- no hidden temp
-    locations. Each invocation writes its own results-<timestamp>.jsonl here;
-    the first line is a metadata record (full configuration, seed, machine,
-    Excel build). Dumps also land here unless -DumpDir says otherwise.
+    Where results go; required, floor included. Dumps land here too unless
+    -DumpDir is given.
 
 .PARAMETER DumpDir
     Optional separate folder for minidumps. Defaults to -OutDir.
 
 .PARAMETER SessionMode
-    Fresh (default): every test gets its own Excel -- isolation, and a per-test
-    shutdown measurement.
-    Reuse: a sequence of tests shares one long-lived Excel PROCESS. Its
-    Application settings, loaded XLLs and in-process VBA / XLL state persist --
-    that dirt is what "fails only in a dirty session" is made of -- but its
-    WORKBOOKS do not: every test closes the books it opened (Complete-Test),
-    so a book is never left for the next test's CalculateFull to recalculate
-    into its trace.
-    ReuseClean: the same, and ALSO restores the Application settings to
-    baseline between tests -- reuse without the settings dirt.
-    A session is only shared by tests whose set-up matches: the same
-    RegisterXll list, RegisterXllSettleSeconds and SessionEnvironment.
-    Reuse and ReuseClean need -Path (the floor run is the fresh-session
-    control by definition).
+    Fresh (default): every test gets its own Excel.
+    Reuse: tests share one long-lived Excel process. Application settings and
+    loaded add-ins persist, to catch "fails only in a dirty session"; each
+    test still closes the workbooks it opened.
+    ReuseClean: as Reuse, but restores Application settings between tests.
+    Only tests with the same RegisterXll, RegisterXllSettleSeconds and
+    SessionEnvironment share a session. Reuse modes need -Path.
 
 .PARAMETER CloseTimeoutSeconds
-    How long to wait for Excel to exit after the close before calling the
-    session a HANG. A classifier, not a measurement: every session reports its
-    real close-to-exit time in shutdown=. A healthy floor shutdown is under
-    three seconds; a deadline shorter than the slowest clean shutdown does not
-    measure hangs, it manufactures them.
+    How long Excel may take to exit after the close before it is a HANG. Set
+    it above the slowest clean shutdown, or it manufactures hangs.
 
 .PARAMETER TestTimeoutSeconds
-    How long a test body may run before it is a TIMEOUT: both the Excel and
-    the wedged test process are dumped (the test's stack names the stuck COM
-    call, Excel's names why), then the test process is killed. Distinct from
-    -CloseTimeoutSeconds because "the test never returned" and "Excel would
-    not exit afterwards" are different failures.
+    How long a test body may run before it is a TIMEOUT. Excel and the test
+    process are both dumped, then the test process is killed.
 
 .PARAMETER CloseWithX
-    Close Excel the way a user does -- make the window visible and post it the
-    message the X button posts (WM_SYSCOMMAND / SC_CLOSE) -- instead of
-    calling Application.Quit() over COM. The two run different teardown code;
-    an add-in that hangs close-down for a user can look healthy under Quit,
-    and the reverse. Manager-only by design: running the same suite both ways
-    is the point. The window is shown minimized WITHOUT ACTIVATION
-    (SW_SHOWMINNOACTIVE), measured not to move focus, so a soak can run while
-    you work; the interactive close path still engages.
+    Close Excel the way a user does, posting the X button's SC_CLOSE, instead
+    of Application.Quit(); the two run different teardown code. The window is
+    shown minimized without activation, so it does not take focus.
 
 .PARAMETER Warmup
-    Each worker performs ONE unmeasured bare floor close before its counted
-    work. Exists because of a measured property of the X-click arm: the first
-    X-closed Excel of each client process shuts down in ~60s (Click-to-Run
-    implicated); every later one takes ~2.5s. Warm-ups run in parallel, so
-    all workers warming at once costs ~60s of wall clock in total. Reported
-    as run=warmup lines -- a warm-up that hangs is still loud -- but never
-    counted. Never includes suite set-up: set-up costs stay in measured data.
+    Each worker does one unmeasured floor close before its counted work, so
+    the much slower first X-close of each client process is not measured.
+    Reported as run=warmup lines, never counted.
 
 .PARAMETER RandomOrder
-    Shuffle the selected work. The shuffle is seeded, the seed is printed in
-    the header and recorded in the metadata line, and -Seed replays it -- a
-    random order that found a failure and cannot be replayed is half a result.
+    Shuffle the work. The seed is printed and recorded so -Seed can replay it.
 
 .PARAMETER Seed
     Replay a specific shuffle. Ignored without -RandomOrder.
 
 .PARAMETER GroupBySession
-    Keep tests that share a session set-up (add-ins, settle time, environment)
-    together, so a reused session lasts through its whole group instead of
-    being replaced whenever the next test needs different add-ins. Order within
-    a group is kept; with -RandomOrder the group order is shuffled by the same
-    seed. ON BY DEFAULT for -RandomOrder with -SessionMode Reuse or ReuseClean;
+    Keep tests that share a session set-up together, so a reused session
+    lasts through its group. On by default for -RandomOrder with a reuse mode;
     give it to group an unshuffled reuse run. Needs -Path and a reuse mode.
 
 .PARAMETER NoGroupBySession
-    Turn the default grouping off: a shuffled reuse run mixes every test into
-    every session, as before -GroupBySession existed. Replaying a seed from such
-    a run needs this switch again.
+    Turn the default grouping off, mixing every test into every session.
+    Replaying a seed from such a run needs this switch again.
 
 .PARAMETER DumpAfterSeconds
-    If Excel is still alive this many seconds after the close, write a
-    minidump WHILE IT IS STILL STUCK, then carry on waiting. 0 disables it.
-    A HANG is always dumped before it is killed; this additionally catches
-    slow-but-eventually-clean shutdowns that a dump at the deadline never sees.
+    Dump Excel if it is still alive this many seconds after the close, then
+    keep waiting; catches slow shutdowns that end cleanly. 0 disables it.
 
         python StretchXL\evidence\hangwhere.py <dump>
 
 .PARAMETER FullDump
-    Full-memory dumps instead of stacks-and-handles (about 20x the size).
+    Full-memory dumps instead of stacks and handles (much larger).
 
 .PARAMETER NoDump
-    Never dump, not even on HANG. For soaks where disk is the constraint.
+    Never dump, not even on HANG.
 
 .PARAMETER Cleanup
     Kill any Excel left behind by an interrupted run, using the pid ledgers,
-    and exit. Takes no other action.
+    and exit.
 
 .EXAMPLE
     .\StretchXL.ps1 -Parallel 1 -OutDir C:\sx\results
@@ -148,8 +106,7 @@
 
 .EXAMPLE
     .\StretchXL.ps1 -Parallel 8 -Runs 6 -Path .\suites -OutDir C:\sx\r -SessionMode Reuse -RandomOrder
-    A shuffled soak whose reused sessions each last through a whole group of tests
-    (grouping is the default here; -NoGroupBySession mixes every test instead).
+    A shuffled soak whose reused sessions each last through a group of tests.
 
 .EXAMPLE
     .\StretchXL.ps1 -Cleanup
@@ -183,18 +140,16 @@ $ErrorActionPreference = 'Stop'
 $commonScript = Join-Path $PSScriptRoot '_common.ps1'
 . $commonScript
 
-# How often the parent collects worker output.
 $ReceivePollMs = 400
-# Silence longer than this prints a heartbeat, so a wedged run looks different from a slow one.
+# a heartbeat on silence, so a wedged run looks different from a slow one
 $HeartbeatSeconds = 10
-# Shutdowns slower than this are counted separately in the summary: a clean floor close is ~2.5s.
+# shutdowns slower than this are counted separately in the summary
 $SlowShutdownSeconds = 10
 # Settle after RegisterXLL when a suite does not say: add-in start-up is not instantaneous.
 $DefaultSettleSeconds = 3
 
-# The pid ledger. Workers are Start-Job child processes that survive the parent being killed, so
-# every Excel is written to a ledger before it is used, and -Cleanup sweeps every ledger. One
-# ledger per invocation, holding only pids we started.
+# Workers survive the parent being killed, so every Excel we start is written to a ledger
+# before use, and -Cleanup sweeps every ledger.
 $ledgerDir  = Join-Path $env:TEMP 'StretchXL'
 $ledgerPath = Join-Path $ledgerDir "StretchXL_pids.$PID.txt"
 New-Item -ItemType Directory -Force $ledgerDir | Out-Null
@@ -225,7 +180,6 @@ Remove-Item $ledgerPath -Force -ErrorAction SilentlyContinue
 # PowerShell names are case-insensitive, so a local $runs would be the $Runs
 # parameter; locals below are named so they cannot collide with one.
 
-# the floor is the fresh-session control by definition
 if ($SessionMode -ne 'Fresh' -and -not $PSBoundParameters.ContainsKey('Path')) {
     throw "-SessionMode $SessionMode needs -Path: the floor is the fresh-session control by definition"
 }
@@ -255,8 +209,7 @@ if (-not $NoDump) {
 }
 
 # ---------------------------------------------------------------------------
-# Discovery. Every *.test.ps1 under -Path is a test; running a subset is
-# pointing at a subfolder.
+# Discovery: every *.test.ps1 under -Path is a test.
 # ---------------------------------------------------------------------------
 $testFiles = @()
 $testRoot  = ''
@@ -272,10 +225,8 @@ if ($PSBoundParameters.ContainsKey('Path')) {
 $floorMode = ($testFiles.Count -eq 0)
 
 # ---------------------------------------------------------------------------
-# Suite configuration: the keys and their meaning are documented in
-# StretchXL.md. Resolved once per suite folder (by _common.ps1, shared with the
-# kit) and validated before a single Excel starts, so a missing XLL is a
-# refusal now rather than a SETUP-FAILED an hour into a soak.
+# Suite configuration (keys in StretchXL.md), validated before any Excel starts
+# so a missing XLL is refused now, not an hour into a soak.
 # ---------------------------------------------------------------------------
 $suiteConfigs = @{}   # suite dir -> resolved config
 foreach ($tf in $testFiles) {
@@ -299,8 +250,7 @@ function Get-SessionKey($Config, [int]$Settle) {
 }
 
 # ---------------------------------------------------------------------------
-# The work list: one item per (test, pass), or per floor iteration, built
-# pass by pass so an unshuffled soak still interleaves every test each pass.
+# The work list, built pass by pass so an unshuffled soak interleaves every test.
 # ---------------------------------------------------------------------------
 $seedUsed = $null
 $workItems = New-Object System.Collections.ArrayList
@@ -356,8 +306,7 @@ $remainder   = $totalItems % $workerCount
 $shares      = @(1..$workerCount | ForEach-Object { $baseShare + $(if ($_ -le $remainder) { 1 } else { 0 }) })
 
 # ---------------------------------------------------------------------------
-# Results file: one per invocation, first line a metadata record, because a
-# results file that does not say how it was produced cannot be compared.
+# Results file: the first line records the configuration, so runs can be compared.
 # ---------------------------------------------------------------------------
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $resultsPath = Join-Path $outRoot "results-$stamp.jsonl"
@@ -466,12 +415,8 @@ if ($productRecord | Where-Object { $_.isDebug }) {
 }
 Write-Output ''
 
-# One worker: runs its share of items and returns one 'RESULT {json}' line per item, so the
-# parent owns ordering and counting. Every path emits a line.
-#
-# Each item is one session bracket: start Excel, identify it by its own window, ledger the pid,
-# open a process handle, add a workbook, run the test, close, release every reference, wait on
-# the handle, classify.
+# One worker. Every path emits one 'RESULT {json}' line per item, so the parent owns
+# ordering and counting.
 $workerBody = {
     param($Cfg)
 
@@ -624,11 +569,8 @@ public static extern bool PrintWindow(System.IntPtr h, System.IntPtr hdc, uint f
     }
 
     # ------------------------------------------------------------------------
-    # The modal-dialog watchdog: dismiss and fail. Excel blocks the calling
-    # thread on a modal dialog, so a MsgBox or VBA error would hold a session
-    # until its deadline. One watchdog job per worker, told which pid to watch
-    # through a file; it touches that pid's dialogs only, logs each dismissal,
-    # and the manager fails a PASS that carries an unacknowledged dialog.
+    # Modal-dialog watchdog: a MsgBox would block the session until its deadline,
+    # so it is dismissed and logged, and the manager fails a PASS that carries one.
     # ------------------------------------------------------------------------
     $dlgPidFile = Join-Path $Cfg.LogDir ("w{0}.watchpid" -f $WorkerId)
     $dlgLogFile = Join-Path $Cfg.LogDir ("w{0}.dialogs.log" -f $WorkerId)
@@ -739,10 +681,8 @@ public class SXDW {
     foreach ($it in $Cfg.Items) { [void]$itemQueue.Add($it) }
 
     # ------------------------------------------------------------------------
-    # Session state, held across items. Fresh never keeps a session past its
-    # item; Reuse and ReuseClean keep one for consecutive items with the same
-    # SessionKey, so one session never mixes set-ups, and folder boundaries with
-    # the same set-up do not cycle it.
+    # Session state. Reuse modes keep a session only across consecutive items
+    # with the same SessionKey, so one session never mixes set-ups.
     # ------------------------------------------------------------------------
     $script:sApp = $null; $script:sBooks = $null; $script:sBook = $null
     $script:sHandle = $null; $script:sPid = 0; $script:sWin = $null
@@ -1249,8 +1189,7 @@ public class SXDW {
 }
 
 # ---------------------------------------------------------------------------
-# Run the workers, streaming results as they arrive: a wedged run has to look
-# different from a slow one while it is happening.
+# Run the workers, streaming results so a wedged run looks different from a slow one.
 # ---------------------------------------------------------------------------
 $jobList    = @()
 # ALIVE = a reused session survived this test (its close is measured later,

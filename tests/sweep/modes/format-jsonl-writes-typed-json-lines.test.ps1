@@ -1,9 +1,5 @@
-# FORMAT=JSONL writes the trace as one JSON object a line, with every value structured and
-# typed -- a Double included, which the text format leaves bare.
-#
-# A VBA UDF is handed a 2x2 range of mixed types and a Double and returns a Variant array; an
-# XLL function is traced beside it. Every line must parse, `seq` must be dense in file order,
-# and the values must come back as the types VBA and Excel gave them.
+# FORMAT=JSONL writes one typed JSON object a line, a Double included, which the text format leaves
+# bare. Every line must parse, `seq` must be dense, and values keep the types VBA and Excel gave them.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

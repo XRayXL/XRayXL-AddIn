@@ -1,9 +1,6 @@
-# A PROCEDURE NAME LONGER THAN THE REGISTRATION CAPTURE.
-#
-# The watch keeps 127 characters of a procedure name. Cut, a long name can spell
-# a shorter export exactly, and hooking that one would trace an unrelated
-# function under the long one's name. TracedAddin registers such a name after
-# arming, then TxCallsPrefix calls the shorter export the cut name spells.
+# A procedure name longer than the registration capture: the watch keeps 127 characters, and a cut
+# name can spell a shorter export exactly, so hooking it would trace an unrelated function under the
+# long name. TracedAddin registers such a name after arming; TxCallsPrefix calls the shorter export.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

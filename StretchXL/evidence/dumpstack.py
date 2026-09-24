@@ -1,24 +1,14 @@
-# Whose code is on the faulting thread's stack?
+# Whose code is on the faulting thread's stack? A crash inside a system module such
+# as combase is often only the messenger; the culprit is further down the stack.
 #
-# A crash reported inside a system module such as combase is often only the
-# messenger: the method that threw, or released a pointer too early, is further
-# down the same stack. Having no frame of a module on top proves nothing.
-#
-# Method and limits: this does not unwind (x64 unwinding needs .pdata for every
-# module). It scans the faulting thread's stack for 8-byte values that land in
-# a loaded module's address range -- return addresses, saved pointers, and some
-# coincidences.
-#
-#   * A module appearing means its addresses are on that stack: near-conclusive
-#     for a return address, not for an arbitrary qword.
-#   * A module not appearing is the stronger signal: nothing on this thread's
-#     stack points into it at all.
+# It does not unwind (x64 needs .pdata for every module); it scans the stack for
+# 8-byte values inside a loaded module. A module's absence is the stronger signal,
+# since a hit may be a coincidental value.
 #
 #     python dumpstack.py [<dump> ...] [--ours=name1,name2]
 #
-# --ours names the modules of interest (prefix match, case-insensitive). It is
-# a parameter because this ships with StretchXL, which knows no product's name.
-# With no --ours, no module is special and the per-module table is the answer.
+# --ours names the modules of interest (prefix, case-insensitive), because StretchXL
+# knows no product's name.
 import struct, sys, os, glob, mmap
 
 # Modules of interest, from --ours. Empty means none is special.
@@ -176,8 +166,7 @@ def main(path):
     for name, n in sorted(seen.items(), key=lambda kv: -kv[1]):
         print("    %-28s %5d" % (name, n))
 
-    # The question this was written for. With nothing named, say so rather
-    # than printing a confident "not referenced" about an empty list.
+    # with nothing named, say so rather than claim "not referenced" about an empty list
     print()
     if not OURS:
         print("  No modules of interest were named (--ours=...); the table above")

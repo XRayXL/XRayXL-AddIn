@@ -1,19 +1,6 @@
-# A STARVED RING ACCOUNTS FOR EVERY DROP.
-#
-# Loss under overload is honest, but reported out of band rather than as a row
-# in the CSV: the drop count comes back from XRayXL_Disarm, sits on the status
-# summary, and is on the disarm log line. The reconciliation still holds exactly
-# -- entry/exit rows written + rows dropped == framesOpened + framesClosed.
-#
-# HOW IT STARVES A BYTE RING. A lean row is small enough that a 1 MB ring never
-# overflows between two ~1 ms drain passes. Fat rows in the 16 KB minimum ring
-# do: one ~9 KB row nearly fills it, and the next arrives long before the drain's
-# next tick. Deterministic, and single-threaded: it races the polling gap, not
-# the drain's throughput.
-#
-# Asserted: drops happened; the CSV holds only entry and exit rows; the Disarm
-# return agrees with the log line; written + dropped == opened + closed; and the
-# file still passes the contract, proven by Read-TraceRows not throwing.
+# A starved ring accounts for every drop, out of band: written + dropped == opened + closed.
+# Fat rows starve the 16 KB minimum ring deterministically: one ~9 KB row nearly fills it, and the
+# next arrives before the drain's next pass.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 . (Join-Path $PSScriptRoot '_driver.ps1')

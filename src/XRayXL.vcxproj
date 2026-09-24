@@ -18,9 +18,8 @@
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
-  <!-- The product version and build configuration, for the VERSIONINFO resource and the log.
-       Imported after Microsoft.Cpp.Default.props, which establishes $(Configuration) when this
-       project is built on its own. -->
+  <!-- After Microsoft.Cpp.Default.props, which sets $(Configuration) when this project is
+       built on its own. -->
   <Import Project="$(MSBuildProjectDirectory)\..\version.props" />
   <PropertyGroup Condition="'$(Configuration)'=='Debug'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
@@ -62,10 +61,8 @@
       <SDLCheck>true</SDLCheck>
       <ConformanceMode>true</ConformanceMode>
       <!-- No /guard:cf: calls through MinHook's generated trampolines would fail its checks. -->
-      <!-- The version arrives as three NUMERIC defines, never a quoted
-           string: a string-valued define does not survive to rc.exe and fails
-           silently there. The text form is composed by stringize at the point
-           of use (XRayXL.rc, dllmain.cpp). -->
+      <!-- Numeric defines, never a quoted string: a string-valued define does not
+           survive to rc.exe and fails silently there. -->
       <PreprocessorDefinitions>UNICODE;_UNICODE;XRAY_VER_MAJOR=$(XRayVersionMajor);XRAY_VER_MINOR=$(XRayVersionMinor);XRAY_VER_PATCH=$(XRayVersionPatch);XRAY_BUILD_DEBUG=$(XRayBuildDebugFlag);%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)third_party;$(ProjectDir)third_party\minhook\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>

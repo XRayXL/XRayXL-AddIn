@@ -28,13 +28,12 @@ namespace xll
             return L"";
         }
 
-        // The two COM lifetimes this file holds. Enumerate has five exits after taking an
-        // Application and a result VARIANT, so the compiler holds the releases.
+        // Enumerate has many exits after taking an Application and a VARIANT, so RAII releases them.
         template <class T>
         class ComPtr
         {
         public:
-            explicit ComPtr(T* p) : m_p(p) {}   // ADOPTS an already-AddRefed pointer
+            explicit ComPtr(T* p) : m_p(p) {}   // adopts an already-AddRefed pointer
             ~ComPtr() { Release(); }
             ComPtr(const ComPtr&) = delete;
             ComPtr& operator=(const ComPtr&) = delete;

@@ -1,10 +1,8 @@
 #pragma once
 #include "xll/xlltrace.h"      // ArmReport
 
-// THE SESSION: arming and disarming BOTH sources in the one order that is
-// safe, and the exports Excel calls to do it. This is the layer above xll/
-// and vba/, which do not know about each other -- everything they share is
-// in core/, and everything that drives both is here.
+// Arming and disarming both sources in the one safe order. The layer above xll/ and vba/, which do
+// not know about each other: what they share is in core/, what drives both is here.
 namespace app
 {
     // "0.1.0", from version.props via the resource defines.

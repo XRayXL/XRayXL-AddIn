@@ -1,15 +1,6 @@
-# An XLL loaded AFTER arming must still be traced.
-#
-# Arming enumerates Application.RegisteredFunctions once and hooks what exists,
-# so on its own that leaves anything registered later invisible: never hooked,
-# never traced, reported only as a count at disarm. XRayXL intercepts xlfRegister
-# through EXCEL.EXE's exported MdCallBack12 -- the single entry point every
-# XLL's Excel12 goes through -- records what it sees, and hooks it from a worker
-# thread rather than from inside the add-in's own C API call.
-#
-# The check that matters is the LAST one: a trace row whose module is the XLL
-# that did not exist when we armed. The log line alone would pass even if the
-# patch never took.
+# An XLL loaded after arming must still be traced: arming hooks only what is registered then, so
+# later registrations are caught at xlfRegister and hooked from a worker thread. The last check is
+# the one that matters: a row naming the new module, since the log line alone would pass an untaken patch.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -31,10 +22,8 @@ try {
     Write-TestCase -Name 'watch-installed' -Pass:$watchOk -Fail:(-not $watchOk) -Detail "$watchLine"
     if (-not $watchOk) { Complete-Test -Fail -Detail 'the register watch did not install' }
 
-    # A COPY, because Excel keys a loaded add-in by path: the same file under a
-    # new name is a genuinely new module, which is what has to be caught. Named
-    # by pid and a per-run suffix, so neither a parallel worker nor this test's
-    # own still-loaded copy from an earlier run in a reused session collides.
+    # A copy, because Excel keys a loaded add-in by path. Named by pid and a per-run suffix, so
+    # neither a parallel worker nor an earlier run's still-loaded copy collides.
     $source = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\build\x64\Release\TracedAddin\TracedAddin64.xll')).Path
     $second = Join-Path $sx.WorkDir ("LateXll_{0}_{1}.xll" -f $sx.ProcId, [guid]::NewGuid().ToString('N').Substring(0, 8))
     Copy-Item $source $second -Force

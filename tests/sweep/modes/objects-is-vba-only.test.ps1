@@ -16,7 +16,7 @@ try {
     Check 'omitted-source-objects-refused' ($e -match '^#Err - ') $e
     Check 'omitted-source-says-vba-only' ($e -match 'only available for VBA') $e
 
-    # ...and the refusal CHANGED NOTHING: VBA still holds its default.
+    # ...and the refusal changed nothing: VBA still holds its default.
     $v = [string](Get-XRayTraceParam $sx 'VBA' 'OBJECTS')
     Check 'refusal-left-vba-alone' ($v -eq 'TRUE') "VBA OBJECTS='$v'"
 

@@ -117,10 +117,7 @@ End Sub
         if ($t.framesOpened -ne $t.framesClosed) {
             return "LEAK: opened $($t.framesOpened), closed $($t.framesClosed)" }
         $entry = Get-FirstEntryByName $t.rows
-        # Every one of these parameters IS read, so every one has a load opcode
-        # in the p-code. A '?' here is a missing entry in the type table, not an
-        # absence of information -- and the message names which, so the gap is
-        # actionable rather than merely reported.
+        # every parameter is read, so a '?' is a missing type-table entry; the message names it
         $missing = @()
         foreach ($fn in @('T_RfByte','T_RfInt','T_RfLong','T_RfLL','T_RfSng',
                           'T_RfDbl','T_RfCy','T_RfDate','T_RfStr','T_RfBool',

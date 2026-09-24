@@ -21,17 +21,14 @@ try {
     Write-TestCase 'vba-set-echoes' -Pass:$ok -Fail:(-not $ok) -Detail $e
     if (-not $ok) { $failed++ }
 
-    # The read-back ANSWERS rather than logging: XRayStatus wrote a status
-    # line to the action log, and removing it removed that line too.
+    # The read-back answers with the value itself, not a status line in the log.
     $xd = [string](Get-XRayTraceParam $sx 'XLL' 'DEPTH')
     $vd = [string](Get-XRayTraceParam $sx 'VBA' 'DEPTH')
     $ok = ($xd -eq 'OFF' -and $vd -eq 'TOP')
     Write-TestCase 'getparam-reports-both-sources' -Pass:$ok -Fail:(-not $ok) -Detail "XLL DEPTH=$xd VBA DEPTH=$vd"
     if (-not $ok) { $failed++ }
 
-    # TOP IS DISTINGUISHABLE FROM ALL. This is what the removed surface could
-    # not do -- it reported "ON" for both -- so it is asserted explicitly here
-    # rather than left implied by the case above.
+    # TOP must be distinguishable from ALL, asserted explicitly rather than left implied above.
     [void](Set-XRayTraceParam $sx 'XLL' 'DEPTH' 'TOP')
     $top = [string](Get-XRayTraceParam $sx 'XLL' 'DEPTH')
     [void](Set-XRayTraceParam $sx 'XLL' 'DEPTH' 'ALL')
@@ -40,27 +37,21 @@ try {
     Write-TestCase 'top-and-all-are-distinguishable' -Pass:$ok -Fail:(-not $ok) -Detail "TOP read '$top', ALL read '$all'"
     if (-not $ok) { $failed++ }
 
-    # Off-vocabulary: refused, and the value is UNCHANGED afterwards.
+    # Off-vocabulary: refused, and the value is unchanged afterwards.
     $e = Set-XRayTraceParam $sx 'VBA' 'DEPTH' 'BANANAS'
     $after = [string](Get-XRayTraceParam $sx 'VBA' 'DEPTH')
     $ok = ($e -match '#Err' -and $after -eq 'TOP')
     Write-TestCase 'bad-value-refused-nothing-changed' -Pass:$ok -Fail:(-not $ok) -Detail "$e / then VBA DEPTH=$after"
     if (-not $ok) { $failed++ }
 
-    # An off-vocabulary NAME is refused the same way.
+    # An off-vocabulary name is refused the same way.
     $e = Set-XRayTraceParam $sx 'XLL' 'BANANAS' 'ALL'
     $ok = ($e -match '#Err')
     Write-TestCase 'bad-name-refused' -Pass:$ok -Fail:(-not $ok) -Detail $e
     if (-not $ok) { $failed++ }
 
-    # BUFFERSIZE and BUFFERWHENFULL are SYMMETRIC and source-less: the getter
-    # returns the value in the same grammar the setter accepts, so a cell can
-    # read it and set it back. The live "did this run lose anything" counts
-    # belong on the status summary, not the parameter echo.
-    #
-    # BUFFERSIZE takes an optional unit: bare or M/MB is megabytes, K/KB is
-    # kilobytes. The getter reports the canonical form (MB when it divides
-    # evenly, else KB).
+    # BUFFERSIZE and BUFFERWHENFULL are source-less, and the getter answers in the setter's grammar so
+    # a cell can read it and set it back: MB when it divides evenly, else KB.
     [void](Set-XRayTraceParam $sx 'BUFFERSIZE' '32')          # bare number = MB
     $b = [string](Get-XRayTraceParam $sx 'BUFFERSIZE')
     $ok = ($b -eq '32MB')

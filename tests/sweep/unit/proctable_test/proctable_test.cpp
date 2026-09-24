@@ -1,7 +1,5 @@
-// UNIT TEST for vba::ProcTable (vba/vbaproctable.cpp) -- the open-addressed
-// procedure table lifted out of vbatrace.cpp. Keyed by an opaque uint64
-// trailer, so it needs no Excel and no memory: insert trailers, assert dedup,
-// distinct slots, survival of collisions, capacity, and Reset.
+// Unit test for vba::ProcTable (vba/vbaproctable.cpp), the open-addressed procedure table. Keyed by
+// an opaque uint64 trailer, so it needs no Excel and no memory.
 //
 // Built by XRayXL.sln into build\x64\Release\unit\.
 

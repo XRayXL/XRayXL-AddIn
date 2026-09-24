@@ -1,9 +1,5 @@
-# AN ERROR RAISED ON THE FIRST LINE OF A NESTED CALLEE.
-#
-# A procedure's frame opens at its first statement, and a raise on that line
-# fires before it, while the CALLER is still the top of the shadow stack. The
-# raise has to wait for the callee's frame at any depth, or the caller is
-# reported as the thrower and the real thrower as a clean return.
+# An error raised on a nested callee's first line is charged to the callee: the raise fires
+# before the callee's frame opens, so taken at once it would name the caller as the thrower.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

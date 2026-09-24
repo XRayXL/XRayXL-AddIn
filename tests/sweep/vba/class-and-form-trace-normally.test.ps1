@@ -1,8 +1,5 @@
-# Ordinary tracing out of class modules and forms, with no errors involved.
-#
-# A class module's procedures are called through an object, a form module is a class with a
-# designer attached, and constructors and destructors are invoked by the interpreter rather than
-# by a call opcode. Asserted:
+# Class and form procedures trace like standard ones, though they are called through an object
+# and their constructors and destructors are invoked by the interpreter, not a call opcode.
 #
 #    present   every procedure that ran has a row
 #    named     `Method` and `Value` are named, not reported as a trailer address:
@@ -105,8 +102,7 @@ try {
 
     Check 'form-procedure-traced' ($names -contains 'FormAdd') ("saw: " + ($names -join ','))
 
-    # Named, not an address: a procedure that identity resolution cannot name is reported as its
-    # trailer address.
+    # identity resolution walks different structures for a class; an unnamed one reads as an address
     $unnamed = @($entries | Where-Object { $_.function -match '^0x[0-9A-F]+$' })
     Check 'no-procedure-reported-as-an-address' ($unnamed.Count -eq 0) `
           ("unnamed: " + (@($unnamed | ForEach-Object { $_.function }) -join ','))
@@ -122,29 +118,21 @@ try {
           ("orphans: " + (@($orphanEntries | ForEach-Object { $_.function }) -join ','))
 
     # ---- nested under the caller that constructed it ----------------------
-    # Class_Initialize is invoked by the interpreter as part of New, not by a
-    # call opcode. If that produced a top-level frame its parent would be 0.
+    # the interpreter invokes Class_Initialize as part of New, not by a call opcode
     $init = @($entries | Where-Object { $_.function -eq 'Class_Initialize' })
     $initParent = if ($init.Count) { [string]$init[0].parent } else { '' }
     Check 'constructor-nests-under-its-caller' (($init.Count -ge 1) -and ($initParent -ne '0')) `
           "Class_Initialize parent: $(if ($init.Count) { $init[0].parent } else { '(absent)' })"
 
-    # ---- RETURN VALUES OUT OF A CLASS AND A FORM --------------------------
-    #
-    # Class and form exits carry no type, so the result is typed from the store
-    # opcode before them. Both halves: a Sub and a Property Let have no result,
-    # and their local at the same frame offset must not be reported as one.
-    #
-    # The two `Value` rows share a name: Property Let ran first (o.Value = 5),
-    # Property Get second (x = o.Value). They are told apart by span order, not
-    # by name, because the name is all VBA gives them.
+    # ---- return values out of a class and a form --------------------------
+    # Class and form exits carry no type, so the result is typed from the store before them.
+    # The two `Value` rows share a name, so Let (first) and Get are told apart by span order.
     Check 'class-function-returns-its-value' ((RetOf $rows 'Doubled') -eq '42') `
           ("Doubled ret='" + (RetOf $rows 'Doubled') + "' (Doubled(21) = 42)")
 
     Check 'form-function-returns-its-value' ((RetOf $rows 'FormAdd') -eq '5') `
           ("FormAdd ret='" + (RetOf $rows 'FormAdd') + "' (FormAdd(2,3) = 5)")
 
-    # A Property GET is a Function in every way that matters here.
     $valRows = @($exits | Where-Object { $_.function -eq 'Value' } | Sort-Object { [int]$_.span })
     $valGet  = if ($valRows.Count -ge 2) { [string]$valRows[1].ret } else { '(missing)' }
     $valLet  = if ($valRows.Count -ge 2) { [string]$valRows[0].ret } else { '(missing)' }
@@ -153,8 +141,7 @@ try {
     Check 'property-let-reports-no-return-value' ($valLet -eq '') `
           ("Property Let ret='$valLet' -- a Let has no result to report")
 
-    # ...and neither does a Sub. A local sitting at the result offset must not
-    # be mistaken for one.
+    # a local sitting at the result offset must not be mistaken for a result
     $subNames = @('N_Drive','Method','Class_Initialize','Class_Terminate')
     $subsWithRet = @($exits | Where-Object { ($subNames -contains $_.function) -and $_.ret })
     Check 'subs-report-no-return-value' ($subsWithRet.Count -eq 0) `

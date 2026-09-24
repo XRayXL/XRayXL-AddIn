@@ -1,17 +1,6 @@
-# A FUNCTION THAT RETURNS AN ERROR VALUE vs ONE THAT RAISES AN ERROR.
-#
-# Two things a worksheet cell can show as `#...`, and the trace must tell them
-# apart:
-#
-#   RETURNS an error   CVErr(xlErr...) -- the function finished. `outcome` is
-#                      `returned` and `ret` is the error, spelt as Excel spells it.
-#   RAISES an error    Err.Raise with no handler -- the function did not finish.
-#                      Excel shows `#VALUE!` and `outcome` is `unhandled`.
-#
-# The first is exercised for every Excel error a VBA function can hand back, so a
-# decoder that mixed two of them up, or blanked one, is caught. Nothing here is
-# raised except the one function that means to, so no cell but that one is
-# `unhandled`.
+# A function that returns CVErr reads `returned` with the error as Excel spells it; one that
+# raises unhandled reads `unhandled`. Both show `#...` in the cell, so only the trace tells them
+# apart; every returnable error is covered so a decoder mixing two up is caught.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -97,7 +86,7 @@ try {
 
     $rows = @(Read-TraceRows $sx.ProcId)
 
-    # ---- every RETURNED error: outcome returned, ret is that error --------------
+    # ---- every returned error: outcome returned, ret is that error --------------
     foreach ($name in $errCases.Keys) {
         $want = $errCases[$name][1]
         $ex = @(ExitsOf $rows $name)
@@ -110,7 +99,7 @@ try {
                (@($ex | ForEach-Object { $_.ret }) -join ','))
     }
 
-    # ---- the RAISED error: cell #VALUE!, outcome unhandled ----------------------
+    # ---- the raised error: cell #VALUE!, outcome unhandled ----------------------
     $rex = @(ExitsOf $rows 'RaiseObjErr')
     $raiseCellOk = $raiseCell -eq '#VALUE!'
     $haveRaise = $rex.Count -ge 1

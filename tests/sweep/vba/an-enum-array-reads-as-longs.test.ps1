@@ -1,8 +1,5 @@
-# An array of an Enum reads as the Longs it holds.
-#
-# VBA writes VT_USERDEFINED (29) in the descriptor's vartype slot, which names no readable
-# element type; the elements are four-byte Longs, and VBA's own TypeName says Long(). The
-# declared Enum name is not in the descriptor, so it is not claimed.
+# An array of an Enum reads as the Longs it holds. Its descriptor says VT_USERDEFINED, which
+# names no element type, and carries no Enum name, so none is claimed; TypeName says Long().
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

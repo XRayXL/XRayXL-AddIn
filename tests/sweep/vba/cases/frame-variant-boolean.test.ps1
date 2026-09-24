@@ -1,8 +1,5 @@
-# A BOOLEAN THAT REACHES THE TRACE AS A BOOLEAN: inside a Variant and an array.
-#
-# A plain Boolean parameter is held as an Integer and reads -1, so frame-types never
-# reaches the TRUE/FALSE rendering. Only True was ever planted anywhere, so a
-# renderer that wrote TRUE for both would pass; False is the value that decides it.
+# A Boolean inside a Variant or an array renders TRUE/FALSE (a plain one reads as an Integer).
+# False is planted, since a renderer writing TRUE for both would pass on True alone.
 $case = @{ Name='frame-variant-boolean'
      Setup=@'
 Public Sub T_VbFalse(ByVal v As Variant)

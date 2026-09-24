@@ -1,9 +1,6 @@
-# AN EXPORT RE-REGISTERED, WHILE ARMED, TO A DIFFERENT SHAPE.
-#
-# Excel keeps ONE registration per export: registering TxTwoShapes again as QBBBBB replaces the
-# QBB the tracer planned at arm. From then on Excel calls it with five arguments while the plan
-# says two, so the thunk would forward too few and the decoder would read the wrong shape.
-# The export stops being traced and the log says so; the function itself keeps working.
+# An export re-registered while armed to a different shape stops being traced: Excel keeps one
+# registration per export, so the planned thunk would forward too few arguments. The log says so,
+# and the function keeps working.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -15,7 +12,7 @@ try {
     [void](Set-XRayTraceParam $sx 'VBA' 'DEPTH' 'OFF')
 
     # Re-registered by an earlier run in this Excel, the arm plans the wide shape and nothing
-    # changes. A unique name per run does not help: the premise is the NARROW binding at arm.
+    # changes. A unique name per run does not help: the premise is the narrow binding at arm.
     if (@($app.Evaluate('TxShapeWide(1,2,3,4,5)'))[0] -is [double]) {
         Complete-Test -Skip -Detail 'TxTwoShapes was re-registered before this arm, so the reshape cannot happen'
     }

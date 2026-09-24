@@ -1,23 +1,12 @@
-# The arm/disarm hammer -- an instrument, not a test.
+# The arm/disarm hammer, an instrument: it hunts an access violation into unmapped memory just after
+# arming, on the first armed calculation. It reproduces the combination:
 #
-# It hunts an access violation in which execution transfers to an address in no mapped module,
-# just after arming, on the first armed calculation. The combination it reproduces:
+#   * VBA DEPTH=ALL, every dispatch slot patched, and rapid arm/disarm in a reused process.
+#   * A volatile UDF and a Worksheet_Calculate handler: VBA re-entered from the calc engine.
+#   * A second workbook of VBA returning arrays, Variants, objects and strings, decoded every frame.
 #
-#   * VBA DEPTH=ALL -- the full patch set, every dispatch slot.
-#   * Rapid arm/disarm cycles in a reused process.
-#   * A volatile UDF, so every calc re-runs it, plus a Worksheet_Calculate
-#     handler -- VBA running re-entrantly from inside the calc engine.
-#   * A second workbook of VBA open throughout, returning arrays, Variants,
-#     objects and strings, so the armed CalculateFull pours a large
-#     multi-project workload through the freshly patched slots and runs the
-#     return-value decoder on every frame.
-#
-# To make a rare event happen in minutes: thousands of cycles, multithreaded
-# calc so worker threads traverse the patched slots concurrently, both sources
-# armed at once, and the capture settings re-randomised every cycle.
-#
-# The evidence it hunts is written by crashlog's first-chance vectored
-# handler: the faulting stack and a minidump.
+# Multithreaded calc and settings re-randomised every cycle make a rare event happen in minutes.
+# crashlog's first-chance handler writes the evidence: the faulting stack and a minidump.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\..\sweep\_xray_common.ps1')
 . (Join-Path $PSScriptRoot '..\_instrument.ps1')

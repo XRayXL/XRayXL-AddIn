@@ -5,15 +5,12 @@
 // opcode on every VBE7 build; see vbaderive.h.
 namespace vba
 {
-    // BosStub: an UNCOMPILED procedure, whatever it holds. Its whole body is one of these and 16
-    // bytes: the opcode, a zero dword where Bos carries its next-statement offset, a zero word, a
-    // dword that rises by 0x58 per procedure through the module, and a zero dword. VBA compiles a
-    // procedure before running it, so a walk never meets one; the DIAG corpus keeps such a body as
-    // a `stub` line, the only place this form is measured.
+    // BosStub: the whole 16-byte body of an uncompiled procedure. VBA compiles before running,
+    // so a walk never meets one; the DIAG corpus records it as a `stub` line.
     constexpr std::uint32_t kSlot_BosStub                = 0x1348 / 8;   // 617
-    constexpr std::uint32_t kBosStubBody                 = 16;           // measured, every one
-    // `Stop`: a breakpoint written into the source. It pauses in the editor and resumes, so it
-    // ends no frame, and its statement's BoS has already run by the time it dispatches.
+    constexpr std::uint32_t kBosStubBody                 = 16;
+    // `Stop` pauses in the editor and resumes, so it ends no frame; its BoS has already run.
+
     constexpr std::uint32_t kSlot_Stop                   = 0x1328 / 8;   // 613
     // GoSub `Return`: jumps back to its GoSub, in the middle of a procedure.
     constexpr std::uint32_t kSlot_GoSubReturn            = 0x1360 / 8;   // 620

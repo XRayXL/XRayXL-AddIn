@@ -35,18 +35,16 @@ namespace
         return 1;
     }
 
-    // Disarm, then report how many rows the run DROPPED: the file carries
-    // no `gap` marker, so the count comes back here, and on the status summary
-    // and the disarm log line. It survives Close, so it is read after disarming.
+    // The file carries no drop marker, so the count comes back here. It survives Close, so it is
+    // read after disarming.
     int DisarmReturningDrops()
     {
         app::Disarm();
         return static_cast<int>(emit::csv::RingDrops());
     }
 
-    // A fault in here is a LOGGED bug and Excel survives it. A function
-    // pointer needs no unwinding; `onFault` is what the caller gets back for a
-    // contained fault.
+    // A fault in here is a logged bug and Excel survives it. A function pointer needs no
+    // unwinding; `onFault` is what the caller gets back for a contained fault.
     int RunGuarded(const char* name, int (*body)(), int onFault)
     {
         __try
@@ -70,7 +68,7 @@ extern "C" int __stdcall XRayXL_Arm(void)
     return RunGuarded("XRayXL_Arm", ArmNoUnwind, 0);
 }
 
-// Returns rows DROPPED (0 = none, -1 = a contained fault), so
+// Returns rows dropped (0 = none, -1 = a contained fault), so
 // `dropped = Application.Run("XRayXL_Disarm")` tells the caller whether the
 // trace is complete.
 extern "C" int __stdcall XRayXL_Disarm(void)
@@ -103,7 +101,7 @@ namespace app
 
     bool CalledFromCell()
     {
-        core::Caller who;      // NOT {} -- ReadCaller fills it on every path
+        core::Caller who;      // not {}: ReadCaller fills it on every path
         core::ReadCaller(who);
         return who.isCell;
     }
@@ -111,37 +109,31 @@ namespace app
     bool AnythingArmed() { return IsArmed(); }
 }
 
-// AN INSTRUMENT: faults on demand at an address in no module, so the vectored
-// crash capture can be PROVEN to work rather than assumed to. EXPECTED TO
-// CRASH EXCEL -- that is the measurement. Call it with "EXEC".
+// An instrument: faults at an address in no module, so the vectored crash capture can be proven to
+// work rather than assumed to. Call it with "EXEC"; it is expected to crash Excel.
 namespace
 {
     // Split from its wrapper, like every other entry point here: __try may not
     // share a frame with anything that needs object unwinding.
     LPXLOPER12 FaultProbeBody(LPXLOPER12 arg)
     {
-        // 'EXEC' jumps to an address in no module -- the exact signature the
-        // vectored handler exists for. An exception merely RAISED inside
-        // this add-in has its IP in a module, which the handler correctly
-        // declines, so it cannot validate anything.
+        // 'EXEC' jumps to an address in no module, the signature the vectored handler exists for.
+        // A merely raised exception has its IP in a module, which the handler declines.
         if (arg && ArgType(arg) == xltypeStr)
         {
             wchar_t b[16]; ReadUpper(arg, b, 16);
-            // "DUMPEXEC" turns the opt-in dump on first, so the test can
-            // prove BOTH paths: off by default, and written when asked.
             // Fault while holding a lock, so containment can be shown to release it.
             if (!wcscmp(b, L"LOGLOCK")) core::Log::FaultWhileLockedForProbe();
             if (!wcscmp(b, L"CSVLOCK")) emit::csv::FaultWhileLockedForProbe();
             if (!wcscmp(b, L"ARMGATE")) vba::FaultWhileArmGateHeldForProbe();
+            // "DUMPEXEC" turns the opt-in dump on first, so both paths can be proven.
             if (!wcscmp(b, L"DUMPEXEC")) core::crashlog::SetDumpEnabled(true);
             if (!wcscmp(b, L"EXEC") || !wcscmp(b, L"DUMPEXEC"))
             {
                 core::Log::Note("INJECT: calling through a non-module address");
                 typedef void (*Nowhere)();
-                // Committed but not executable, so the fault is an EXECUTE
-                // violation at an address owning no module rather than a wild
-                // pointer that might land anywhere.
-                // One page for the process: the call never returns to free it.
+                // Committed but not executable, so the fault is an execute violation in no module
+                // rather than a wild pointer. One page for the process: the call never returns.
                 static void* page = VirtualAlloc(nullptr, 4096, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
                 Nowhere fn = reinterpret_cast<Nowhere>(page);
                 fn();
@@ -208,18 +200,14 @@ namespace app
         if (dll.empty()) { core::crashlog::Note("commands: no module path; NOTHING REGISTERED"); return; }
         const bool a = Register(dll, L"XRayXL_Arm",    L"XRayXL_Arm",    Reg::Command);
         const bool d = Register(dll, L"XRayXL_Disarm", L"XRayXL_Disarm", Reg::Command);
-        // Source, Name, Value -- three XLOPER12 arguments and an echo.
         const bool sp = Register(dll, L"XRayXL_SetTraceParam", L"XRayXL_SetTraceParam", Reg::Function, L"QQQQ", L"Source,Name,Value");
-        // VOLATILE (the trailing !) throughout below: each of these changes
-        // without any argument changing, so a non-volatile cell would sit
-        // showing a value that is no longer true.
+        // Volatile (the trailing !) from here on: each changes without any argument changing, so a
+        // non-volatile cell would keep showing a value that is no longer true.
         const bool gp = Register(dll, L"XRayXL_GetTraceParam", L"XRayXL_GetTraceParam", Reg::Function, L"QQQ!", L"Source,Name");
-        // One optional wildcard filter.
         const bool gs = Register(dll, L"XRayXL_GetTraceSummary", L"XRayXL_GetTraceSummary", Reg::Function, L"QQ!", L"Filter");
         // Diagnostic only: it faults on purpose, so it is registered only with XRAYXL_DIAG=1.
         const bool diag = core::modes::DiagEnabled();
         const bool fp = diag && Register(dll, L"XRayXL_FaultProbe", L"XRayXL_FaultProbe", Reg::Function, L"QQ", L"Mode");
-        // No arguments.
         const bool ia = Register(dll, L"XRayXL_IsArmed", L"XRayXL_IsArmed", Reg::Function, L"Q!");
         char line[288];
         _snprintf_s(line, _TRUNCATE,

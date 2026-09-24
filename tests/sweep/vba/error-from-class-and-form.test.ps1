@@ -1,19 +1,6 @@
-# Where else can an error come from? Class modules, constructors, forms. Each reaches the
-# interpreter by a different route from a Sub in a standard module:
-#
-#    class method       an ordinary call on an object -- the control
-#    Class_Initialize   invoked by the interpreter as part of `New`, not by a call opcode
-#    Property Get       a different call shape again
-#    Property Let       and so is assignment
-#    Class_Terminate    driven by refcount, so it can fire anywhere
-#    UserForm method    a form module is a class with a designer attached
-#
-# The per-shape outcome is reported rather than asserted. What is asserted must hold whatever
-# the interpreter does:
-#
-#    - the catcher resumed, so it must read `handled`
-#    - every exit row carries an outcome
-#    - the error reads `threw` in some frame
+# An error raised from a class method, constructor, property, destructor or form, each a
+# different route into the interpreter, still reads `threw` in some frame, and its catcher
+# `handled`. Only what must hold whatever the interpreter does is asserted.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -158,9 +145,8 @@ try {
             Ex = $threw
         }
 
-        # What must hold whatever the interpreter does, except for Class_Terminate, which VBA
-        # does not propagate: raising there shows message boxes (the harness dismisses them) and
-        # no handler runs, so there is nothing to mark `handled`. The row still reads `threw`.
+        # VBA does not propagate a raise out of Class_Terminate: it shows message boxes and no
+        # handler runs, though the row still reads `threw`
         if ($which -ne 'term') {
             Check "$which-catcher-handled" ($nHandled -ge 1) `
                   "chain: $($chain -join ' -> ')"
@@ -170,7 +156,7 @@ try {
         }
         Check "$which-every-exit-has-an-outcome" ($noOutcome -eq 0) `
               "rows without outcome: $noOutcome of $($exits.Count)"
-        # The error is attributed to SOME frame. Vanishing silently is the only bug here.
+        # vanishing silently is the only bug here
         Check "$which-error-reads-threw" ($nThrew -ge 1) `
               "threw=$nThrew  chain: $($chain -join ' -> ')"
     }
@@ -184,8 +170,7 @@ try {
     }
 
 
-    # Raising inside Class_Terminate makes VBA put up message boxes rather than
-    # propagate, so the dialogs are expected here and asserted, not waived.
+    # the Class_Terminate message boxes are expected, so asserted rather than waived
     $dlg = @(Get-SessionDialogs)
     $dlgNew = $dlg.Count - $dlgBefore
     if ($dlgNew -gt 0) { Write-DialogsHandled }

@@ -24,14 +24,12 @@
   <Import Project="..\UnitTest.props" />
   <ItemGroup>
     <ClCompile Include="ribbonmodel_test.cpp" />
-    <!-- The shipping sources, so what passes is the code that ships. The model
-         reaches only core::modes, which is why the ribbon's decisions can be
-         tested with no Excel, no COM and no add-in. -->
+    <!-- The shipping sources; the model reaches only core::modes, so it tests with no Excel,
+         no COM and no add-in. -->
     <ClCompile Include="$(XRayRoot)src\ui\ribbonmodel.cpp" />
     <ClCompile Include="$(XRayRoot)src\core\tracemodes.cpp" />
     <ClCompile Include="$(XRayRoot)src\core\notify.cpp" />
-    <!-- The buffer size box parses and formats with the SAME code the command
-         surface uses, so the two cannot drift. -->
+    <!-- the buffer size box shares the command surface's parser, so the two cannot drift -->
     <ClCompile Include="$(XRayRoot)src\app\paramparse.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

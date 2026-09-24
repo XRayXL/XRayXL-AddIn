@@ -11,16 +11,13 @@
     )
     RegisterXllSettleSeconds = 5
 
-    # Warm-up plus two measured phases, plus building three workbooks. The
-    # default shape is ~7 minutes; XRAY_SOAK_SECONDS raises the phases, so
-    # leave generous headroom above it.
+    # Warm-up, two measured phases and three workbooks to build; XRAY_SOAK_SECONDS
+    # lengthens the phases, so leave generous headroom.
     TestTimeoutSeconds = 3000
     ModulesOfInterest = @('xrayxl', 'vbe7')
 
-    # Every session writes into its own directory. Without this the add-in
-    # writes to the shared %TEMP%\XRayXL, keyed by pids Windows recycles, where
-    # files pile up without limit and every "newest trace for this pid" lookup
-    # scans them all. tests\sweep\suite.psd1 sets it only for tests\sweep\.
+    # Otherwise the add-in writes to the shared %TEMP%\XRayXL, keyed by recycled pids, where
+    # files pile up. tests\sweep\suite.psd1 sets it only for tests\sweep\.
     SessionEnvironment = @{
         XRAYXL_OUTPUT_DIR = '{SessionDir}'
     }

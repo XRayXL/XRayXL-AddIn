@@ -1,11 +1,5 @@
-# XLL DEPTH=TOP emits only the outermost call. The echo alone proves nothing: a setter whose
-# effect cannot be observed reads exactly like one that works, so the rows are asserted.
-#
-# TxCallsBack2 re-enters Excel through xlUDF twice, so one formula gives three genuinely nested
-# XLL frames. ALL emits all three; TOP emits one.
-#
-# The counts must not thin: a filter changes what is emitted, never what is counted, so
-# XRayXL_GetTraceSummary must still show all three functions as called.
+# XLL DEPTH=TOP emits only the outermost of three nested frames (TxCallsBack2 re-enters through xlUDF
+# twice), asserted on rows since an echo proves nothing; the summary must still count all three.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -60,7 +54,7 @@ try {
     Check 'caller-invariants-hold-under-top' ((Test-RowInvariants $top.Rows).Count -eq 0) `
           ((Test-RowInvariants $top.Rows) -join '; ')
 
-    # ---- COUNTED, NOT EMITTED ---------------------------------------------
+    # ---- counted, not emitted ---------------------------------------------
     # The two dropped functions must still appear in the summary with calls,
     # because the filter thins the trace and never the accounting.
     $names = @($top.Result.Summary.Rows | ForEach-Object { $_.Function })

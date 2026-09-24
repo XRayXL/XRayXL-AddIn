@@ -1,7 +1,4 @@
-# PROOF: the simplest possible test. Connects to whatever Excel the contract
-# provides, checks the session baseline (one workbook exists), and passes.
-# If this fails, the fault is the harness or the kit, never a workload --
-# which is exactly what makes it worth running first in every suite tree.
+# The simplest test: if it fails, the fault is the harness or the kit, never a workload.
 . (Join-Path $PSScriptRoot '..\..\TestKit.ps1')
 
 try {

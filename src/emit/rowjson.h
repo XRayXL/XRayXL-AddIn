@@ -4,7 +4,7 @@
 
 namespace emit
 {
-// THE ROW-TO-JSON FORMATTER, for a JSON Lines trace: one object a line, its keys the CSV
+// The row-to-JSON formatter, for a JSON Lines trace: one object a line, its keys the CSV
 // columns in the same order (docs/TraceRowModel.md). `args` and `ret` are already JSON, written
 // by core::JsonValueWriter; every other field is a string, or a number where the column only
 // ever holds an integer. An empty field has no key.

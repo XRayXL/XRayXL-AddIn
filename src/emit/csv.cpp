@@ -22,10 +22,8 @@ namespace csv
         __declspec(thread) int t_csDepth = 0;
         void Lock()   { EnterCriticalSection(&g_cs); ++t_csDepth; }
         void Unlock() { --t_csDepth; LeaveCriticalSection(&g_cs); }
-        // ARMED, not OPEN: the file is created lazily, on the first record.
-        // IsOpen() reports this, because the emitter's callers mean "are
-        // we tracing", and EmitRow must build rows before the file exists:
-        // building one is what causes it to exist.
+        // Armed, not open, and what IsOpen() reports: the file is created by the first row, so rows
+        // must be built before it exists.
         volatile LONG    g_prepared = 0;
         bool Prepared() { return InterlockedCompareExchange(&g_prepared, 0, 0) != 0; }
         // Producers between their armed check and leaving WriteRow. Close waits for
@@ -36,17 +34,14 @@ namespace csv
         bool             g_ringAbandoned = false;
         // Armed sources still producing; the last Close tears down. Guarded by g_cs.
         int              g_owners = 0;
-        HANDLE           g_file = INVALID_HANDLE_VALUE;  // INVALID until the first record
+        HANDLE           g_file = INVALID_HANDLE_VALUE;  // invalid until the first record
         std::wstring     g_path;                          // set when the file is created; read under g_cs
-        // The NAME is chosen at arm so arming can report it; the FILE is still
-        // made lazily. The id is a timestamp nobody can predict, so naming at
-        // the first record meant a session had to finish before its file could
-        // be named.
+        // The name is chosen at arm so arming can report it; the file is still made lazily.
         std::wstring     g_planned;                       // decided at arm; read under g_cs
         volatile LONG64  g_rows = 0;
         // One counter for every source, so a `seq` value appears once in a file.
-        volatile LONG64  g_seq  = 0;   // WRITER-stamped: dense, file order
-        volatile LONG64  g_in   = 0;   // PRODUCER-stamped at emit: holes = drops
+        volatile LONG64  g_seq  = 0;   // writer-stamped: dense, file order
+        volatile LONG64  g_in   = 0;   // producer-stamped at emit: holes = drops
         // Span ids for both sources. Never reset, so a call running across a re-arm cannot reuse one.
         volatile LONG64  g_span = 0;
         // The file's format, latched at Open for the life of the file.
@@ -69,9 +64,7 @@ namespace csv
             WriteFile(g_file, text, len, &written, nullptr);
         }
 
-        // The one place the trace file is named. The id is a monotonic OS tick, so it rises
-        // across arms, processes and reboots; the pid breaks any tie. The path goes to UTF-8
-        // properly, since %TEMP% carries a user name that may not be ASCII.
+        // Properly UTF-8: %TEMP% carries a user name that may not be ASCII.
         std::string Narrow(const std::wstring& w)
         {
             if (w.empty()) return std::string();
@@ -82,14 +75,14 @@ namespace csv
             return s;
         }
 
+        // The one place the trace file is named. The id is the system time, so names sort by when
+        // they were made across arms, processes and reboots; the pid breaks any tie.
         std::wstring BuildTracePath()
         {
             FILETIME ft{};
             GetSystemTimePreciseAsFileTime(&ft);
             ULARGE_INTEGER id; id.LowPart = ft.dwLowDateTime; id.HighPart = ft.dwHighDateTime;
-            // The same output root as the log and the corpus (XRAYXL_OUTPUT_DIR,
-            // else %TEMP%\XRayXL): a second copy of that rule here once sent the
-            // traces to %TEMP% while the logs went to the session directory.
+            // The same output root as the log, so traces and logs never land apart.
             const std::wstring dir = core::EnsureAppSubdir(L"TraceFiles");
             if (dir.empty()) return L"";
             wchar_t name[96];
@@ -98,8 +91,8 @@ namespace csv
             return dir + name;
         }
 
-        // The header, column order, escaping and Fragment() are rowcsv's;
-        // this file is the FILE, the ring and the drain.
+        // The header, column order, escaping and Fragment() are rowcsv's; this is the file, the
+        // ring and the drain.
 
         // The largest row: the argument and return columns at their limit, every byte a quote
         // that escaping doubles, and room for the rest.
@@ -143,9 +136,7 @@ namespace csv
             }
             const bool ok = (g_file != INVALID_HANDLE_VALUE);
             Unlock();
-            // Creation is deliberately not logged: the arm line names this file
-            // in full and the disarm line reports what reached it, so a third
-            // line about the same file at a third moment is noise.
+            // Not logged: the arm and disarm lines already name the file and what reached it.
             return ok;
         }
 
@@ -153,9 +144,6 @@ namespace csv
         // batch, seq stamping and the WriteFile.
         emit::ByteRing   g_ring;
 
-        // THE DRAIN as one thing -- thread, stop/wake events, and the
-        // coalescing batch -- so the code reads `g_drain.wake` rather than six
-        // parallel globals.
         struct Drain
         {
             HANDLE      thread = nullptr;
@@ -282,9 +270,8 @@ namespace csv
     {
         if (!g_csReady) { InitializeCriticalSection(&g_cs); g_csReady = true; }
         Lock();
-        // PREPARE ONLY -- no file is created here. Idempotent: whichever
-        // source arms first sets up the ring and drain, and the other's call is
-        // a no-op that keeps it rather than tearing it down.
+        // No file is created here. Whichever source arms first sets up the ring and drain; the
+        // other's call keeps it rather than tearing it down.
         if (Prepared()) { g_owners++; Unlock(); return true; }
         // A drain that never joined, or a producer never counted out, still owns the ring; write synchronously instead.
         const bool ringFree = !g_ringAbandoned && RingTeardown();
@@ -292,25 +279,22 @@ namespace csv
         g_ring.ResetCounts();
         g_rows = 0;
         g_seq  = 0;
-        g_in   = 0;             // reset HERE (arm), before any producer stamps it
+        g_in   = 0;             // reset at arm, before any producer stamps it
         g_path.clear();
         g_format = format;
         core::LatchFormat(format);      // every value in this file is spelt one way
         g_breaks = breaks;
         g_planned = BuildTracePath();   // named now, created on the first record
 
-        // Logged HERE rather than at the arm sites, because the name belongs to
-        // this module and either arm path can be the only one that runs --
-        // a workbook with macros and no add-ins arms VBA alone. Open being
-        // idempotent makes that one line per arm, wherever the arm came from.
+        // Logged here, not at the arm sites: either arm path can be the only one that runs (a
+        // workbook with macros and no add-ins arms VBA alone).
         {
             const std::string p = Narrow(g_planned);
             core::Log::Info(p.empty() ? std::string("trace file: could not be named")
                                 : std::string("trace file (armed): ") + p);
         }
-        // A ring that stands up but whose batch or drain thread cannot be
-        // created falls back to synchronous -- a performance choice, not a
-        // correctness one.
+        // A ring without its batch or drain thread falls back to synchronous: the ring is a
+        // performance choice, not a correctness one.
         if (ringFree && g_ring.Init(bufferBytes, pauseOnFull))
         {
             g_drain.batch = static_cast<char*>(malloc(1u << 18));   // 256 KB coalesce
@@ -348,14 +332,12 @@ namespace csv
         // A producer that saw the session armed may still be depositing: its record
         // has to land before the drain's last pass, in a ring that still exists.
         const bool quiet = WaitForProducers(5000);
-        // Drain and join OUTSIDE the lock: the drain does not take the CS, and
-        // joining it under one Open could also be waiting on is a needless
-        // tangle.
+        // Drain and join outside the lock: the drain does not take it, and joining under a lock
+        // Open may be waiting on is a needless tangle.
         const bool joined = quiet && RingTeardown();   // stop, final drain (may create the file), join, free
         Lock();
         if (!joined) g_ringAbandoned = true;
-        // No in-file drop marker: the CSV carries only real rows and loss is reported out of
-        // band.
+        // No in-file drop marker: the file carries only real rows; loss is reported out of band.
         if (g_file != INVALID_HANDLE_VALUE)
         {
             // A writer still running may use the handle, so it is left open rather than closed under it.
@@ -371,9 +353,8 @@ namespace csv
                                "and the file are left to it rather than freed, and later sessions write "
                                "synchronously");
 
-        // Where the output went, said at the end as well as the start. The row
-        // count is not decoration: a session that traced nothing leaves no file,
-        // so the path alone would name something that does not exist.
+        // With the row count: a session that traced nothing leaves no file, so the path alone
+        // would name something that does not exist.
         if (!wp.empty())
         {
             const std::string p = Narrow(wp);
@@ -415,12 +396,8 @@ namespace csv
     {
         void WriteCounted(const Row& row)
         {
-        // Into the per-thread heap scratch, not the stack. A failed allocation drops the row
-        // rather than faulting the hook.
-        //
-        // The PRODUCER stamps `input` here -- consumed whether or not the
-        // row reaches the ring, so a dropped row leaves a HOLE, which is how the
-        // file shows where it lost data. `seq` is the writer's, and dense.
+        // Into the per-thread heap scratch, not the stack; a failed allocation drops the row. `input`
+        // is consumed whether or not the row reaches the ring, so a dropped row leaves a hole.
         const char* frag = nullptr;
         int n = 0;
         if (Jsonl())
@@ -473,8 +450,8 @@ namespace csv
     void WriteRow(const Row& row)
     {
         if (!g_csReady) return;
-        // COUNTED IN BEFORE THE ARMED CHECK: Close clears the flag and then waits
-        // for this count, so no producer that saw it set is missed.
+        // Counted in before the armed check: Close clears the flag and then waits for this count, so
+        // no producer that saw it set is missed.
         InterlockedIncrement(&g_producers);
         if (Prepared()) WriteCounted(row);   // armed? -- the file may not exist yet
         InterlockedDecrement(&g_producers);

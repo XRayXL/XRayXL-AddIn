@@ -1,14 +1,5 @@
-# AN ERROR CAUGHT BY A FRAME WHOSE NEXT STATEMENT IS ITS OWN END.
-#
-#     Function LL_Catch() As Long
-#         On Error Resume Next
-#         LL_Catch = LL_Boom()      ' raises; what runs next is End Function
-#     End Function
-#
-# `handled` goes to a frame that predates the raise and runs again. Here the
-# only thing the catcher runs is its epilogue, so that has to count. Otherwise
-# the catcher reads `returned`, and the catch is charged to its caller or, at
-# the top, counted as an error escaping VBA.
+# A catcher whose next statement after the raise is its own End still reads `handled`: its
+# epilogue is all it runs again, and must count, or the catch is charged to its caller.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

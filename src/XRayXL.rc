@@ -1,10 +1,6 @@
-// The XLL's version resource. The deployed file keeps a stable name across versions, so this is
-// the only thing that says which build is installed.
-//
-// The numbers arrive as three numeric defines from version.props and the string is composed
-// here: a define whose value is a quoted string does not survive rc.exe's command line, and
-// every string in the block then comes out empty with exit code 0. The 0.0.0 fallback is meant
-// to look broken.
+// The deployed file keeps a stable name, so this resource alone says which build is installed.
+// The string is composed here because a quoted-string define does not survive rc.exe's command
+// line: every string comes out empty, with exit code 0. The 0.0.0 fallback is meant to look broken.
 
 #include <winver.h>
 
@@ -23,10 +19,8 @@
 #define XRAY_VERSION_TEXT \
     XRAY_STR(XRAY_VER_MAJOR) "." XRAY_STR(XRAY_VER_MINOR) "." XRAY_STR(XRAY_VER_PATCH)
 
-// Which configuration this was built as, as a number for the same reason. From $(Configuration)
-// via version.props rather than _DEBUG: the suites load the tracer from build\addin\, which
-// names no configuration, and both configurations carry the same version. Anything but 0 or 1
-// means the define never arrived, and is marked debug.
+// The configuration, a number for the same reason. Not _DEBUG: build\addin\ names no configuration
+// and both share a version. Anything but 0 or 1 means the define never arrived.
 #ifndef XRAY_BUILD_DEBUG
 #define XRAY_BUILD_DEBUG 2
 #endif
@@ -67,9 +61,8 @@ BEGIN
             VALUE "CompanyName",      "Andrew Lockhart"
             VALUE "LegalCopyright",   "Copyright (c) 2026 Andrew Lockhart. GPL-3.0."
             VALUE "InternalName",     "XRayXL"
-            // The name it is BUILT as, and the name it ships as -- no copy
-            // carries the version in its filename, because Excel stores the
-            // add-in's PATH. This field is what identifies a stray copy.
+            // Excel stores the add-in's path, so no filename carries the version;
+            // this field is what identifies a stray copy.
             VALUE "OriginalFilename", XRAY_FILE_NAME
             VALUE "FileVersion",      XRAY_VERSION_TEXT
             VALUE "ProductVersion",   XRAY_VERSION_TEXT

@@ -1,7 +1,5 @@
-# IN PROCESS: arming must report the XLL functions it armed, and the VBA
-# dispatch-table derivation must agree with reality about whether VBE7 is even
-# loaded. This is the only place the derivation runs against a VBE7 that Excel
-# itself loaded, at the address Excel put it, rather than against a file.
+# Arming must report the XLL functions it armed, and the VBA dispatch-table derivation must agree
+# about whether VBE7 is loaded: the only place it runs against a VBE7 that Excel itself loaded.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -27,8 +25,8 @@ try {
     }
     Write-TestCase -Name 'vba-derivation-ran' -Pass -Detail ($vbaLine.Trim())
 
-    # Deterministic without depending on VBA trust settings: ask the PROCESS
-    # whether VBE7 is loaded, then require the log to agree with the answer.
+    # Deterministic without depending on VBA trust settings: ask the process whether VBE7 is
+    # loaded, then require the log to agree.
     $vbeLoaded = $false
     try {
         $vbeLoaded = [bool]((Get-Process -Id $sx.ProcId).Modules |
@@ -43,8 +41,7 @@ try {
         Write-TestCase -Name 'vbe7-loaded-table-verified' -Pass:$ok2 -Fail:(-not $ok2) -Detail ($vbaLine.Trim())
     }
     else {
-        # VBA is NOT loaded: the only correct answer is to say so -- a table
-        # reported here would mean the derivation invented one.
+        # VBA is not loaded: the only correct answer is to say so; a table here would be invented.
         $ok2 = [bool]($vbaLine -match 'not loaded')
         if (-not $ok2) { $allGood = $false }
         Write-TestCase -Name 'vbe7-absent-correctly-declined' -Pass:$ok2 -Fail:(-not $ok2) -Detail ($vbaLine.Trim())

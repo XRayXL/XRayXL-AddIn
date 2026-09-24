@@ -56,9 +56,7 @@ End Function
      FillFormula=@{ Range='E1:E60'; Formula='=HAll(ROW(),$A$1:$C$1,$A:$A)' }
      Trigger=@{ Kind='Calc' }
      Expect={ param($t)
-        # THE TRACER ITSELF MUST NOT HAVE FAULTED. `hookFaults` is an exception
-        # escaping into a hook's own SEH frame; the breaker opening means it
-        # happened repeatedly and tracing stood down -- which is exactly how a
+        # The tracer must not have faulted: an opening breaker means repeated faults, which is how a
         # bad COM call would present.
         if ([int]$t.hookFaults -gt 0) {
             return "$($t.hookFaults) hook fault(s) while describing objects" }
@@ -70,22 +68,18 @@ End Function
         $vals = @($entries | ForEach-Object {
             if ($_.args -match '^a1:[^=]*=(.+)$') { $Matches[1] } else { '' } })
 
-        # EVERY ONE DESCRIBED, not just the first. A describer that degrades --
-        # a handle exhausted, a reference leaked until something gives -- shows
-        # up as LATER rows falling back to the bare address while earlier ones
-        # did not, which one call could never reveal.
+        # Every one described, not just the first: a describer that degrades (a leaked handle) shows
+        # up as later rows falling back to the bare address.
         $bare = @($vals | Where-Object { $_ -match '^object@0x' })
         if ($bare.Count -gt 0) {
             return "$($bare.Count) of $($vals.Count) fell back to a bare address -- the describer degraded under repetition" }
 
-        # THE CEILING HELD EVERY TIME. A whole column must never have had its
-        # contents read, however many times it was asked for.
+        # The ceiling held every time: a whole column's contents are never read.
         $over = @($vals | Where-Object { $_ -match '^Range@0x[0-9A-F]+\(.*![A-Z]+:[A-Z]+\)=' })
         if ($over.Count -gt 0) {
             return "$($over.Count) whole-column range(s) had their contents read" }
 
-        # AND EVERY SHAPE ACTUALLY RAN, so a silent change of path cannot pass
-        # as a clean run.
+        # And every shape ran, so a silent change of path cannot pass as clean.
         $shapes = @{
             'range'     = @($vals | Where-Object { $_ -match '^Range@0x[0-9A-F]+\(.*!\$?[A-Z]+\$?\d+:' }).Count
             'wholecol'  = @($vals | Where-Object { $_ -match '^Range@0x[0-9A-F]+\(.*![A-Z]+:[A-Z]+\)$' }).Count

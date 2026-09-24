@@ -73,7 +73,7 @@ End Function
         $entries = @($t.rows | Where-Object { $_.kind -eq 'entry' -and $_.source -eq 'VBA' })
         $tagOf = { param($r) if ($r.args -match '(?:^|\s)a1:[^=\s]*="([^"]*)"') { $Matches[1] } else { '' } }
 
-        # what the TRACER said, and what VBA said, per tag
+        # What the tracer said and what VBA said, per tag.
         $ours = @{}
         foreach ($r in @($entries | Where-Object { $_.function -eq 'TakeObj' -or $_.function -eq 'TakeObj2' })) {
             $ours[(& $tagOf $r)] = ArgOf $r 2
@@ -94,18 +94,15 @@ End Function
 
         # ---- the three we describe ----------------------------------------
         foreach ($tag in @('cell','row','col','block','wholecol')) {
-            # EXCEL QUOTES THE PREFIX when the book or sheet name needs it --
-            # `'[a-name.xlsm]S1'!A1` -- because this is Excel's OWN Address
-            # output, not the one the tracer builds for `callerref`. Accepted as
-            # it comes rather than normalised: the two are produced by different
-            # things and pretending otherwise would hide that.
+            # Excel quotes the prefix when the name needs it: this is Excel's own Address output,
+            # not the tracer's `callerref`, so it is accepted as it comes.
             if ($ours[$tag] -notmatch "^Range@0x[0-9A-F]+\('?\[[^\]]+\][^!]+'?!") {
                 return "$tag : expected Range([Book]Sheet!...), got [$($ours[$tag])]" }
         }
         if ($ours['sheet'] -notmatch '^Worksheet@0x[0-9A-F]+\(') { return "sheet : got [$($ours['sheet'])]" }
         if ($ours['book']  -notmatch '^Workbook@0x[0-9A-F]+\(')  { return "book : got [$($ours['book'])]" }
 
-        # ---- an unknown class is still NAMED -------------------------------
+        # ---- an unknown class is still named -------------------------------
         # The class name is what VBA's TypeName says; the address follows it and
         # is ours, so compare only the part that is a claim about the class.
         $collCls = ($ours['coll'] -split '@')[0]
@@ -119,10 +116,8 @@ End Function
             return "wholecol : read the contents of a whole column [$($ours['wholecol'])]" }
 
         # ---- and the shapes Excel actually produced -------------------------
-        # RECORDED, NOT ASSERTED AGAINST A GUESS: each must carry a value, and a
-        # multi-cell range must render an array with BOTH bounds of every
-        # dimension. What those bounds ARE is Excel's business, and the detail
-        # line below puts them in the result so a change is visible.
+        # Recorded, not asserted against a guess: each must carry a value, and a multi-cell range both
+        # bounds of every dimension; the detail line shows what they are.
         foreach ($tag in @('cell','row','col','block')) {
             if ($ours[$tag] -notmatch '\)=') { return "$tag : no value read, only an address [$($ours[$tag])]" }
         }
@@ -130,10 +125,8 @@ End Function
             if ($ours[$tag] -notmatch '=\w+\[-?\d+\.\.-?\d+,-?\d+\.\.-?\d+\]\{') {
                 return "$tag : expected a 2-D array with both bounds, got [$($ours[$tag])]" }
         }
-        # NOTHING IS WRITTEN DOWN THE PIPELINE HERE. Expect RETURNS its result,
-        # so a stray Write-Output becomes the return value and the driver reports
-        # "cannot convert value to type System.String" instead of the verdict --
-        # which is exactly what it did.
+        # Expect returns its result, so a stray Write-Output here would become the return value
+        # instead of the verdict.
         $null }
      Why='a Range, Worksheet, Workbook and an unowned class reaching a VBA UDF:
           each described, the unknown one still named, a whole column addressed

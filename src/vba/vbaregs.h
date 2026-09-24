@@ -1,17 +1,14 @@
-// The thunk's saved-register block, shared between vbathunk.asm and C++. The thunk saves the
-// interpreter's registers and hands the top of the block to the hook as `savedRegs`.
-//
-// The only copy of these offsets. One omitted push shifts every offset below it, and the
-// guarded read still succeeds on the wrong register, so if the pushes change, change them here
-// and count them.
-//
-//   push order (after the push that establishes rbx), fifteen of them:
+// The thunk's saved-register block, the only copy of these offsets in C++. One omitted push
+// shifts every offset below it and the guarded read still succeeds on the wrong register, so
+// if the pushes in vbathunk.asm change, change them here and count them.
+//   push order after the one that establishes rbx:
 //     rax rcx rdx r8 r9 r10 r11 rbp rsi rdi r12 r13 r14 r15 flags
 #pragma once
 
 namespace vba
 {
-    // Offsets DOWN from the top of the saved block.
+    // Offsets down from the top of the saved block.
+
     constexpr int kReg_rax   = -0x08;
     constexpr int kReg_rcx   = -0x10;
     constexpr int kReg_rdx   = -0x18;

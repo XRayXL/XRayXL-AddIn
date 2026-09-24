@@ -34,9 +34,8 @@ namespace xll
             std::mutex g_mutex;
             std::vector<Captured> g_pending;
 
-            // When the first of a batch was seen. Between a registration and its patch the
-            // function can be called untraced. Patching per registration would close that but
-            // freezes the process once per function, so the window is narrowed and reported.
+            // Calls between a registration and its patch go untraced; patching each alone would
+            // freeze the process once per function, so the window is kept short and reported.
             ULONGLONG g_firstPendingTick = 0;
 
             // Short enough that the untraced window is small, long enough that
@@ -106,13 +105,11 @@ namespace xll
             {
                 InterlockedIncrement64(&g_calls);
 
-                // PASS THROUGH FIRST, ALWAYS: the add-in's call must behave
-                // exactly as it would have, and the registration must have
-                // happened before its id can be read out of the result.
+                // Pass through first: the add-in's call must behave as it would have, and the
+                // id can only be read once the registration has happened.
                 const int rc = g_original(xlfn, coper, rgp, res);
 
-                // The xlfn carries flags in the high bits, so compare the
-                // opcode alone.
+                // xlfn carries flags in the high bits.
                 if ((xlfn & core::kXlFunctionMask) == xlfRegister)
                 {
                     InterlockedIncrement64(&g_registers);
@@ -133,10 +130,7 @@ namespace xll
                 return rc;
             }
 
-            // ONE EVENT, ONE TIMEOUT: waking on a timer rather than a signal
-            // keeps the hook free of syscalls. The interval IS the exposure
-            // window, so it is short -- a burst of 47 registrations still lands
-            // in one batch, arriving within a millisecond of each other.
+            // A timer, not a signal, keeps the hook free of syscalls; the interval is the untraced window.
             DWORD WINAPI WorkerProc(LPVOID)
             {
                 for (;;)
@@ -170,7 +164,7 @@ namespace xll
 
         bool Install(ApplyFn apply, std::string& why)
         {
-            if (g_watching) return true;                 // already watching
+            if (g_watching) return true;
             g_apply = apply;
             {
                 // What a disabled detour's stragglers captured belongs to no session.
@@ -184,8 +178,7 @@ namespace xll
             InterlockedExchange64(&g_faults, 0);
             InterlockedExchange64(&g_declinedCut, 0);
 
-            // CREATED ONCE AND NEVER REMOVED. A thread still inside the detour calls
-            // through g_original, so its trampoline has to outlive every disarm.
+            // Created once and never removed: a thread still inside the detour calls through g_original.
             if (g_original == nullptr)
             {
                 HMODULE self = GetModuleHandleW(nullptr);
@@ -193,8 +186,7 @@ namespace xll
                 g_target = reinterpret_cast<void*>(GetProcAddress(self, "MdCallBack12"));
                 if (g_target == nullptr) { why = "EXCEL.EXE exports no MdCallBack12"; return false; }
 
-                // MinHook may not be initialised yet: arming initialises it only when
-                // something is registered. The status is printed.
+                // Arming initialises MinHook only when something is registered, so it may not be yet.
                 const MH_STATUS init = MH_Initialize();
                 if (init != MH_OK && init != MH_ERROR_ALREADY_INITIALIZED)
                 {
@@ -210,9 +202,8 @@ namespace xll
                                                    &trampoline);
                 if (cs != MH_OK)
                 {
-                    // The status AND the prologue: MinHook declines a target it
-                    // cannot relocate, and the instructions actually there are the
-                    // only thing that says why.
+                    // Log the prologue too: MinHook declines a target it cannot relocate, and only
+                    // the bytes there say why.
                     const unsigned char* b0 = static_cast<const unsigned char*>(g_target);
                     char b[176];
                     _snprintf_s(b, _TRUNCATE,

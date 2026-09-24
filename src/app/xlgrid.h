@@ -15,8 +15,7 @@ namespace app
         XCHAR    pool[Cells][TextMax];
         XLOPER12 grid;
 
-        // A wide-string cell: the text is copied into this cell's pool slot as a
-        // pascal-counted string and the cell points at it. Truncated to fit.
+        // Copied into this cell's pool slot as a counted string, truncated to fit.
         void Str(int i, const wchar_t* text)
         {
             int len = 0; while (text[len] != 0 && len < TextMax - 2) ++len;
@@ -35,7 +34,7 @@ namespace app
             cell[i].xltype = xltypeStr;
             cell[i].val.str = pool[i];
         }
-        // A NUMBER cell, so a sheet can sort and sum it.
+        // A number cell, so a sheet can sort and sum it.
         void Num(int i, double v) { cell[i].xltype = xltypeNum; cell[i].val.num = v; }
 
         // Wrap the first rows*cols cells as a 2-D array result.
@@ -47,7 +46,7 @@ namespace app
             grid.val.array.lparray = cell;
             return &grid;
         }
-        // A single-cell string reply, in the reserved LAST slot.
+        // A single-cell string reply, in the reserved last slot.
         LPXLOPER12 Scalar(const wchar_t* text) { Str(Cells - 1, text); return &cell[Cells - 1]; }
     };
 }

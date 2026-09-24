@@ -1,8 +1,5 @@
-# A procedure with more parameters than the typetext column can spell.
-#
-# argcount is the count, not the length of the text: 60, never where the text ran out. The
-# text stops after a whole name and says it was cut. Only a1 and a60 are used, so the rest
-# read ?unseen: a type comes from the p-code that loads the parameter.
+# With more parameters than typetext can spell, argcount is still 60 and the text stops after a
+# whole name, saying it was cut. Only a1 and a60 are read, so the rest are ?unseen.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

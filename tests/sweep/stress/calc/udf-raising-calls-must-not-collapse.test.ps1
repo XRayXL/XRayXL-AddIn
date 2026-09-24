@@ -24,20 +24,17 @@ End Function
         $boom = @($entries | Where-Object { $_.function -eq 'Boom' }).Count
         $fine = @($entries | Where-Object { $_.function -eq 'Fine' }).Count
 
-        # The control. Six cells, a procedure that returns normally: six
-        # activations, each closed by its own epilogue. If this is short the
-        # problem is not the raise, and the rest of the case means nothing.
+        # The control: six cells of a procedure that returns normally. If this is short, the problem
+        # is not the raise.
         if ($fine -lt 6) {
             return "CONTROL FAILED: Fine returns normally from 6 cells but only $fine activation(s) traced -- the collapse is not specific to raising, or the case is wrong" }
 
-        # The defect. Same shape, but every call raises, so no epilogue is
-        # reached and nothing closes the frame.
+        # The defect: every call raises, so no epilogue closes the frame.
         if ($boom -lt 6) {
             return "COLLAPSE: Boom was called from 6 cells but only $boom activation(s) traced -- a raising UDF leaves its frame open and swallows the next call" }
 
-        # A collapsed activation does not merely go missing: the survivor
-        # keeps whichever argument was captured, so the row asserts a call
-        # that did not happen the way it is written.
+        # A collapsed activation keeps whichever argument was captured, so the row would assert a
+        # call that did not happen as written.
         $args = @($entries | Where-Object { $_.function -eq 'Boom' } | ForEach-Object { $_.args })
         $distinct = @($args | Sort-Object -Unique).Count
         if ($distinct -lt 6) {

@@ -4,10 +4,8 @@
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
-# HARVEST: the per-case files are the single source of truth, so this test
-# collects its cases FROM them. Each case file sets $case and returns
-# early when $StretchCollectOnly is truthy; the numbered filenames give a
-# stable cell order (00-* -> A1, 01-* -> A2, ...).
+# The per-case files are the single source of truth: each returns early under $StretchCollectOnly,
+# and the numbered filenames give a stable cell order (00-* -> A1, 01-* -> A2, ...).
 $allCases = @()
 $slugs = @()
 $StretchCollectOnly = $true
@@ -21,7 +19,7 @@ $StretchCollectOnly = $false
 try {
     $sx = Connect-TestExcel
     Set-XRaySessionDefaults $sx
-    # THE BURST: every case's formula recalculates while armed, in one pass
+    # Every case's formula recalculates while armed, in one pass.
     $run = Invoke-XRayFormulaTrace $sx 'XllAll' @($allCases | ForEach-Object { $_.Formula })
     $baseline = $run.Baseline
     $nowText = $run.Now

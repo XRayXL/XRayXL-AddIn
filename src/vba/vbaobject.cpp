@@ -11,15 +11,12 @@ namespace vba
 {
 namespace
 {
-    // The three classes we detail, by their published interface IDs. QueryInterface is the
-    // validation: a wrong GUID never matches, and the object falls through to being named from
-    // its type info.
+    // Published IIDs. A wrong GUID never matches; the object is then named from its type info.
     const GUID kIidRange     = { 0x00020846, 0, 0, { 0xC0,0,0,0,0,0,0,0x46 } };
     const GUID kIidWorksheet = { 0x000208D8, 0, 0, { 0xC0,0,0,0,0,0,0,0x46 } };
     const GUID kIidWorkbook  = { 0x000208DA, 0, 0, { 0xC0,0,0,0,0,0,0,0x46 } };
 
-    // WHAT ACTUALLY HAPPENED, so a class that stops being recognised is
-    // visible rather than silently absent. Counted, never gating.
+    // So a class that stops being recognised is visible rather than silently absent.
     volatile LONG64 g_described = 0, g_namedOnly = 0, g_unknown = 0;
 
     // Interfaces and a VARIANT held inside the guarded call, so a fault part-way
@@ -41,10 +38,7 @@ namespace
     void Hold(IUnknown* u)   { if (t_hold) t_hold->Add(u); }
     void Unhold(IUnknown* u) { if (t_hold) t_hold->Drop(u); }
 
-    // A RANGE THIS BIG IS NOT READ. `A:A` is 1,048,576 cells and asking Excel
-    // for its Value2 would materialise a VARIANT array of about 25 MB inside a
-    // calculation -- to render the first 64 of them. The address is still
-    // reported; only the contents are declined, and the row shows the difference.
+    // Value2 of `A:A` would materialise a 25 MB VARIANT array inside a calculation.
     constexpr long kMaxCellsToRead = 4096;
 
     bool Answers(IDispatch* d, const GUID& iid)
@@ -56,9 +50,7 @@ namespace
         return true;
     }
 
-    // A property or method returning a VARIANT. `argc` positional arguments, in
-    // DECLARATION order -- reversed here, which is the order DISPPARAMS wants
-    // and the single most common way to get this subtly wrong.
+    // `args` in declaration order; DISPPARAMS wants them reversed.
     bool GetProp(IDispatch* d, const wchar_t* name, VARIANT& out, VARIANT* args, int argc)
     {
         VariantInit(&out);
@@ -75,8 +67,6 @@ namespace
                                    DISPATCH_PROPERTYGET, &dp, &out, nullptr, nullptr));
     }
 
-    // A BSTR property, narrowed. False when it is not a string -- never a
-    // partial or a placeholder.
     bool GetStr(IDispatch* d, const wchar_t* name, char* out, int cap,
                 VARIANT* args = nullptr, int argc = 0)
     {
@@ -113,8 +103,7 @@ namespace
         return r;
     }
 
-    // What the type library calls it, which is what VBA's TypeName() reads. Passed through as
-    // given: Excel's own interfaces are `_Worksheet` and `_Workbook`, with the underscore.
+    // What VBA's TypeName() reads, passed through as given, underscore included (`_Worksheet`).
     bool NameOf(ITypeInfo* ti, char* out, int cap)
     {
         BSTR name = nullptr;
@@ -127,10 +116,8 @@ namespace
 
     bool TypeName(IDispatch* d, char* out, int cap)
     {
-        // The class, not its default interface: IDispatch::GetTypeInfo answers `_Collection`
-        // where TypeName() says `Collection`, so IProvideClassInfo is asked for the coclass. It
-        // does not always answer; Excel's sheet object gives nothing and falls through to
-        // `_Worksheet`.
+        // The coclass first: GetTypeInfo answers `_Collection` where TypeName() says `Collection`.
+        // Excel's sheet object gives no coclass.
         IProvideClassInfo* pci = nullptr;
         if (SUCCEEDED(d->QueryInterface(IID_IProvideClassInfo,
                                         reinterpret_cast<void**>(&pci))) && pci)
@@ -144,9 +131,6 @@ namespace
             if (ok) return true;
         }
 
-        // No class info: the interface name is what there is, and is reported as
-        // it comes -- including any leading underscore, which is a fact about
-        // the interface rather than a blemish to tidy.
         UINT n = 0;
         if (FAILED(d->GetTypeInfoCount(&n)) || n == 0) return false;
         ITypeInfo* ti = nullptr;
@@ -157,10 +141,8 @@ namespace
         return ok;
     }
 
-    // `Address(RowAbsolute, ColumnAbsolute, ReferenceStyle, External)` --
-    // FALSE, FALSE, xlA1, TRUE, which is `[Book1]Sheet1!A1:B2`: the same
-    // external form `callerref` uses, so an object argument and a calling cell
-    // read alike.
+    // `[Book1]Sheet1!A1:B2`, the form `callerref` uses, so an object argument and a calling
+    // cell read alike.
     bool RangeAddress(IDispatch* r, char* out, int cap)
     {
         VARIANT a[4];
@@ -172,10 +154,8 @@ namespace
         return GetStr(r, L"Address", out, cap, a, 4);
     }
 
-    // The address, then the contents when the range is small enough to read. The address alone
-    // is a complete answer: the contents are declined rather than cut when there are too many,
-    // or when the count could not be had, because a count we do not know is not a count we may
-    // assume is small.
+    // Contents are declined, not cut, when too many or when the count is unknown: an unknown
+    // count may not be assumed small.
     bool DescribeRange(IDispatch* r, std::uint64_t ptr, core::ValueWriter& w)
     {
         char addr[512];
@@ -188,7 +168,6 @@ namespace
         if (haveCount && cells <= kMaxCellsToRead && GetProp(r, L"Value2", v, nullptr, 0))
         {
             if (t_hold) t_hold->var = &v;
-            // The same decoder the columns use, reading the VARIANT we hold.
             DescribeVariantValue(reinterpret_cast<std::uint64_t>(&v), w);
             if (t_hold) t_hold->var = nullptr;
             VariantClear(&v);
@@ -209,9 +188,7 @@ namespace
             if (!GetStr(parent, L"Name", book, sizeof(book))) book[0] = 0;
             Unhold(parent); parent->Release();
         }
-        // `[Book1]Sheet1`, the shape callerref uses. Without the book it is the
-        // sheet alone -- true, and less than we wanted, rather than a book name
-        // invented to fill the brackets.
+        // `[Book1]Sheet1`, as callerref; without the book, the sheet alone rather than a guess.
         char where[600];
         if (book[0]) _snprintf_s(where, _TRUNCATE, "[%s]%s", book, sheet);
         else         _snprintf_s(where, _TRUNCATE, "%s", sheet);
@@ -231,12 +208,10 @@ namespace
         return true;
     }
 
-    // The whole of the work, with no object that needs unwinding, so the caller
-    // can wrap it in SEH.
+    // No object that needs unwinding, so the caller can wrap it in SEH.
     bool DescribeInner(IDispatch* d, std::uint64_t ptr, core::ValueWriter& w)
     {
-        // A class identified by QueryInterface is named by that identification. The type info
-        // would say `_Worksheet`, since Excel's sheet object yields no coclass.
+        // Named by the QueryInterface match: the type info would say `_Worksheet`.
         const char* known = nullptr;
         bool detailed = false;
         if (Answers(d, kIidRange))
@@ -261,8 +236,6 @@ namespace
         if (known) strncpy_s(cls, known, _TRUNCATE);
         else if (!TypeName(d, cls, sizeof(cls)) || !cls[0])
         {
-            // Not one we know, and it will not say what it is. That is the whole
-            // of the answer, and the caller renders the address.
             InterlockedIncrement64(&g_unknown);
             return false;
         }
@@ -315,8 +288,6 @@ bool DescribeObjectDetail(std::uint64_t ptr, core::ValueWriter& w)
     {
         hold.ReleaseAll();
         t_hold = nullptr;
-        // A COM call that faults costs this description and nothing else: the
-        // caller renders `object@0x...`, which is what it did before any of this.
         w.Restore(mark);
         return false;
     }

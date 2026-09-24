@@ -347,7 +347,7 @@ namespace
 
     // ---- subclasses: hover, and the frames the stock controls cannot draw ------------
 
-    // The two path boxes offer what is useful for a path, not the edit control's own menu.
+    // The path boxes offer what is useful for a path, not the edit control's own menu.
     bool PathMenu(HWND edit, LPARAM lp)
     {
         const int id = GetDlgCtrlID(edit);

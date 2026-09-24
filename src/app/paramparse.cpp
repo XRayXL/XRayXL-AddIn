@@ -31,9 +31,8 @@ namespace params
         return t == xltypeMissing || t == xltypeNil;
     }
 
-    // ReadUpper TRUNCATES at cap-1, so the buffer sets a ceiling on how long a
-    // setting name may be; a name AT the ceiling compares equal to every longer
-    // input starting with it. 32/31 keeps BUFFERWHENFULL (14) well clear.
+    // ReadUpper truncates at cap-1, so a name at that ceiling would match every longer input
+    // starting with it; 32 keeps BUFFERWHENFULL (14) well clear.
     bool IsWord(LPXLOPER12 v, const wchar_t* w)
     {
         if (ArgType(v) != xltypeStr) return false;
@@ -41,9 +40,6 @@ namespace params
         return wcscmp(b, w) == 0;
     }
 
-    // The output buffer size in bytes. A bare number or M/MB is megabytes, K/KB is kilobytes,
-    // case-insensitive; 0 is synchronous. False if the text is not a number with an accepted unit,
-    // or is over the cap; the caller enforces the ring floor.
     static constexpr double kBufMaxBytes = 240.0 * 1024.0 * 1024.0;
     bool ParseBufferText(const wchar_t* b, unsigned long long& outBytes);
     bool ParseBufferBytes(LPXLOPER12 v, unsigned long long& outBytes)
@@ -117,8 +113,7 @@ namespace params
 
     namespace
     {
-        // ONE VOCABULARY PER SETTING, and no synonyms: a word matches or it
-        // does not.
+        // One vocabulary per setting, and no synonyms: a word matches or it does not.
         template <class T> struct Word { const wchar_t* text; T value; };
 
         template <class T, size_t N>
@@ -163,9 +158,8 @@ namespace params
         return ParseWord(v, k, p);
     }
 
-    // TRUE or FALSE. A native boolean and the text "TRUE" are the SAME word in
-    // two encodings -- which is how Excel delivers it, depending on whether it
-    // came from a cell, a formula or Application.Run -- so both are read.
+    // A native boolean and the text "TRUE" are the same word: Excel delivers either, depending on
+    // whether it came from a cell, a formula or Application.Run.
     bool ParseOnOff(LPXLOPER12 v, bool& on)
     {
         if (ArgType(v) == xltypeBool) { on = v->val.xbool != 0; return true; }

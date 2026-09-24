@@ -10,18 +10,12 @@ namespace vba
 {
     namespace
     {
-        // kTrl_procSize (trailer+0x0C) is in vbatrailer.h, the one authority.
-
-        // Guards against a bad trailer read. ProcSize is a WORD, so this is its maximum.
+        // Guards against a bad trailer read.
         constexpr std::uint32_t kMaxProcSize = kTrl_procSizeMax;
 
-        // The slots in the deny-list below are in vbaslots.h; IsProcTerminatorSlot
-        // in vbaderive.cpp must agree with it.
+        // IsProcTerminatorSlot in vbaderive.cpp must agree with the deny-list below.
 
-        // Everything below reads memory that belongs to somebody else, on a VBA
-        // thread, so every read is guarded and a fault is an answer rather than
-        // a crash. SEH lives in leaf functions with no C++ objects in scope --
-        // __try cannot share a frame with anything that needs unwinding.
+        // Every read is of someone else's memory on a VBA thread, so a fault is an answer.
         using core::RdU64;
         using core::RdU16;
         using core::RdI32;
@@ -33,7 +27,6 @@ namespace vba
         std::uint16_t procSize16 = 0;
 
         if (!RdU64(savedRegs + kReg_rsi, rsi))            return Activation::Unavailable;
-        // A WORD, as vbatrailer.h says and as the p-code walk reads it.
         if (!RdU16(trailer + kTrl_procSize, procSize16))  return Activation::Unavailable;
         const std::uint32_t procSize = procSize16;
 
@@ -57,10 +50,8 @@ namespace vba
         if (!RdU16(rsi - 2, op))               return Ending::Unreadable;
         if (opOut) *opOut = op;
 
-        // A DENY-LIST, not an allow-list, and vbaboundary.h says why: only 5 of
-        // the 25 exit slots have ever been observed firing, so listing the ones
-        // that DO end a procedure would silently stop closing frames for any
-        // procedure kind nobody tested.
+        // A deny-list: an allow-list would stop closing frames for a procedure kind nobody tested.
+
         if (op == kSlot_GoSubReturn)  return Ending::No;
         if (op == kSlot_ZeroRetVal)    return Ending::No;
         if (op == kSlot_ZeroRetValVar) return Ending::No;

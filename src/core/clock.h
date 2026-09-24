@@ -1,9 +1,8 @@
 #pragma once
 #include <windows.h>
 
-// QueryPerformanceCounter as microseconds, for the arm-time cost splits that
-// say where a slow arm went. Never GetTickCount. Not for the hot path, which
-// stamps raw ticks and converts nothing.
+// QueryPerformanceCounter as microseconds, for the arm-time cost splits. The hot path stamps raw
+// ticks and converts nothing.
 namespace core
 {
     // Raw ticks, for the hot path.

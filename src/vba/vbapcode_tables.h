@@ -7,83 +7,63 @@ namespace vba
 {
     namespace
     {
-        // The typed argument-load opcodes. Slot indices, not addresses, so portable across
-        // builds. 656..669 is one contiguous per-type block; the ByRef loads at 736..751
-        // reproduce it offset for offset.
+        // Slot indices, not addresses, so portable across builds. The ByRef loads at 736..751
+        // mirror the ByVal block at 656..669 offset for offset.
         struct TypeOp { std::uint32_t op; const char* name; };
         constexpr TypeOp kTypeOps[] = {
-            { 656,  "Byte"     }, { 657,  "Integer"  },   // Integer AND Boolean
+            { 656,  "Byte"     }, { 657,  "Integer"  },   // Integer and Boolean
             { 658,  "Long"     }, { 661,  "Currency" },
             { 663,  "String"   }, { 664,  "Object"   },
             { 667,  "LongLong" }, { 668,  "Single"   },
-            { 669,  "Double"   },                          // Double AND Date
+            { 669,  "Double"   },                          // Double and Date
             { 1477, "Variant"  },
-            // A ByRef String load that sits outside the family block, so it is listed in its own
-            // right, as 743 is.
+            // A ByRef String load outside the family block.
             { 788,  "String&"  },
-            // The ByRef scalar family: offsets from 736 mirror the ByVal family exactly, and both
-            // alias pairs hold (Boolean IS Integer, Date IS Double).
-            { 736,  "Byte&"    }, { 737,  "Integer&" },   // Integer AND Boolean
+            { 736,  "Byte&"    }, { 737,  "Integer&" },   // Integer and Boolean
             { 738,  "Long&"    },
             { 741,  "Currency&"}, { 742,  "Variant&" },
             { 743,  "String&"  },
             { 744,  "Object&"  }, { 748,  "Single&"  },
-            // A reference to a NAMED class (a VBA class or an imported COM class), where 744 is
-            // the generic `As Object`.
+            // A named class (VBA or imported COM), where 744 is the generic `As Object`.
             { 750,  "Object&"  },
-            { 749,  "Double&"  },                          // Double AND Date
-            // A record is always passed by reference, and the slot points at the record itself.
-            // 1056..1071 is one family: a member access through that reference, the member's own
-            // type choosing the slot.
-            { 1058, "Udt&"     }, { 1069, "Udt&" }, { 1071, "Udt&" },
-            // A String member read through a record reference: the PARAMETER is the record, not
-            // the member. 751 looks like this family and is not one (PcodeCarriesNoType).
-            { 1063, "Udt&" },
-            // The UDT-member family is typed by the member:
+            { 749,  "Double&"  },                          // Double and Date
+            // Record member access, 1056..1072, the member's type choosing the slot:
             //
             //    1056 Byte   1057 Integer/Boolean   1058 Long      1061 Currency
             //    1062 Variant  1063 String   1064 Object   1067 LongLong
             //    1068 Single   1069/1071 (already named)
             //
-            // All of them name the parameter `Udt&`, not the member: the slot holds a reference
-            // to the record. The matching stores are each load+32, so PcodeStoreTypeName
-            // resolves them through these rows.
+            // Each names the parameter `Udt&`, not the member: a record is passed by reference.
+            // Their stores resolve through these rows (load + 32). 751 is not of this family.
+            { 1058, "Udt&"     }, { 1069, "Udt&" }, { 1071, "Udt&" },
+            { 1063, "Udt&" },
             { 1056, "Udt&"     }, { 1057, "Udt&"     }, { 1061, "Udt&" },
             { 1062, "Udt&"     }, { 1064, "Udt&"     }, { 1067, "Udt&" },
             { 1068, "Udt&"     },
-            // The family's coercing Single and Double members, and the String member store,
-            // which sits outside the store = load + 32 relation.
+            // Coercing Single and Double members, and the String member store (outside load + 32).
             { 1059, "Udt&"     }, { 1060, "Udt&"     }, { 1108, "Udt&" },
-            // Its object and Variant members: 1070 and 1072 read, 1106 sets an object from a
-            // function, 1107 copies a Variant in.
+            // Object and Variant members: 1070 and 1072 read, 1106 sets from a function, 1107 copies.
             { 1070, "Udt&"     }, { 1072, "Udt&"     }, { 1106, "Udt&" }, { 1107, "Udt&" },
             // The ByRef store into a named class (`Set p = Nothing`), outside the store relation.
             { 786,  "Object&"  },
-            // The coercing Single and Double loads, emitted when a value crosses an object
-            // member or `Debug.Print`; a plain read emits 668/669 and 748/749.
+            // Coercing loads, emitted when a value crosses an object member or `Debug.Print`.
             { 660,  "Double"   }, { 740,  "Double&"  },
             { 659,  "Single"   }, { 739,  "Single&"  },
-            // An 8-byte reference that does NOT say what it points at: `ByRef LongLong`,
-            // `LongPtr` and `ByRef a()` all emit it. The "&" still makes the renderer follow the
-            // pointer, and the self-validating decoders decide what is there.
+            // Untyped: `ByRef LongLong`, `LongPtr` and `ByRef a()` all emit it. The "&" makes the
+            // renderer follow the pointer, and the self-validating decoders decide what is there.
             { 747,  "Ref&" },
         };
 
-        // The instruction lengths the walk steps by. A length is a property of the opcode set,
-        // not of the build, so it is a constant, as the slot indices in vbaderive.h are.
-        //
-        // The rows are grouped by what they are, and each group says how far it is trusted:
+        // A length is a property of the opcode set, not of the build, so it is a constant. Each
+        // group says how far it is trusted:
         //
         //    proven       real code walks it, and +-2 changes where some walk ends
         //    structural   fixed by the statement chain or by ProcSize, or by sharing a handler
         //                 with a proven slot
         //    walked       real code walks it, with no +-2 test to apply
-        //    handler only the handler alone; no compiled code here has met the opcode
+        //    handler only the handler alone; no compiled code has met the opcode
         //
-        // kCorpusWalked below is the shipped record of which have been walked. An exit that ends
-        // a statement is NOT here: the walk leaves at it or jumps by the statement's own offset.
-        // Only 620, 1662 and 1663, which end no statement, are stepped over; the rest are in
-        // kExitLength.
+        // Exits that end a statement are in kExitLength, since the walk never steps over them.
         struct SigLength { std::uint16_t slot; std::uint8_t len; };
         constexpr SigLength kSigLength[] = {
             { 615, 6 }, { 1645, 6 },                    // beginning-of-statement
@@ -98,12 +78,11 @@ namespace vba
             { 742, 10 }, { 1477, 10 },                  // Variant&, Variant
             { 1058, 10 }, { 1069, 10 }, { 1071, 10 },   // UDT member access
 
-            // On the path to a load: temporaries and coercions around one. Proven.
+            // Temporaries and coercions around a load. Proven.
             { 689, 6 }, { 690, 6 }, { 699, 6 },
             { 701, 6 }, { 708, 6 }, { 1520, 6 },
 
-            // On the path to a store: the frame-slot address, the String store and the Variant
-            // copies. Proven.
+            // The frame-slot address, the String store and the Variant copies. Proven.
             { 492,  2 }, { 671, 6 }, { 743,  6 },
             { 1525, 10 }, { 1527, 4 }, { 1528, 8 }, { 1655, 2 },
 
@@ -114,8 +93,7 @@ namespace vba
             // The String member of a record, read through a reference. Proven.
             { 1063, 10 },
 
-            // Call setup and arithmetic: what stands between a call and the loads around it.
-            // Proven.
+            // Call setup and arithmetic around the loads. Proven.
             { 497,  6 }, { 718,  6 }, { 1534, 8 },
             { 63,   2 }, { 246,  2 }, { 991, 4 },
 
@@ -137,7 +115,7 @@ namespace vba
             { 1473, 10 }, { 1517, 4 }, { 1524, 10 }, { 1634, 2 }, { 1648, 2 },
             { 1649, 2 }, { 1650, 2 }, { 1652, 2 },
 
-            // More of the same families, from a later fuzz batch. Proven.
+            // More of the same families. Proven.
             { 1, 2 }, { 27, 2 }, { 37, 2 }, { 38, 2 }, { 51, 2 }, { 147, 2 },
             { 148, 2 }, { 150, 2 }, { 195, 2 }, { 220, 2 }, { 232, 2 },
             { 279, 2 }, { 299, 2 }, { 352, 2 }, { 354, 2 }, { 363, 2 },
@@ -145,34 +123,29 @@ namespace vba
             { 621, 2 }, { 622, 2 }, { 878, 6 }, { 909, 6 },
             { 1609, 6 }, { 1630, 6 }, { 1651, 2 }, { 1687, 2 },
 
-            // Variant stores and copies, and the branch at 710, whose operand is its target.
-            // Walked: real code steps through each.
+            // Variant stores and copies, and the branch at 710. Walked.
             { 696,  6 },  { 707,  6 },  { 710,  6 },  { 959,  6 },
             { 1468, 10 },  { 1471, 10 },
             { 1441, 12 },  { 1442, 12 },
             { 1096, 10 }, { 1107, 10 }, { 1445, 10 },
 
-            // The member dispatch, and the object-member read whose operand is an id. Proven.
-            // A CALL is 6, never the 2 a handler reader gives: the handler fetches the callee's
-            // first opcode, not its own next one.
+            // Member dispatch and object-member read. Proven. A call is 6, not the 2 its handler
+            // suggests: the handler fetches the callee's first opcode, not its own next one.
             { 498, 6 },
             { 406, 2 },
-            // `End`, `Stop` and the statement-level opcodes around them. Structural: fixed by
-            // the statement chain.
+            // `End`, `Stop` and the statement-level opcodes around them. Structural.
             { 200, 6 },
             { 600, 2 }, { 619, 2 },
-            // GoSub `Return`: no operand, and it ends no statement, so the walk steps over it.
+            // GoSub `Return` ends no statement, so the walk steps over it.
             { 620, 2 },
-            // The call families, all 6 for the reason above: procedure call, member call.
-            // Proven.
+            // Procedure and member calls, 6 for the reason above. Proven.
             { 500, 6 },
             { 1309, 6 },
 
             // The array-element read: 4, the only length that lets a walk continue. Structural.
             { 1606, 4 },
 
-            // Handler only: the handler gives these consistently on every build, but no compiled
-            // code here has met them. kCorpusWalked says which of them a walk has since used.
+            // Handler only.
             { 2, 2 }, { 3, 2 }, { 12, 2 }, { 13, 2 }, { 14, 2 }, { 15, 2 },
             { 24, 2 }, { 25, 2 }, { 26, 2 }, { 48, 2 }, { 60, 2 }, { 61, 2 },
             { 62, 2 }, { 64, 2 }, { 65, 2 }, { 66, 2 }, { 68, 2 }, { 72, 2 },
@@ -308,17 +281,15 @@ namespace vba
             { 1673, 10 }, { 1681, 8 }, { 1682, 10 }, { 1683, 4 }, { 1684, 6 },
             { 1685, 6 }, { 1686, 2 }, { 1688, 2 }, { 1689, 2 }, { 1690, 2 },
             { 1691, 2 }, { 1693, 2 }, { 1698, 10 },
-            // Read from the operand structure in the corpus: the shape of the words after the
-            // opcode gives the length where the handler cannot. Structural.
+            // From the shape of the operand words, where the handler cannot say. Structural.
             { 1113, 4 }, { 335, 6 }, { 582, 2 }, { 430, 2 }, { 1120, 2 }, { 1121, 6 }, { 596, 2 }, { 258, 2 },
             { 595, 2 }, { 67, 6 }, { 1431, 10 }, { 459, 2 }, { 606, 2 }, { 458, 2 }, { 358, 2 }, { 608, 2 }, { 1643, 3 }, { 257, 2 }, { 1439, 10 }, { 341, 2 }, { 1440, 10 }, { 472, 2 }, { 342, 2 }, { 473, 2 }, { 1469, 10 }, { 584, 2 },
-            // 517 and 519 (Get/PutRecOwner4) have no row: their handler skips by a register it
-            // never loads, so it states no length, and no construct emits them.
+            // 517 and 519 (Get/PutRecOwner4) have no row: their handler states no length, and
+            // no construct emits them.
             //
-            // Structural by identity: each shares its handler with a slot already pinned.
+            // Each shares its handler with a slot already pinned. Structural.
             { 854, 6 }, { 867, 6 }, { 1112, 4 }, { 1419, 10 },
-            // Calls, conversions and comparisons across the typed families, since walked past at
-            // an aligned boundary by real code. Walked.
+            // Calls, conversions and comparisons across the typed families. Walked.
             { 486, 4 }, { 487, 4 }, { 506, 4 }, { 1411, 4 }, { 1474, 10 }, { 1475, 6 }, { 1476, 6 }, { 1607, 8 },
             { 1640, 4 }, { 1642, 4 }, { 1659, 4 }, { 7, 6 }, { 19, 6 }, { 31, 6 }, { 43, 6 }, { 55, 6 },
             { 73, 6 }, { 75, 2 }, { 76, 2 }, { 84, 6 }, { 90, 6 }, { 92, 2 }, { 93, 2 }, { 101, 6 },
@@ -330,9 +301,7 @@ namespace vba
             { 460, 2 }, { 461, 2 }, { 463, 2 }, { 465, 2 }, { 466, 2 }, { 467, 2 }, { 468, 2 }, { 475, 2 },
             { 590, 2 }, { 612, 2 }, { 1376, 2 }, { 1377, 2 }, { 1613, 6 }, { 1615, 6 }, { 1617, 6 }, { 1644, 2 },
             { 1692, 2 },
-            // Handler only: no compiled code here has met these, so each length is what the
-            // handler says and nothing has read it from bytes. A walk that steps through one is
-            // counted and reported (kCorpusWalked decides which count).
+            // Handler only.
             { 1122, 8 }, { 1184, 4 }, { 1216, 4 }, { 1280, 12 }, { 1312, 12 }, { 1598, 4 }, { 1599, 4 }, { 1620, 4 },
             { 1621, 4 }, { 1639, 4 }, { 1641, 4 }, { 1666, 4 }, { 1667, 6 }, { 1668, 8 }, { 1669, 8 }, { 1670, 4 },
             { 1671, 4 }, { 1675, 10 }, { 1676, 8 }, { 1677, 8 }, { 1678, 8 }, { 1679, 10 }, { 177, 2 }, { 178, 2 },
@@ -341,10 +310,8 @@ namespace vba
             { 1542, 2 }, { 1608, 6 }, { 1674, 6 },
         };
 
-        // The length of each exit that ends a statement. Never stepped over; the walk uses it to
-        // check the last statement ends at ProcSize, after 0 or 2 bytes of padding. Measured two
-        // ways that agree: the gap to the next statement after an early exit, and to ProcSize
-        // after the last. 953 has not been seen, so its closure goes unchecked.
+        // Exits that end a statement. Never stepped over; only used to check the last statement
+        // ends at ProcSize, after 0 or 2 bytes of padding. 953 is absent, so goes unchecked.
         constexpr SigLength kExitLength[] = {
             { 504, 2 }, { 623, 2 }, { 624, 2 }, { 625, 2 }, { 626, 2 }, { 627, 2 }, { 628, 2 },
             { 630, 2 }, { 631, 2 }, { 634, 2 }, { 635, 2 }, { 952, 4 },
@@ -352,18 +319,13 @@ namespace vba
             { 1494, 8 }, { 1495, 8 }, { 1664, 8 }, { 1665, 12 },
         };
 
-        // Lengths that depend on the operand. `FFreeVar`/`FFreeStr`/`FFreeAd` (1514-1516)
-        // release the Variant, String and object locals on exit: opcode, a count word, then
-        // count/2 four-byte frame offsets, so 4 + 2*count.
+        // Lengths that depend on the count word at +2:
         //
-        // The named late calls (1502-1509) carry a list of argument-name ids, and the word at
-        // +2 is the byte count of what follows: 4 + count, or 6 + count for the two `LdVar`
-        // forms. `OnGoto`/`OnGosub` (1480/1481) skip a list of four-byte branch targets the
-        // same way, and `GetRecOwner3`/`PutRecOwner3` (516/518) a record payload.
+        //    1514-1516  FFreeVar/Str/Ad: count/2 four-byte frame offsets, so 4 + 2*count
+        //    1502-1509  named late calls: count bytes of argument-name ids (6 + count for LdVar)
+        //    1480/1481  OnGoto/OnGosub: branch targets;  516/518 Get/PutRecOwner3: a record
         //
-        // The handler signature is `add rsi, <register>` where the register was fetched from
-        // `[rsi]`. `For`/`Next`/`Gosub` take the register from elsewhere, because there it is a
-        // branch.
+        // `For`/`Next`/`Gosub` also `add rsi, <register>`, but that register is a branch, not a count.
         struct VarLength { std::uint16_t slot; std::uint8_t base; std::uint8_t unit; };
         constexpr VarLength kVarLength[] = {
             { 1514, 4, 2 }, { 1515, 4, 2 }, { 1516, 4, 2 },
@@ -374,11 +336,9 @@ namespace vba
             { 516,  4, 1 }, { 518,  4, 1 },
         };
 
-        // Which slots the runtime corpus has walked past, one bit per slot; generated offline
-        // (tools/evidence/stops.py --walked-bitmap), and only ever added to. A set bit is a slot
-        // seen at an aligned boundary in a procedure that walked on to its last exit. Everything
-        // pinned and not here rests on the handler alone, so the walk counts a step through one.
-        // Walked is not confirmed: it proves only that the procedures containing it closed.
+        // One bit per slot that real code has walked past to a clean exit; generated, only ever
+        // added to. A pinned slot not here rests on its handler alone, so a step through one is
+        // counted.
         constexpr std::uint8_t kCorpusWalked[] = {
             0x8E, 0xF0, 0x08, 0x8F, 0xF0, 0x08, 0x8F, 0xF0, 0x1F, 0xFF, 0x3F, 0xFE,
             0x7F, 0xFC, 0xFF, 0xF8, 0xFF, 0xF1, 0xFF, 0xE3, 0x07, 0x86, 0xF1, 0x8F,

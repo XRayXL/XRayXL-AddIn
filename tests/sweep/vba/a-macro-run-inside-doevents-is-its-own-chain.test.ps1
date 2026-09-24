@@ -1,8 +1,5 @@
-# A macro Excel runs while VBA sits in DoEvents is a new top-level chain.
-#
-# An OnTime macro fires inside SlowWork's DoEvents loop. The interpreter stack says it is on top
-# of SlowWork, but SlowWork did not call it: it must read depth 1 with no parent, and its own
-# callee must nest under it.
+# A macro Excel runs while VBA sits in DoEvents is a new top-level chain. The interpreter stack
+# puts the OnTime macro on top of SlowWork, but SlowWork did not call it.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

@@ -1,7 +1,5 @@
-// THE VBA DISARM REPORT: the totals line, the unmapped-return warning and the
-// per-procedure table. Formatting only, off the hot path, from counters the
-// tracer kept (vbatrace_internal.h). Every string here is read by a suite or
-// by the shape fuzzer's oracle, so a change to one is a change to a contract.
+// The VBA disarm report. Every string here is read by a suite or the shape fuzzer's oracle,
+// so changing one changes a contract.
 #include "vbatrace.h"
 #include "vbatrace_internal.h"
 #include "vbaidentity.h"
@@ -36,8 +34,7 @@ namespace vba
           << " returnsRead=" << t.returnsRead
           << " returnsDeclined=" << t.returnsDeclined
           << " returnsOff=" << t.returnsOff
-          // FOUR NUMBERS, NOT ONE. "nothing changed" and "we never looked" are
-          // different facts about the tracer and must not share a cell.
+          // Four numbers, so "nothing changed" and "never looked" do not share a cell.
           << " byrefEligible=" << t.byrefEligible
           << " byrefChanged=" << t.byrefChanged
           << " byrefSame=" << t.byrefSame
@@ -65,8 +62,7 @@ namespace vba
           << " callerOther=" << t.callerOther
           << " callerUnavailable=" << t.callerUnavailable
           << " callerFaults=" << t.callerFaults
-          // ERRORS. threw == handled in a session where every error was caught;
-          // a shortfall is one that reached the top.
+          // threw == handled when every error was caught; a shortfall reached the top.
           << " threw=" << t.threw
           << " unwound=" << t.unwound
           << " handled=" << t.handled
@@ -86,15 +82,12 @@ namespace vba
                   << " objNamedOnly=" << namedOnly
                   << " objUnknown=" << unknown;
         }
-        // Bounded timing is not wrong, but it is not a measurement either, and
-        // a reader that does not know which is which will believe the number.
+        // Bounded timing is not a measurement, and a reader not told so will believe the number.
         if (t.closedByBackstop || t.closedByFlush)
             o << " NOTE: " << (t.closedByBackstop + t.closedByFlush)
               << " exit row(s) carry an UPPER BOUND for ticks, not a measurement"
                  " (closed= says which)";
-        // Excel declining to answer is not the same as a caller that is not a
-        // cell, and neither is the same as the question faulting. Only the last
-        // two are wrong.
+        // A non-cell caller is an answer; Excel declining and the call faulting are not.
         if (t.callerUnavailable)
             o << " WARNING: Excel declined to name the caller for "
               << t.callerUnavailable << " activation(s)";
@@ -105,20 +98,14 @@ namespace vba
             o << " WARNING: the shadow stack (" << kMaxDepth << " frames) ran out; "
               << t.overflows << " activation(s) have no rows, and VBA reached at"
                  " least depth " << t.deepestSeen;
-        // A boundary that silently degraded reads exactly like one that was
-        // never wrong unless it says so.
+        // A silently degraded boundary reads exactly like one that was never wrong.
         if (t.ipUnavailable)
             o << " WARNING: the p-code activation boundary could not be evaluated"
                  " for " << t.ipUnavailable << " statement(s); those fell back to"
                  " the rsp/exit-opcode heuristic";
-        // unmappedExitOp STAYS, always: "a return the tracer could not decode,
-        // counted with its opcode" is an honest gap, not a dump, and it is what
-        // the class-returns-every-type suite reads.
+        // Always printed: an honest gap, and what the class-returns-every-type suite reads.
         UnmappedExitOps().Print(o, "unmappedExitOp", false);
-        // The RAW opcode samples that only EXTEND the mapping (exitOpSeen,
-        // retStore) and the identity struct-walk are developer evidence, gated
-        // behind XRAYXL_DIAG so a shipped report stays clean. The named/unnamed
-        // summary and the id-decline COUNTS stay.
+        // Raw opcode samples and the identity walk are developer evidence, so DIAG only.
         const bool diag = core::modes::DiagEnabled();
         if (diag)
         {
@@ -132,9 +119,8 @@ namespace vba
             if (p->trailer) { if (p->function[0]) ++named; else ++unnamed; }
         }
         o << " named=" << named << " unnamed=" << unnamed;
-        // A full table is a degradation and has to say so: `named`/`unnamed` count table slots,
-        // so a procedure that never got one is invisible to both. `tableFull` counts frame
-        // pushes, not procedures.
+        // `named`/`unnamed` count table slots, so a procedure that never got one is invisible to
+        // both. `tableFull` counts frame pushes, not procedures.
         if (t.tableFull)
             o << " WARNING: the procedure table (" << Procs().Size() << " entries) filled;"
                  " " << t.tableFull << " frame push(es) could not be recorded, so those"
@@ -150,8 +136,6 @@ namespace vba
 
     std::string ReturnTypeUnknownWarning()
     {
-        // A plain read, like the totals line's: this runs at disarm, off the
-        // hot path, and an 8-byte aligned load is atomic on x64 anyway.
         const std::uint64_t n = ReadTotals().returnsUnmapped;
         if (!n) return std::string();
         std::ostringstream o;
@@ -188,8 +172,8 @@ namespace vba
         for (const Row& r : rows)
         {
             if (n++ >= maxRows) break;
-            // A procedure we could not name is shown as its trailer and SAID to
-            // be unnamed, rather than quietly appearing as a blank row.
+            // An unnamed procedure says so, rather than appearing as a blank row.
+
             char who[640];
             if (r.fn && r.fn[0])
                 std::snprintf(who, sizeof(who), "%s%s%s",

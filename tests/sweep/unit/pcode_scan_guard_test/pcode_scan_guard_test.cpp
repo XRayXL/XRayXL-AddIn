@@ -1,4 +1,4 @@
-// UNIT TEST for vba::PinPcodeLengths (vba/vbapcode.cpp): the arm-time scan of
+// Unit test for vba::PinPcodeLengths (vba/vbapcode.cpp): the arm-time scan of
 // every dispatch handler must read the image through Image::Read, which fails
 // on an unreadable page, and never through a raw Scan pointer, which faults on
 // the user's Arm call.

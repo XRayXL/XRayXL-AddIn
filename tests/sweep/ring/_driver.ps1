@@ -1,6 +1,5 @@
-# The ring suite's shared scaffold. Each case sizes the ring and picks a
-# policy, runs one VBA driver, and reconciles what Disarm, the disarm log lines
-# and the file say. The underscore keeps this out of test discovery.
+# The ring cases' shared scaffold: size the ring, pick a policy, run one VBA driver, and reconcile
+# Disarm, the log and the file. The underscore keeps this out of test discovery.
 
 # One argument-less activation per call: lean rows that any sane ring holds.
 $RingLeanModule = @'

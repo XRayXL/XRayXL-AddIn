@@ -48,10 +48,7 @@ namespace xll
 
         using core::QpcMicros;
 
-        // The address Excel calls, from a registration's module and export name. The module is
-        // tried as Excel reported it and then by its leaf, since the loaded name is not always
-        // the registered path. Our own module is never a target. Declines are counted into
-        // `count` when it is given.
+        // The loaded module name is not always the registered path, so the leaf is tried too.
         void* ResolveExport(const std::wstring& module, const std::wstring& procedure,
                             Declines* count)
         {
@@ -66,16 +63,13 @@ namespace xll
             return addr;
         }
 
-        // Hooks one export once ResolveExport has its address; shared by Arm and ArmLate.
-        // Returns the Target, or nullptr with `why` set and the decline counted.
+        // HookExport returns nullptr with `why` set and the decline counted.
         struct HookTiming { long long parseUs = 0, installUs = 0; };
 
         Target* HookExport(void* addr, const std::wstring& procedure, const std::wstring& typeText,
                            const wchar_t* moduleLeaf, std::string& why, HookTiming* tm)
         {
-            // Built ONCE; the hot path only reads it. An unparsable type string
-            // means declining the function, because tracing it would mean
-            // reading arguments from guessed registers.
+            // Decline an unparsable type text: tracing it would read arguments from guessed registers.
             const long long tParse = tm ? QpcMicros() : 0;
             Plan plan = Parse(typeText.c_str());
             if (tm) tm->parseUs += QpcMicros() - tParse;
@@ -115,11 +109,8 @@ namespace xll
 
     namespace
     {
-        // An export RE-REGISTERED WHILE ARMED, under another type text. Excel keeps one
-        // registration, so from here on it calls the function to the new shape while the plan
-        // bound at arm still describes the old one: the thunk would forward the wrong number of
-        // stack arguments and the decoder would read them to the wrong shape. Neither is worth
-        // a row, so the export stops being traced and the log says which one it was.
+        // Re-registered while armed under another type text, the thunk and decoder would still use
+        // the old plan's shape, so the export stops being traced and the log names it.
         bool SameShape(const Plan& a, const Plan& b)
         {
             return b.ok && a.slotCount == b.slotCount && a.async == b.async &&
@@ -228,9 +219,7 @@ namespace xll
         return hooked;
     }
 
-    // WHERE THE TIME WENT, every arm: a total cannot be acted on, a split can.
-    // One freeze covers the whole batch, so everything except the apply scales
-    // with the function count. Consumes the cost accumulators.
+    // Logged every arm, because a total cannot be acted on and a split can. Consumes the accumulators.
     void ReportArmCost(long long armT0, long long enumUs, long long procUs,
                        long long applyUs, const HookTiming& tm, std::ostringstream& log)
     {
@@ -248,8 +237,7 @@ namespace xll
         core::Log::Note(b);
         log << "  " << b << "\n";
 
-        // A refusal only. Excel having no name for a registration is ordinary -- an add-in
-        // unloaded while armed leaves some -- but a refused call misnames every row.
+        // Warn on a refusal only: an unnamed registration is ordinary, a refused call misnames every row.
         if (rc.firstFailRc != 0)
         {
             char w[320];
@@ -304,8 +292,7 @@ namespace xll
 
         ResetDeclines();
 
-        // DEPTH=OFF means NOT HOOKED -- no enumeration, no detours, nothing
-        // patched -- never hooked-but-silent.
+        // XLL off means nothing hooked at all, never hooked-but-silent.
         SetCapture(core::modes::GetArgs(core::modes::Source::Xll),
                    core::modes::GetRetVal(core::modes::Source::Xll));
         SetTopOnly(core::modes::GetDepth(core::modes::Source::Xll) == core::modes::Depth::Top);
@@ -343,9 +330,8 @@ namespace xll
             void* addr = ResolveExport(r.module, r.procedure, &DeclineCounts());
             procUs += QpcMicros() - tProc;
             if (addr == nullptr) { rep.declined++; continue; }
-            // The same export registered again under another name is hooked already. Excel
-            // keeps ONE registration per export -- a second one under a new type text replaces
-            // the type text, and the row read here carries the current one.
+            // Hooked already under another name; Excel keeps one registration per export,
+            // carrying the current type text.
             if (FindTarget(addr) != nullptr) { registeredAgain++; continue; }
 
             std::string why;
@@ -359,9 +345,7 @@ namespace xll
                 continue;
             }
 
-            // The name a user would recognise, which Excel hands over directly
-            // (ResolveFunctionText). Falls back to the export name, and the arm line reports
-            // how many resolved.
+            // The name a user would recognise, falling back to the export name.
             const std::wstring real =
                 ResolveFunctionText(r.module, r.procedure, r.typeText);
             NarrowInto(real.empty() ? r.procedure : real, t->name, sizeof(t->name));
@@ -369,8 +353,7 @@ namespace xll
             rep.armed++;
         }
 
-        // ONE PATCH PASS, fail closed: if it does not take, the detours are in
-        // an unknown state, so nothing is armed rather than some of it.
+        // Fail closed: a failed apply leaves the detours in an unknown state, so arm nothing.
         if (rep.armed > 0)
         {
             std::string applyWhy;
@@ -388,8 +371,7 @@ namespace xll
             }
         }
 
-        // Two QPC reads per function against four calls INTO Excel -- cheap
-        // enough to leave in.
+        // Timing is cheap next to the calls into Excel, so it stays on.
         ReportArmCost(armT0, enumUs, procUs, applyUs, tm, log);
 
         InstallRegisterWatch();
@@ -406,9 +388,8 @@ namespace xll
             return rep;
         }
 
-        // Only once something is actually hooked, so an empty file cannot be
-        // mistaken for a silent session. Open is idempotent, so a trace the VBA
-        // side already opened this arm is kept rather than reopened.
+        // Only once something is hooked, so an empty file cannot pass for a silent session.
+        // Open is idempotent, so a trace the VBA side opened is kept.
         if (!emit::csv::Open(core::modes::GetBufferBytes(), core::modes::GetPauseOnFull(),
                              core::modes::GetFormat(), core::modes::BreaksColumn()))
         {
@@ -468,8 +449,8 @@ namespace xll
         // Stop the watch first, so ArmLate cannot change the target table while it is read.
         regwatch::Remove();
 
-        // BEFORE unhooking, while the target list is still populated. Skipped
-        // during shutdown, when the object model is neither safe nor useful.
+        // Before unhooking, while the target list is populated; not at shutdown, when the
+        // object model is unsafe.
         const int missed = shuttingDown ? -1 : UnhookedRegistrations();
 
         // Beside UnhookedRegistrations, which counts the same hole a different way.
@@ -484,10 +465,7 @@ namespace xll
         }
         SetArmed(false);          // then, so a re-entrant call is a no-op
         DisableAll();
-        // CLOSE IS THE FENCE, so the row count is read AFTER it -- in
-        // ring mode the rows are not all written until the drain has run. A
-        // quiet trace can be told from a broken one only if the count is
-        // printed.
+        // Count after Close: in ring mode rows are not all written until the drain has run.
         emit::csv::Close();
         const long long rows = emit::csv::RowsWritten();
 

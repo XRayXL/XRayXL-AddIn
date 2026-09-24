@@ -1,4 +1,4 @@
-// UNIT TEST for the last-statement check in vba::ReadArgTypes (vba/vbapcode.cpp): the last
+// Unit test for the last-statement check in vba::ReadArgTypes (vba/vbapcode.cpp): the last
 // statement has no successor to land on, so its exit must end at ProcSize, after 0 or 2 bytes
 // of padding. A walk that does not is not clean, and the disarm warning names the exit.
 //

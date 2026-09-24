@@ -1,9 +1,5 @@
-# XLL DEPTH=OFF means NOT HOOKED: arming touches nothing on
-# the XLL side, the formula still calculates correctly, and the trace holds
-# no XLL rows -- while the VBA side, set to DEPTH=ALL, arms and traces on its
-# own, exactly as a VBA-only workbook would. The VBA side also proves the
-# trace file is THIS session's (its arm truncates it), so "no XLL rows" is
-# an assertion about this arm window, not about a stale file.
+# XLL DEPTH=OFF hooks nothing: the formula still calculates and the trace holds no XLL rows, while
+# VBA at DEPTH=ALL arms alone. Its arm truncates the file, so "no XLL rows" is about this window.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

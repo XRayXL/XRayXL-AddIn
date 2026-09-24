@@ -32,8 +32,8 @@ namespace xll
         Fp12,           // K%         -- FP12  {i32 rows, i32 cols, double[]}
         OperNarrow,     // P R        -- XLOPER   (24 bytes, xltype at +16)
         OperWide,       // Q U        -- XLOPER12 (32 bytes, xltype at +24)
-        ArrayTriple,    // O O%       -- THREE slots: rows*, cols*, double[]
-        AsyncHandle,    // X          -- async handle; do NOT time this call
+        ArrayTriple,    // O O%       -- three slots: rows*, cols*, double[]
+        AsyncHandle,    // X          -- async handle; do not time this call
         Void            // no return value
     };
 
@@ -58,7 +58,7 @@ namespace xll
 
         Slot slots[kMaxDescribed];
         int  describedCount = 0;     // slots carrying a Slot entry: min(slotCount, kMaxDescribed)
-        int  slotCount = 0;          // ABI slots, NOT type codes
+        int  slotCount = 0;          // ABI slots, not type codes
 
         Kind returnKind = Kind::Unknown;
         char returnCode[4] = { 0, 0, 0, 0 };
@@ -76,10 +76,8 @@ namespace xll
         char firstBadCode = 0;       // the code that stopped us, if !ok
     };
 
-    // "QD%K%E", "BBB", "RPPP$", ">QX". slotCount is ABI ARGUMENT SLOTS, which is
-    // what the x64 register mapping is indexed by. Never partially applied
-    // silently: an unrecognised code leaves ok false and firstBadCode set, and
-    // the caller must decline rather than trace a function it cannot read.
+    // "QD%K%E", "BBB", "RPPP$", ">QX". An unrecognised code leaves ok false and firstBadCode set,
+    // and the caller must decline rather than trace a function it cannot read.
     Plan Parse(const wchar_t* typeText);
 
 }

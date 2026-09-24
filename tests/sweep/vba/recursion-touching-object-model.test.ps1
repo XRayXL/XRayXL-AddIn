@@ -1,9 +1,5 @@
-# Recursion that writes a cell at every level.
-#
-# The `unwound` mark applies only to frames outer than the raise (span < errSpan). Spans rise
-# with depth, so a benign raise deep in the stack sets a high errSpan while many shallower
-# frames are still live. Nothing here throws, so every frame must read `returned`, the chain
-# must reach depth 5, and P4_Rec(n) must sit under P4_Rec(n+1).
+# Recursion that writes a cell at every level reads `returned` throughout: each write is a
+# benign raise deep in the stack while many shallower frames are live, none of them unwound.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -60,7 +56,7 @@ try {
           ("frames not returned: " + (@($notRet | ForEach-Object {
               "$($_.function)=$(if ($_.outcome) { $_.outcome } else { '(none)' })" }) -join ','))
 
-    # Depth: P4_Drive(1) -> P4_Rec(2) -> ... -> P4_Rec(6). Read the deepest depth= note.
+    # P4_Drive at depth 1, then five P4_Rec levels
     $maxDepth = 0
     foreach ($e in $entries) { if ($e.depth) { $d = [int]$e.depth; if ($d -gt $maxDepth) { $maxDepth = $d } } }
     Check 'recursion-reached-depth-6' ($maxDepth -ge 6) "deepest depth=$maxDepth (P4_Drive + five P4_Rec)"

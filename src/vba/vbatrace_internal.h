@@ -4,22 +4,18 @@
 #include <ostream>
 #include "vbaproctable.h"
 
-// THE TRACER'S COUNTERS AS THE REPORT SEES THEM. Internal to vba/: vbatrace.cpp
-// owns the state, vbareport.cpp formats it at disarm after the hooks have
-// drained.
+// The tracer's counters as the report sees them, formatted at disarm after the hooks drain.
 namespace vba
 {
     constexpr int kMaxDepth = 256;      // deeper than any sane VBA stack
 
-    // A SMALL LOCK-FREE (key, subkey) -> COUNT TABLE for the three "which
-    // opcode, how often" diagnostics below. Full is SILENT: a diagnostic
-    // that could stall a VBA statement would be worse than one that stops
-    // counting.
+    // Lock-free (key, subkey) -> count. Full is silent: a diagnostic that could stall a VBA
+    // statement is worse than one that stops counting.
     struct SeenTable
     {
         static constexpr int kMax = 16;
-        // Keys are stored as opcode + 1, so opcode 0 is distinct from an empty slot.
-        volatile LONG key[kMax]   = {};      // 0 empty, otherwise opcode + 1
+        // Stored as opcode + 1, so opcode 0 is distinct from an empty slot.
+        volatile LONG key[kMax]   = {};
         volatile LONG sub[kMax]   = {};
         volatile LONG count[kMax] = {};
 
@@ -48,7 +44,6 @@ namespace vba
                 InterlockedExchange(&count[i], 0);
             }
         }
-        // " label[key]=count" per entry, or " label[key@sub]=count".
         // Not const: the interlocked reads take a non-const pointer.
         void Print(std::ostream& o, const char* label, bool withSub)
         {
@@ -63,17 +58,13 @@ namespace vba
         }
     };
 
-    // ---- EXIT OPCODES WE CANNOT NAME A RETURN KIND FOR --------------
-    // Recorded by VALUE, because the value is the thing that has to be
-    // mapped; a count alone would say a gap exists without saying which.
+    // Exit opcodes with no return-kind mapping, by value so the gap can be named.
     SeenTable& UnmappedExitOps();
-    // The (store opcode, operand) pairs seen on procedures whose return could
-    // not be typed, so the mapping is extended from evidence.
+    // (store opcode, operand) on untyped returns, so the mapping grows from evidence.
     SeenTable& RetStores();
-    // EVERY exit opcode seen, mapped or not: how an unknown mid-procedure
-    // exit construct gets named (vbaboundary.h).
+    // Every exit opcode, so an unknown mid-procedure exit can be named (vbaboundary.h).
     SeenTable& ExitOpsSeen();
-    // The procedure table, read-only by convention: entries are only added
-    // and counters only rise.
+    // Read-only by convention: entries are only added and counters only rise.
+
     ProcTable& Procs();
 }

@@ -32,11 +32,7 @@
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <PropertyGroup>
-    <!-- Two levels up from demo\src is the repo root; see the note in
-         XRayXL.vcxproj about why this is not $(SolutionDir).
-         Output goes under build\ with every other project. The folder handed
-         to someone whole (add-ins, workbooks and walkthrough together) is
-         dist\demo\, which tools\release.ps1 assembles from here. -->
+    <!-- Not $(SolutionDir): see XRayXL.vcxproj. -->
     <XRayRoot>$(MSBuildProjectDirectory)\..\..\</XRayRoot>
     <OutDir>$(XRayRoot)build\$(Platform)\$(Configuration)\DemoFinance\</OutDir>
     <IntDir>$(XRayRoot)build\obj\$(Platform)\$(Configuration)\DemoFinance\</IntDir>

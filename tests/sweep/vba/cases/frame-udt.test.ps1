@@ -75,23 +75,16 @@ End Sub
         if ($t.framesOpened -ne $t.framesClosed) {
             return "LEAK: opened $($t.framesOpened), closed $($t.framesClosed)" }
         $entry = Get-FirstEntryByName $t.rows
-        # An Enum member IS a Long in VBA, so the Long load is the right
-        # answer -- the enum's NAME is a compile-time construct and is simply
-        # not present in the p-code.
+        # an Enum is a Long in VBA; its name is compile-time only and absent from the p-code
         if ($entry['T_EnumArg'].args -ne 'a1:Long=20') {
             return "T_EnumArg args were [$($entry['T_EnumArg'].args)]" }
-        # An omitted Optional is materialised by the CALLER, so its default is
-        # visible as an ordinary value.
+        # the caller materialises an omitted Optional, so its default is an ordinary value
         if ($entry['T_OptSupplied'].args -ne 'a1:Long=77') {
             return "omitted Optional should show its default 77, got [$($entry['T_OptSupplied'].args)]" }
-        # An omitted Optional VARIANT is the published `LitVar_Missing`:
-        # VT_ERROR with DISP_E_PARAMNOTFOUND. Both constants are exact, which
-        # is what makes it safe to decode with no type information at all.
+        # VT_ERROR with DISP_E_PARAMNOTFOUND is exact enough to decode with no type information
         if ($entry['T_OptVar'].args -ne 'a1:?unseen=Missing') {
             return "omitted Optional Variant should read Missing, got [$($entry['T_OptVar'].args)]" }
-        # A UDT is always by reference and the slot points straight at the
-        # record. The TYPE is recovered; the record's field layout is not, so
-        # the pointer is reported rather than invented contents.
+        # the record's field layout is not recoverable, so the pointer is reported, not contents
         if ($entry['T_UdtByRef'].typetext -ne 'Udt&') {
             return "T_UdtByRef signature was [$($entry['T_UdtByRef'].typetext)]" }
         if ($entry['T_UdtByRef'].args -notmatch '^a1:Udt&=udt@0x[0-9A-F]+$') {
@@ -101,12 +94,9 @@ End Sub
             return "T_UdtStrFirst signature was [$($entry['T_UdtStrFirst'].typetext)]" }
         if ($entry['T_UdtStrFirst'].args -notmatch '^a1:Udt&=udt@0x[0-9A-F]+$') {
             return "a record whose first field is a String rendered as [$($entry['T_UdtStrFirst'].args)]" }
-        # A class reference is an Object.
         if ($entry['T_CollArg'].typetext -ne 'Object') {
             return "T_CollArg signature was [$($entry['T_CollArg'].typetext)]" }
-        # A ParamArray arrives as a Variant SAFEARRAY and decodes as one.
-        # The descriptor carries FADF_VARIANT rather than FADF_HAVEVARTYPE, and the
-        # header and elements both take their type from EffectiveElemVt.
+        # its descriptor carries FADF_VARIANT, not FADF_HAVEVARTYPE, yet must decode as Variant
         if ($entry['T_ParamArr'].args -notmatch '^a1:Ref&=Variant\[0\.\.2\]') {
             return "T_ParamArr args were [$($entry['T_ParamArr'].args)]" }
         $null }

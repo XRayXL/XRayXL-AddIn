@@ -2,13 +2,9 @@
 #include <string>
 
 // Hooks functions that register after arming, which the one enumeration at arm would miss.
-//
-// Every C API call from every XLL goes through one export of EXCEL.EXE, MdCallBack12, so one
-// hook there sees every registration.
-//
-// Captures are batched and a worker patches them a beat later, because MinHook suspends every
-// thread for each patch. The worker cannot call Excel, so the capture copies everything the
-// patcher needs.
+// Every XLL's C API calls go through EXCEL.EXE's MdCallBack12, so one hook there sees them all.
+// A worker patches captures in batches, since MinHook freezes every thread per patch; it cannot
+// call Excel, so a capture holds everything the patcher needs.
 
 namespace xll
 {

@@ -1,15 +1,6 @@
-# A VBA UDF DEFINED IN ONE WORKBOOK, CALLED FROM ANOTHER.
-#
-# Under an armed CalculateFull the engine recalculates EVERY open workbook -- the
-# realism Select-BookRows exists for. A cross-book UDF call is the case where the
-# function lives in book A but the CALLER is a cell in book B, so identity
-# resolution and caller attribution are pulled in two directions at once. The
-# function must still be named (from book A) and the caller must resolve to book
-# B's cell.
-#
-# Cross-book UDF references are version- and setting-sensitive; if the call does
-# not evaluate on this Excel the test SKIPS rather than failing for a reason that
-# is not the tracer.
+# A UDF defined in book A and called from a cell in book B is named from A, with its caller in B:
+# identity and caller attribution pull in two directions. Cross-book UDF references are
+# version-sensitive, so a call that does not evaluate skips rather than fails.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -58,7 +49,7 @@ try {
     Check 'cross-book-udf-was-traced' ($ext.Count -ge 1) "P7_Ext entries: $($ext.Count)"
     if ($ext.Count) {
         Check 'caller-is-the-calling-cell' ($ext[0].caller -eq 'cell') "caller='$($ext[0].caller)'"
-        # The caller/cell belong to book B (the CALLER), whatever book defined the UDF.
+        # the caller/cell belong to book B, the caller, whatever book defined the UDF
         Check 'caller-cell-belongs-to-the-calling-book' ((Get-CallerSheet $ext[0]) -like "*$leafB*") `
               "callerref='$($ext[0].callerref)' (should name the calling book $leafB)"
     }

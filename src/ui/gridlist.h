@@ -21,9 +21,8 @@ namespace grid
     // Registers the window class on first use. `id` is the child id WM_COMMAND carries.
     HWND Create(HWND parent, int id);
 
-    // Drops the window class once the dialog holding the list has closed. Without it an XLL
-    // Excel unloads and loads again would meet its own class with a window procedure that is
-    // no longer mapped.
+    // Call once the dialog has closed: an XLL unloaded and loaded again would otherwise meet its
+    // own class with a window procedure that is no longer mapped.
     void Unregister();
 
     // Replaces the contents. The sort, the filter and the column widths are reset with it.

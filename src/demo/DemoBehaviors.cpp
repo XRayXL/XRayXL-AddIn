@@ -1,4 +1,4 @@
-// DemoBehaviors64.xll -- worksheet functions that show the OTHER columns of a
+// DemoBehaviors64.xll -- worksheet functions that show the other columns of a
 // trace: string and array returns, an error return, a volatile function that
 // re-runs every recalc, and a thread-safe one that Excel spreads across its
 // calculation worker threads.
@@ -26,7 +26,7 @@ ReverseText(const wchar_t* s)
     return RetStr(buf);
 }
 
-// Returns a 1 x n array of squares {1, 4, 9, ...}, so a modern Excel SPILLS it.
+// Returns a 1 x n array of squares {1, 4, 9, ...}, so a modern Excel spills it.
 // One XLL call, many result cells. =MakeSeries(5)
 extern "C" __declspec(dllexport) LPXLOPER12 __stdcall
 MakeSeries(double count)
@@ -38,7 +38,7 @@ MakeSeries(double count)
     return RetRow(v, n);
 }
 
-// May ERROR: returns a/b, or #DIV/0! when b is zero. The error shows in the
+// May error: returns a/b, or #DIV/0! when b is zero. The error shows in the
 // trace's return column. =MightDivide(10, 0)  ->  #DIV/0!
 extern "C" __declspec(dllexport) LPXLOPER12 __stdcall
 MightDivide(double a, double b)
@@ -56,16 +56,16 @@ SafeDivide(double a, double b)
     return RetNum(a / b);
 }
 
-// THREAD-SAFE ($ in the type string): Excel is free to run it on any of its
+// Thread-safe ($ in the type string): Excel is free to run it on any of its
 // calculation worker threads. Fill a column with =ThreadSafeSquare(...) and the
-// trace shows it running under SEVERAL different thread ids.
+// trace shows it running under several different thread ids.
 extern "C" __declspec(dllexport) LPXLOPER12 __stdcall
 ThreadSafeSquare(double x)
 {
     return RetNum(x * x);
 }
 
-// VOLATILE (! in the type string): recalculates on EVERY calculation, whether or
+// Volatile (! in the type string): recalculates on every calculation, whether or
 // not its inputs changed -- so it appears in the trace of every recalc.
 // =CallCounter()
 extern "C" __declspec(dllexport) LPXLOPER12 __stdcall

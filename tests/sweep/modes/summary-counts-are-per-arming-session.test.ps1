@@ -1,12 +1,5 @@
-# Call counts belong to the arming session, not the process.
-#
-# XRayXL_GetTraceSummary reports a call count per function, from Target::calls. Each arm writes
-# its own trace file, created lazily, so a re-arm that traces nothing produces no file and the
-# summary must likewise report nothing.
-#
-# Targets come from a fixed array and a slot is handed straight back on the next arm, so `calls`
-# has to be reset at arm. A slot is bound to an index, not a function: if the registration table
-# changes between arms, a stale count would be reported against a different function's name.
+# Call counts belong to the arming session, not the process: a slot is handed back on the next arm
+# and bound to an index, not a function, so a stale count could be reported against another name.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 

@@ -25,9 +25,9 @@ namespace params
     bool ParseWhenFull(LPXLOPER12 v, bool& pause);                   // DROP|PAUSE
     bool ParseFormat(LPXLOPER12 v, core::modes::Format& f);          // CSV|JSONL
 
-    // BUFFERSIZE in bytes: bare or M/MB = megabytes, K/KB = kilobytes,
-    // case-insensitive; a native number is megabytes. False on a bad number or
-    // unit, or above the 4 GB cap. The caller enforces the ring floor below.
+    // BUFFERSIZE in bytes: bare or M/MB = megabytes, K/KB = kilobytes, case-insensitive; a native
+    // number is megabytes. False on a bad number or unit, or over the cap. The caller enforces the
+    // ring floor below.
     bool ParseBufferBytes(LPXLOPER12 v, unsigned long long& outBytes);
 
     // The same rule from text alone, already upper-cased (the Options dialog).

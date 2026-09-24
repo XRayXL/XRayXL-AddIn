@@ -13,7 +13,7 @@ namespace excelstyle
 {
     using ui::text::Face;
 
-    // ---- palette, read off a capture of Excel's own Options dialog ----------------------
+    // ---- palette, matching Excel's own Options dialog -----------------------------------
 
     constexpr COLORREF kPage      = RGB(0xFF, 0xFF, 0xFF);
     constexpr COLORREF kPane      = RGB(0xF0, 0xF0, 0xF0);
@@ -91,8 +91,7 @@ namespace excelstyle
     void DrawComboItem(const DRAWITEMSTRUCT* di);
     void DrawPaneFrame(HWND h, HDC dc, const RECT& windowRc);
 
-    // The dotted resize grip a sizable dialog carries in its bottom-right corner: a triangle
-    // of embossed dots, drawn into `corner`.
+    // The dotted resize grip a sizable dialog carries in its bottom-right corner, drawn into `corner`.
     void DrawSizeGrip(HWND h, HDC dc, const RECT& corner);
 
     // The square `corner` wants, at this DPI.

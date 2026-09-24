@@ -1,7 +1,5 @@
-# The register watch's disarm line counts THIS arming session, like every other counter.
-#
-# Its counts were process-wide, so a session that registered nothing reported the registrations
-# an earlier session had seen: "6 were xlfRegister, 6 hooked" in an arm with no registration.
+# The register watch's disarm line counts this arming session only, like every other counter: a
+# session that registered nothing must not report an earlier session's registrations.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
