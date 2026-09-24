@@ -177,7 +177,7 @@ until something times out, so there is none when Excel has no visible window,
 or under `XRAYXL_NOMESSAGEBOX=1`. The log says which. `XRAYXL_RIBBON=0` skips
 the ribbon entirely.
 
-**The controls.** Three large buttons — Arm, Disarm, Options — in a group appended
+**The controls.** Four large buttons — Arm, Disarm, Options, Diagnostics — in a group appended
 to Excel's own Developer tab (`idMso='TabDeveloper'`). The ribbon is not a
 settings surface, so the settings live in a dialog. A built-in id that Office
 does not recognise is not a missing button: the whole customisation is ignored.
