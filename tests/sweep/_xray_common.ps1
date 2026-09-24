@@ -842,6 +842,9 @@ function ExitRowOf($Rows, [string]$Fn) {
     return $null
 }
 
+# `args` without the storage addresses, which change every run, for tests that compare values.
+function Remove-ArgAddress([string]$Text) { $Text -replace '@0x[0-9A-F]+=', '=' }
+
 function ArgsOf($Rows, [string]$Fn) {
     $r = EntryRowOf $Rows $Fn
     if ($null -eq $r) { return '(no row)' }

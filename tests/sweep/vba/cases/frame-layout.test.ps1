@@ -124,7 +124,7 @@ End Sub
         if ($entry['T_FLStr'].args -ne 'a1:String="XRAYSENTINEL" a2:?unseen=0x2A2A2A2A') {
             return "T_FLStr args were [$($entry['T_FLStr'].args)]" }
         # a ByRef slot holds a pointer, followed only because it is known to be `Long&`
-        if ($entry['T_FLRef'].args -notmatch '^a1:Long&=1280068684 ') {
+        if ((Remove-ArgAddress $entry['T_FLRef'].args) -notmatch '^a1:Long&=1280068684 ') {
             return "T_FLRef ByRef arg was [$($entry['T_FLRef'].args)]" }
         $null }
      Why='carries the known signatures every other frame case is read against,

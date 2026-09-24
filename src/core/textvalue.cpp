@@ -137,10 +137,12 @@ namespace core
 
     void TextValueWriter::BeginArgs() { Push(Frame::Args); }
 
-    void TextValueWriter::BeginArg(int slot, const char* type)
+    void TextValueWriter::BeginArg(int slot, const char* type, std::uint64_t address)
     {
-        char t[128];
-        _snprintf_s(t, _TRUNCATE, "%sa%d:%s=", TakeFirst() ? " " : "", slot, type ? type : "?");
+        char at[24] = "";
+        if (address) _snprintf_s(at, _TRUNCATE, "@0x%llX", static_cast<unsigned long long>(address));
+        char t[160];
+        _snprintf_s(t, _TRUNCATE, "%sa%d:%s%s=", TakeFirst() ? " " : "", slot, type ? type : "?", at);
         m_out.Append(t);
         Push(Frame::Arg);
     }

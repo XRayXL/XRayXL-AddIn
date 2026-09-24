@@ -17,6 +17,10 @@ namespace vba
     // it renders a bare `?` rather than an `?opNNN` asking for a table row that cannot help.
     bool        PcodeCarriesNoType(std::uint32_t op);
 
+    // Which address the callee receives: 751 the pointer the slot holds, 671 and 662 the slot's own.
+    bool        PcodePassesHeldPointer(std::uint32_t op);
+    bool        PcodePassesSlotAddress(std::uint32_t op);
+
     // Instruction lengths, one per dispatch slot, from the pinned table.
     struct PcodeLengths
     {

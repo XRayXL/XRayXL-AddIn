@@ -116,7 +116,7 @@ namespace xll
                     const Slot& s = t->plan.slots[i];
                     if (s.kind == Kind::ArrayTriple && !s.tripleHead) { described = i + 1; continue; }
                     // The `?` is unreachable: a plan whose codes did not all parse is never hooked.
-                    w.BeginArg(i + 1, s.code[0] ? s.code : "?");
+                    w.BeginArg(i + 1, s.code[0] ? s.code : "?", 0);
                     DescribeArg(s, r, w);
                     w.EndArg();
                     described = i + 1;

@@ -87,17 +87,17 @@ End Sub
         # the record's field layout is not recoverable, so the pointer is reported, not contents
         if ($entry['T_UdtByRef'].typetext -ne 'Udt&') {
             return "T_UdtByRef signature was [$($entry['T_UdtByRef'].typetext)]" }
-        if ($entry['T_UdtByRef'].args -notmatch '^a1:Udt&=udt@0x[0-9A-F]+$') {
+        if ((Remove-ArgAddress $entry['T_UdtByRef'].args) -notmatch '^a1:Udt&=udt@0x[0-9A-F]+$') {
             return "T_UdtByRef args were [$($entry['T_UdtByRef'].args)]" }
         # Still the address when the first field is a String, never that field.
         if ($entry['T_UdtStrFirst'].typetext -ne 'Udt&') {
             return "T_UdtStrFirst signature was [$($entry['T_UdtStrFirst'].typetext)]" }
-        if ($entry['T_UdtStrFirst'].args -notmatch '^a1:Udt&=udt@0x[0-9A-F]+$') {
+        if ((Remove-ArgAddress $entry['T_UdtStrFirst'].args) -notmatch '^a1:Udt&=udt@0x[0-9A-F]+$') {
             return "a record whose first field is a String rendered as [$($entry['T_UdtStrFirst'].args)]" }
         if ($entry['T_CollArg'].typetext -ne 'Object') {
             return "T_CollArg signature was [$($entry['T_CollArg'].typetext)]" }
         # its descriptor carries FADF_VARIANT, not FADF_HAVEVARTYPE, yet must decode as Variant
-        if ($entry['T_ParamArr'].args -notmatch '^a1:Ref&=Variant\[0\.\.2\]') {
+        if ((Remove-ArgAddress $entry['T_ParamArr'].args) -notmatch '^a1:Ref&=Variant\[0\.\.2\]') {
             return "T_ParamArr args were [$($entry['T_ParamArr'].args)]" }
         $null }
      Why='user-defined Types, Enums, class references, Optional and ParamArray

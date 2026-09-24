@@ -941,6 +941,15 @@ parameter's declared type from the opcode that touched its slot, and renders the
 value. An opcode that touches a parameter slot but is not in the type table
 renders the declared type as `?opNNN` rather than guessing, and is counted.
 
+**A parameter the body only passes on has no type of its own, so the row says
+where its storage is.** The procedure it was passed to reads it with a typed
+load, and the two slots are the same storage. So a `ByRef` slot, and a `?none`
+slot passed on by 751 or 671, carry `@0x<address>`: the pointer the slot holds,
+or for 671 the slot's own address. The callee's `ByRef` row carries the same
+address. The tracer writes both and matches neither, because holding a row back
+until its callee runs would lose it in a crash; a reader matches them within
+the parameter's own activation (`docs/TraceRowModel.md`, *Reading `args`*).
+
 ## The return value: the exit opcode says the type, the store says the rest
 
 **There is no single frame slot that always holds a return.** `[R14−8]` holds

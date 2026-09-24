@@ -59,8 +59,8 @@ try {
     $pa = @($rows | Where-Object { $_.kind -eq 'entry' -and $_.function -eq 'PA' })
     $empty = $pa | Where-Object { $_.callerref -like '*!A1' } | Select-Object -First 1
     $two   = $pa | Where-Object { $_.callerref -like '*!A2' } | Select-Object -First 1
-    Check 'an-empty-paramarray-reads-as-an-empty-array' ($empty.args -eq 'a1:Ref&=?[0..-1]{}') "args: $($empty.args)"
-    Check 'a-filled-paramarray-is-unchanged' ($two.args -eq 'a1:Ref&=Variant[0..1]{1,2}') "args: $($two.args)"
+    Check 'an-empty-paramarray-reads-as-an-empty-array' ((Remove-ArgAddress $empty.args) -eq 'a1:Ref&=?[0..-1]{}') "args: $($empty.args)"
+    Check 'a-filled-paramarray-is-unchanged' ((Remove-ArgAddress $two.args) -eq 'a1:Ref&=Variant[0..1]{1,2}') "args: $($two.args)"
 
     $ev = ExitOf $rows 'EmptyVar'
     Check 'an-unallocated-array-in-a-variant-reads-Long()' (($ev.ret -eq 'Long()') -and ($ev.rettype -eq 'Variant')) "ret '$($ev.ret)' rettype '$($ev.rettype)'"
@@ -69,8 +69,8 @@ try {
     Check 'a-typed-unallocated-return-is-not-a-number' ($et.ret -notmatch '^-?\d+$') "ret '$($et.ret)' rettype '$($et.rettype)'"
 
     $fe = EntryOf $rows 'FillIt'; $fx = ExitOf $rows 'FillIt'
-    Check 'an-unallocated-byref-array-reads-as-the-raw-qword' ($fe.args -eq 'a1:Ref&=0x0') "entry args: $($fe.args)"
-    Check 'its-allocation-shows-at-the-exit' ($fx.args -eq 'a1:Ref&=Long[1..2]{7,0}') "exit args: $($fx.args)"
+    Check 'an-unallocated-byref-array-reads-as-the-raw-qword' ((Remove-ArgAddress $fe.args) -eq 'a1:Ref&=0x0') "entry args: $($fe.args)"
+    Check 'its-allocation-shows-at-the-exit' ((Remove-ArgAddress $fx.args) -eq 'a1:Ref&=Long[1..2]{7,0}') "exit args: $($fx.args)"
 
     $checkFails = Get-XRayCheckFailures
     if ($checkFails) { Complete-Test -Fail -Detail "$checkFails case(s) failed" }

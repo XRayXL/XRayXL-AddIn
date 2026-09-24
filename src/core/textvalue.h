@@ -42,7 +42,7 @@ namespace core
         void Unallocated(const char* elemType) override;
 
         void BeginArgs() override;
-        void BeginArg(int slot, const char* type) override;
+        void BeginArg(int slot, const char* type, std::uint64_t address) override;
         void ArgUnreadable() override;
         void EndArg() override;
         void ArgsNote(int described, int total) override;

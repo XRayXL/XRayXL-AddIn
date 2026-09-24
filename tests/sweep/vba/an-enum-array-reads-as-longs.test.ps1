@@ -33,7 +33,7 @@ try {
     [void](Set-XRayTraceParam $sx 'XLL' 'DEPTH' 'OFF')
 
     $s = Invoke-XRayArmedSession $sx -Leaf $leaf -Body { $app.Run($leaf + '!Drive') | Out-Null }
-    $args1 = ArgsOf $s.Rows 'TakeColours'
+    $args1 = Remove-ArgAddress (ArgsOf $s.Rows 'TakeColours')
 
     Check 'an-enum-array-reads-as-longs' ($args1 -eq 'a1:Ref&=Long[1..3]{1,2,7}') "args: $args1"
 

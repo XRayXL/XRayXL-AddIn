@@ -152,6 +152,9 @@ namespace vba
                op == 1122 || op == 1467 || op == 1470;
     }
 
+    bool PcodePassesHeldPointer(std::uint32_t op) { return op == 751; }
+    bool PcodePassesSlotAddress(std::uint32_t op) { return op == 671 || op == 662; }
+
     const char* PcodeTypeName(std::uint32_t op)
     {
         for (const TypeOp& t : kTypeOps) if (t.op == op) return t.name;

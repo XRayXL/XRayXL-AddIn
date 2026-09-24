@@ -70,14 +70,14 @@ End Sub
                 return "$fn argcount was [$($r.argcount)], expected 2 -- a result slot counted as an argument" }
             if ($r.typetext -ne 'Long,Variant&') {
                 return "$fn typetext was [$($r.typetext)], expected Long,Variant&" }
-            if ($r.args -ne $supplied) {
+            if ((Remove-ArgAddress $r.args) -ne $supplied) {
                 return "$fn args were [$($r.args)], expected [$supplied]" }
         }
         # an omitted Optional reads `Missing`, including when the slot is typed
         $omitted = 'a1:Long=287454020 a2:Variant&=Missing'
         foreach ($fn in @('T_RetVar','T_RetSub')) {
             if ($e[$fn].Count -lt 2) { return "$fn was entered $($e[$fn].Count) time(s), expected 2" }
-            if ($e[$fn][1].args -ne $omitted) {
+            if ((Remove-ArgAddress $e[$fn][1].args) -ne $omitted) {
                 return "$fn omitted-Optional args were [$($e[$fn][1].args)], expected [$omitted]" }
         }
         if ($t.framesOpened -ne $t.framesClosed) {

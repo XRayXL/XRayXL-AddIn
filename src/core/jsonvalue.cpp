@@ -294,12 +294,17 @@ namespace core
 
     void JsonValueWriter::BeginArgs() { m_out.Append('['); Push(Frame::Args); }
 
-    void JsonValueWriter::BeginArg(int slot, const char* type)
+    void JsonValueWriter::BeginArg(int slot, const char* type, std::uint64_t address)
     {
         char t[48];
         _snprintf_s(t, _TRUNCATE, "%s{\"slot\":%d,\"type\":", TakeFirst() ? "," : "", slot);
         m_out.Append(t);
         AppendJsonString(m_out, type ? type : "?");
+        if (address)
+        {
+            _snprintf_s(t, _TRUNCATE, ",\"address\":\"0x%llX\"", static_cast<unsigned long long>(address));
+            m_out.Append(t);
+        }
         Push(Frame::Arg);
     }
 

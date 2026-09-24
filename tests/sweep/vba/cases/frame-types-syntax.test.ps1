@@ -111,7 +111,7 @@ End Sub
         # a bare untyped parameter is a ByVal Variant: three slots, one parameter
         if ([int]$e['T_BareVar'].argcount -ne 1) {
             return "T_BareVar argcount=$($e['T_BareVar'].argcount), expected 1 (ByVal Variant is 3 slots)" }
-        if ($e['T_SfxArr'].args -notmatch '^a1:Ref&=Double\[1\.\.3\]') {
+        if ((Remove-ArgAddress $e['T_SfxArr'].args) -notmatch '^a1:Ref&=Double\[1\.\.3\]') {
             return "T_SfxArr args were [$($e['T_SfxArr'].args)]" }
         # the ParamArray does not start at slot 1, so argument indexing can slip
         if ($e['T_PaAfter'].args -notmatch '^a1:Long=1432778632') {

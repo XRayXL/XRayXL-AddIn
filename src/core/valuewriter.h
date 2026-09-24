@@ -2,10 +2,9 @@
 #include <cstddef>
 #include <cstdint>
 
-// What the decoders know about one value, as a stream of events. The decoders read memory and
-// report what they found; a writer decides how it is spelt. The text grammar in
-// docs/TraceRowModel.md is TextValueWriter and JSON is JsonValueWriter; another output format
-// is another writer.
+// What the decoders know about one value, as a stream of events, so the decoders never depend on
+// the output format. Each format is a writer: TextValueWriter for the CSV text grammar in
+// docs/TraceRowModel.md, JsonValueWriter for JSON Lines.
 namespace core
 {
     class ValueWriter
@@ -52,7 +51,8 @@ namespace core
 
         // ---- an argument list: one entry per slot, each holding at most one value
         virtual void BeginArgs() = 0;
-        virtual void BeginArg(int slot, const char* type) = 0;
+        // `address`: the argument's storage, so a reader can match it to a caller's slot; 0 for none.
+        virtual void BeginArg(int slot, const char* type, std::uint64_t address) = 0;
         virtual void ArgUnreadable() = 0;                            // in place of a value
         virtual void EndArg() = 0;
         virtual void ArgsNote(int described, int total) = 0;         // fewer slots described than exist

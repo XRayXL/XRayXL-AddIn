@@ -300,10 +300,10 @@ int main()
         core::TextBuf buf;
         core::JsonValueWriter w(buf);
         w.BeginArgs();
-        w.BeginArg(1, "Long"); w.Number("Long", "5"); w.EndArg();
-        w.BeginArg(2, "Variant"); w.BeginVariant(); w.Number("Integer", "3"); w.EndVariant(); w.EndArg();
-        w.BeginArg(3, "Object"); w.BeginObject("Range", 0x10, "[B]S!A1"); w.Double(2); w.EndObject(); w.EndArg();
-        w.BeginArg(4, "?unseen"); w.ArgUnreadable(); w.EndArg();
+        w.BeginArg(1, "Long", 0); w.Number("Long", "5"); w.EndArg();
+        w.BeginArg(2, "Variant", 0); w.BeginVariant(); w.Number("Integer", "3"); w.EndVariant(); w.EndArg();
+        w.BeginArg(3, "Object", 0); w.BeginObject("Range", 0x10, "[B]S!A1"); w.Double(2); w.EndObject(); w.EndArg();
+        w.BeginArg(4, "?unseen", 0); w.ArgUnreadable(); w.EndArg();
         w.ArgsNote(4, 6);
         w.EndArgs();
         printf("JSON %s\n", buf.Text());
@@ -315,6 +315,30 @@ int main()
               "{\"slot\":4,\"type\":\"?unseen\",\"unreadable\":true},"
               "{\"described\":4,\"slots\":6}]",
               "JSON: an argument list");
+        buf.Release();
+    }
+
+    // ---- an argument's address sits between its type and its value ----
+    {
+        core::TextBuf buf;
+        {
+            core::TextValueWriter w(buf);
+            w.BeginArgs();
+            w.BeginArg(1, "Double&", 0x27982D33030ull); w.Double(2.5); w.EndArg();
+            w.BeginArg(2, "Long", 0); w.Number("Long", "5"); w.EndArg();
+            w.EndArgs();
+        }
+        Equal(buf.Text(), "a1:Double&@0x27982D33030=2.5 a2:Long=5", "text: an address follows the type");
+        buf.Clear();
+        {
+            core::JsonValueWriter w(buf);
+            w.BeginArgs();
+            w.BeginArg(1, "?none", 0x27982D32F90ull); w.Marker("0x5"); w.EndArg();
+            w.EndArgs();
+        }
+        Equal(buf.Text(),
+              "[{\"slot\":1,\"type\":\"?none\",\"address\":\"0x27982D32F90\",\"value\":{\"t\":\"Unknown\",\"v\":\"0x5\"}}]",
+              "JSON: an address is its own field");
         buf.Release();
     }
 

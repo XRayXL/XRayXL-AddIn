@@ -390,9 +390,17 @@ namespace vba
                 char unk[24];
                 const char* label = tn ? tn : UnnamedTypeMarker(types, k, unk, sizeof unk,
                                                                 /*count=*/false);
+                // A parameter only passed on has no type of its own; a reader takes it from the
+                // callee's row with the same address.
+                const std::uint64_t slotAt = r14 + static_cast<std::uint64_t>(k) * 8;
+                std::uint64_t address = 0;
+                if (declaredRef || (!tn && PcodePassesHeldPointer(types.op[k])))
+                    RdU64(slotAt, address);
+                else if (!tn && PcodePassesSlotAddress(types.op[k]))
+                    address = slotAt;
                 const core::ValueWriter::Mark before = w.Save();
                 const int refusedBefore = buf.refused;
-                w.BeginArg(n, label);
+                w.BeginArg(n, label, address);
                 const std::size_t valueAt = buf.Len();
                 bool followed = false;
                 if (!RenderSlot(r14, k, slots, tn, w, followed))

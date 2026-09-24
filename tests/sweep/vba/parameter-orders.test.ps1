@@ -169,7 +169,7 @@ End Sub
     $wrong = @(); $checked = 0
     foreach ($pr in $plan) {
         if (-not $entry.ContainsKey($pr.Name)) { continue }
-        $argsText = [string]$entry[$pr.Name].args
+        $argsText = Remove-ArgAddress ([string]$entry[$pr.Name].args)
         foreach ($p in $pr.Params) {
             $checked++
             $want = "a$($p.Slot):$($p.Label)=$($p.Text)"

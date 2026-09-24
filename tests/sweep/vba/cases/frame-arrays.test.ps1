@@ -58,12 +58,12 @@ End Sub
             return "T_ArrV argcount=$($entry['T_ArrV'].argcount), expected 1 (ByVal Variant is 3 slots, 1 parameter)" }
 
         # decimal, not raw bytes: the args column shares the result column's renderer
-        if ($entry['T_ArrL'].args -ne 'a1:Ref&=Long[1..5]{4097,4098,4099,4100,4101}') {
+        if ((Remove-ArgAddress $entry['T_ArrL'].args) -ne 'a1:Ref&=Long[1..5]{4097,4098,4099,4100,4101}') {
             return "T_ArrL args were [$($entry['T_ArrL'].args)]" }
-        if ($entry['T_ArrS'].args -ne 'a1:Ref&=String[1..3]{"ALPHA","BETA","GAMMA"}') {
+        if ((Remove-ArgAddress $entry['T_ArrS'].args) -ne 'a1:Ref&=String[1..3]{"ALPHA","BETA","GAMMA"}') {
             return "T_ArrS args were [$($entry['T_ArrS'].args)]" }
         # 2-D, and rendered in VBA declaration order: m(1 To 2, 1 To 3).
-        if ($entry['T_Arr2'].args -notmatch '^a1:Ref&=Long\[1\.\.2,1\.\.3\]') {
+        if ((Remove-ArgAddress $entry['T_Arr2'].args) -notmatch '^a1:Ref&=Long\[1\.\.2,1\.\.3\]') {
             return "T_Arr2 args were [$($entry['T_Arr2'].args)]" }
         # the p-code names the slot Variant, though it carries VT_ARRAY|VT_I4
         if ($entry['T_ArrV'].typetext -ne 'Variant') {
