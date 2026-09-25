@@ -470,7 +470,7 @@ namespace vba
                 "one. Argument and return TYPES are unreliable wherever a walk "
                 "resynchronised; values, names, cells and timing are not affected. "
                 "Either a pinned length is wrong or an opcode this build emits has "
-                "none. Send this log and the XRAYXL_DIAG p-code corpus.", clean, walks);
+                "none. Send this log.", clean, walks);
             core::Log::Error(m);
         }
 
@@ -497,7 +497,7 @@ namespace vba
         }
     }
 
-    std::string DisarmCounting()
+    std::string DisarmCounting(std::string& procedures)
     {
         ArmGate gate;
         if (!gate.held) return "VBA tracing: arm/disarm already in progress";
@@ -563,26 +563,18 @@ namespace vba
         std::ostringstream o;
         if (!quiet)
             o << "VBA tracing: WARNING -- hooks did not drain in 2s; state left "
-                 "intact rather than reset under a live thread\n";
+                 "intact rather than reset under a live thread | ";
+        // Every p-code decline, including `Desynced`, which means a recovered type may have been
+        // attributed to the wrong argument.
         o << "VBA tracing: disarmed -- " << t.statements << " statements, "
-          << t.exits << " exits observed\n"
-          << "    " << TotalsLine() << "\n"
-          << "    " << ArgsLine()
-          << "\n"
-          // Every p-code decline, including `Desynced`, which means a recovered type
-          // may have been attributed to the wrong argument.
-          << "    " << PcodeLine() << "\n"
-          << "    " << PcodeStopLine() << "\n";
+          << t.exits << " exits observed"
+          << " | " << TotalsLine()
+          << " | " << ArgsLine()
+          << " | " << PcodeLine()
+          << " | " << PcodeStopLine();
         // One untyped procedure's instruction stream, telling a table gap from a walk gap.
-
-        if (core::modes::DiagEnabled())
-        {
-            if (PcodeUntypedDump()[0]) o << "    " << PcodeUntypedDump() << "\n";
-        }
-        else
-            o << "    diagnostics: off -- set XRAYXL_DIAG=1 before starting Excel for "
-                 "opcode / identity / p-code evidence in this report\n";
-        o << Report();
+        if (core::modes::DiagEnabled() && PcodeUntypedDump()[0]) o << " | " << PcodeUntypedDump();
+        procedures = Report();
         if (quiet) ClearArmedLengths();
         return o.str();
     }

@@ -17,7 +17,8 @@ namespace vba
     std::string ArmCounting();
 
     // Safe when never armed. The stub page is never freed: a thread may still be inside a stub.
-    std::string DisarmCounting();
+    // Returns the counts line; `procedures` gets the per-procedure line.
+    std::string DisarmCounting(std::string& procedures);
 
     // After a contained fault: lets go of the arm/disarm gate if this thread held it, so the
     // next disarm can run. True if it was held.

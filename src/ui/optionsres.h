@@ -43,7 +43,6 @@
 #define IDC_ADV_SEC1       1408
 #define IDC_ADV_RULE1      1409
 #define IDC_ADV_BRK        1410
-#define IDC_OUT_TAIL       1411
 #define IDC_OUT_FMTLBL     1412
 #define IDC_OUT_FMT        1413
 
@@ -59,6 +58,7 @@
 
 #define IDC_ABT_HDR        1600
 #define IDC_ABT_OWNER      1602
+#define IDC_ABT_BUILD      1603
 #define IDC_ABT_LICLBL     1605
 #define IDC_ABT_LICENSE    1606
 

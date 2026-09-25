@@ -313,8 +313,11 @@ namespace core
         m_out.Append(TakeFirst() ? "," : "");
         m_out.Append("{\"name\":");
         AppendJsonString(m_out, name);
-        m_out.Append(",\"type\":");
-        AppendJsonString(m_out, type ? type : "?");
+        if (type)
+        {
+            m_out.Append(",\"type\":");
+            AppendJsonString(m_out, type);
+        }
         Push(Frame::Arg);
     }
 

@@ -46,12 +46,12 @@ namespace
     const int kEvents[]  = { IDC_EVT_HDR, IDC_EVT_SEC1, IDC_EVT_RULE1, IDC_EVT_PRESETLBL, IDC_EVT_PRESET,
                              IDC_EVT_COUNT, IDC_EVT_PANE };
     const int kOut[]     = { IDC_OUT_HDR, IDC_OUT_SEC1, IDC_OUT_RULE1, IDC_OUT_FMTLBL, IDC_OUT_FMT,
-                             IDC_OUT_DIRLBL, IDC_OUT_DIR, IDC_OUT_FILELBL, IDC_OUT_FILE, IDC_OUT_TAIL };
+                             IDC_OUT_DIRLBL, IDC_OUT_DIR, IDC_OUT_FILELBL, IDC_OUT_FILE };
     const int kAdvanced[] = { IDC_ADV_HDR, IDC_ADV_SEC1, IDC_ADV_RULE1, IDC_ADV_BUFLBL, IDC_ADV_BUF,
                               IDC_ADV_BUFHINT, IDC_ADV_FULLLBL, IDC_ADV_FULL, IDC_ADV_BRK,
                               IDC_ADV_SEC2, IDC_ADV_RULE2, IDC_ADV_LVLLBL, IDC_ADV_LVL, IDC_ADV_LVLNOTE,
                               IDC_ADV_LOGLBL, IDC_ADV_LOG };
-    const int kAbout[]   = { IDC_ABT_HDR, IDC_ABT_OWNER, IDC_ABT_LICLBL, IDC_ABT_LICENSE };
+    const int kAbout[]   = { IDC_ABT_HDR, IDC_ABT_OWNER, IDC_ABT_BUILD, IDC_ABT_LICLBL, IDC_ABT_LICENSE };
     const int kNotices[] = { IDC_NOT_HDR, IDC_NOT_TEXT };
 
 #define XRAY_PAGE(name, ids) { name, ids, static_cast<int>(sizeof(ids) / sizeof(int)) }
@@ -70,7 +70,7 @@ namespace
     const int kHeadingIds[] = { IDC_XLL_SEC1, IDC_VBA_SEC1, IDC_EVT_SEC1, IDC_OUT_SEC1, IDC_ADV_SEC1, IDC_ADV_SEC2 };
     const int kRuleIds[]    = { IDC_XLL_RULE1, IDC_VBA_RULE1, IDC_EVT_RULE1, IDC_OUT_RULE1, IDC_ADV_RULE1, IDC_ADV_RULE2 };
     const int kTitleIds[]   = { IDC_CAP_HDR, IDC_EVT_HDR, IDC_OUT_HDR, IDC_ADV_HDR, IDC_ABT_HDR, IDC_NOT_HDR };
-    const int kButtonIds[]  = { IDOK, IDCANCEL, IDC_OUT_TAIL };
+    const int kButtonIds[]  = { IDOK, IDCANCEL };
     const int kComboIds[]   = { IDC_XLL_DEPTH, IDC_VBA_DEPTH, IDC_EVT_PRESET, IDC_OUT_FMT, IDC_ADV_FULL, IDC_ADV_LVL };
     const int kEditIds[]    = { IDC_OUT_DIR, IDC_OUT_FILE, IDC_ADV_BUF, IDC_ADV_LOG, IDC_ABT_LICENSE,
                                 IDC_NOT_TEXT };
@@ -274,7 +274,6 @@ namespace
         { IDC_OUT_FMTLBL,   182,  97, 118,  21 }, { IDC_OUT_FMT,    302,  97, 180,  0 },
         { IDC_OUT_DIRLBL,   182, 133,   0,  15 }, { IDC_OUT_DIR,    182, 151,   0, 23 },
         { IDC_OUT_FILELBL,  182, 182,   0,  15 }, { IDC_OUT_FILE,   182, 200,   0, 23 },
-        { IDC_OUT_TAIL,     182, 233, 130,  24 },
 
         { IDC_ADV_HDR,      222,  15,   0,  30 },
         { IDC_ADV_SEC1,     169,  64,   0,  20 }, { IDC_ADV_RULE1,  169,  87,   0,  1 },
@@ -354,6 +353,8 @@ namespace
         const int firstY = top + Px(dlg, 61 - 7);
         int y = firstY;
         place(GetDlgItem(dlg, IDC_ABT_OWNER), x, y, w, lineH);
+        y += lineH;
+        place(GetDlgItem(dlg, IDC_ABT_BUILD), x, y, w, lineH);
         y += lineH + gap + lineH;
         place(GetDlgItem(dlg, IDC_ABT_LICLBL), x, y, w, lineH);
         y += lineH + Px(dlg, 3);
@@ -465,12 +466,16 @@ namespace
     {
         SetDlgItemTextW(dlg, IDC_OUT_DIR, core::EnsureAppSubdir(L"TraceFiles").c_str());
         const std::wstring file = emit::csv::Path();
-        SetDlgItemTextW(dlg, IDC_OUT_FILE, file.empty() ? L"(named when tracing is armed)" : file.c_str());
+        // Greyed, and so without its menu, until the first arm names a file; then the last one stays.
+        SetDlgItemTextW(dlg, IDC_OUT_FILE, file.empty() ? L"Available once armed" : file.c_str());
+        EnableWindow(GetDlgItem(dlg, IDC_OUT_FILE), !file.empty());
 
         wchar_t line[MAX_PATH * 2 + 32];
         _snwprintf_s(line, _TRUNCATE, L"About XRayXL v%hs (%dBit)", app::VersionText(), static_cast<int>(sizeof(void*) * 8));
         SetDlgItemTextW(dlg, IDC_ABT_HDR, line);
         SetDlgItemTextW(dlg, IDC_ABT_OWNER, L"\u00A9 2026 Andrew Lockhart");
+        _snwprintf_s(line, _TRUNCATE, L"%hs", app::BuildText());
+        SetDlgItemTextW(dlg, IDC_ABT_BUILD, line);
         SetDlgItemTextW(dlg, IDC_ADV_LOG, core::Log::Path().c_str());
         SetDlgItemTextW(dlg, IDC_ABT_LICENSE, ResourceText(IDR_LICENSE).c_str());
         SetDlgItemTextW(dlg, IDC_NOT_TEXT, ResourceText(IDR_NOTICES).c_str());
@@ -646,7 +651,7 @@ namespace
             // an edit paints its own background, so it needs its state's colour
             HDC dc = reinterpret_cast<HDC>(wp);
             const bool lit = EditLit(reinterpret_cast<HWND>(lp));
-            SetTextColor(dc, kText);
+            SetTextColor(dc, IsWindowEnabled(reinterpret_cast<HWND>(lp)) ? kText : kDisabled);
             SetBkColor(dc, lit ? kHotFace : kPage);
             return reinterpret_cast<INT_PTR>(lit ? HotBrush() : PageBrush());
         }
@@ -690,13 +695,6 @@ namespace
             {
                 SetChecked(dlg, id, !IsChecked(dlg, id));   // an owner-drawn box has no state of its own
                 UpdateApply(dlg);
-                return TRUE;
-            }
-            if (id == IDC_OUT_TAIL && HIWORD(wp) == BN_CLICKED)   // not again for a double-click
-            {
-                const trace::Result r = trace::TailInPowerShell(emit::csv::Path());
-                if (r != trace::Result::Ok)
-                    MessageBoxW(dlg, trace::Explain(r), L"XRayXL", MB_OK | MB_ICONINFORMATION);
                 return TRUE;
             }
             if (id == IDOK)

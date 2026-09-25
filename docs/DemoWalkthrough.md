@@ -39,7 +39,7 @@ point the tracer at.
    and tick *Developer*. XRayXL's group is on that tab.
 3. **Open a workbook** and enable macros.
 
-The **XRayXL** group on the Developer tab has four buttons:
+The **XRayXL** group on the Developer tab has five buttons:
 
 ![The XRayXL group at the far right of Excel's Developer tab, with Arm, Disarm,
 Options and Diagnostics buttons](images/ribbon.png)
@@ -50,6 +50,7 @@ Options and Diagnostics buttons](images/ribbon.png)
 |---|---|
 | **Arm** | Starts a recording. Every XLL function and VBA procedure that runs from now on writes rows to a new trace file |
 | **Disarm** | Stops the recording and closes the file |
+| **Tail** | Opens PowerShell on the trace file and shows each row as it is written. Live from the first arm |
 | **Options** | The settings: what to capture, where the trace goes and in what format, the buffer and the log |
 | **Diagnostics** | What is loaded into this Excel: its modules and their versions, the environment and the process. Read-only |
 
@@ -66,8 +67,7 @@ Every demo is the same four steps:
 4. Read the trace. Open **Options ▸ Output**, right-click **Trace file** and choose
    **Reveal in File Explorer**. It is a CSV, so Excel opens it.
 
-To watch rows arrive while you work, press **Tail in PowerShell** on the same page
-before step 2.
+To watch rows arrive while you work, press **Tail** on the ribbon after step 1.
 
 Traces are written to `%TEMP%\XRayXL\TraceFiles\`, one file per arm, named
 `XRayXL_Trace_<id>_<pid>.csv`. XRayXL writes nothing to your workbook: no cells, no
@@ -159,9 +159,9 @@ argument and return values, and for VBA a tickbox for describing objects](images
 | Page | What is on it |
 |---|---|
 | **Capture** | For XLL and VBA separately: the **depth** (off, the top-level call only, or everything), whether to capture **argument** and **return** values, and for VBA whether to **describe objects** such as a Range |
-| **Output** | The **format** (CSV or JSON Lines), the output folder, the current trace file, and **Tail in PowerShell** |
+| **Output** | The **format** (CSV or JSON Lines), the output folder, and the current trace file |
 | **Advanced** | The **buffer** between Excel and the file, what to do when it fills, and the **log level** and log file |
-| **About**, **Notices** | The version, the licence and third-party notices |
+| **About**, **Notices** | The version, the build time and commit, the licence and third-party notices |
 
 Settings are read when a recording starts, so they are locked while you are armed.
 Everything is on by default. To get the most accurate timings, turn off argument and

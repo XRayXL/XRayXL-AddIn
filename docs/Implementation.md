@@ -177,7 +177,7 @@ until something times out, so there is none when Excel has no visible window,
 or under `XRAYXL_NOMESSAGEBOX=1`. The log says which. `XRAYXL_RIBBON=0` skips
 the ribbon entirely.
 
-**The controls.** Four large buttons — Arm, Disarm, Options, Diagnostics — in a group appended
+**The controls.** Five large buttons — Arm, Disarm, Tail, Options, Diagnostics — in a group appended
 to Excel's own Developer tab (`idMso='TabDeveloper'`). The ribbon is not a
 settings surface, so the settings live in a dialog. A built-in id that Office
 does not recognise is not a missing button: the whole customisation is ignored.
@@ -313,10 +313,18 @@ Nothing beyond Windows is used.
   rejoined as it is loaded so the box can wrap it; a rule line (`====`, `----`)
   and a numbered clause keep their own lines, and a rule is drawn short enough
   not to wrap.
+- **The build stamp** is `buildstamp.targets`: before compiling, it asks git for
+  the commit and whether `src\` has changes, and writes `buildstamp.h` into the
+  project's `build\obj\` folder. Never into `src\`, which the unit suites' age
+  check compares against. The About page shows it, and so does the version
+  resource's `ProductVersion`, the string Explorer shows; `FileVersion` stays the
+  plain version, which the tools read. Without git it says `commit unknown`.
 - **The trace file, its folder and the log file** are read-only boxes (Output and
   Advanced), each with its own right-click menu in place of the edit control's:
   *Copy Path* and *Open in File Explorer* for the folder; *Copy Path*, *Reveal in
-  File Explorer* and *Tail* for a file. The trace file has a Tail button too. The work is
+  File Explorer* and *Tail* for a file. Until the first arm names a trace file its box
+  is greyed, says *Available once armed* and has no menu; the ribbon's Tail button is
+  live on the same condition. The work is
   `src/ui/traceactions.{h,cpp}`. The file's name is known from the moment of
   arming, so Tail works before the first row is written; it waits for the file.
 - **The page glyphs** are `src/ui/glyphs.{h,cpp}`: hairline drawings in one ink.
@@ -345,6 +353,14 @@ shape it is supposed to be.
 see what the add-in did — and, in the field, what it did before it stopped — is the
 one facility you never want to be building under pressure. They are small and
 they are kept.
+
+**Every log message is one line**, with its timestamp, so the file can be read
+and filtered line by line. A report with several parts joins them with ` | `, and
+the log turns any line break a message carries into the same, so no message can
+leave an unstamped or blank line. The VBA disarm report is two lines: the counts
+(`VBA tracing: disarmed … | VBA trace: … | VBA args: … | VBA p-code: … | VBA
+p-code stops: …`), then `VBA procedures: N seen | [Book]Module.Proc calls=…
+statements=… ms=… depth=… | …`, most time first.
 
 **They are two different writers, not two files doing one job**, and the split is
 forced rather than stylistic. `crashlog` runs inside an unhandled-exception

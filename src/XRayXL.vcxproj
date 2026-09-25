@@ -264,8 +264,10 @@
   <ItemGroup>
     <None Include="XRayXL.def" />
     <None Include="..\version.props" />
+    <None Include="..\buildstamp.targets" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <Import Project="$(XRayRoot)buildstamp.targets" />
   <ImportGroup Label="ExtensionTargets">
     <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.targets" />
   </ImportGroup>

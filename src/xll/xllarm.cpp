@@ -221,7 +221,7 @@ namespace xll
 
     // Logged every arm, because a total cannot be acted on and a split can. Consumes the accumulators.
     void ReportArmCost(long long armT0, long long enumUs, long long procUs,
-                       long long applyUs, const HookTiming& tm, std::ostringstream& log)
+                       long long applyUs, const HookTiming& tm)
     {
         const ResolveCost rc = TakeResolveCost();
         const long long totalUs = QpcMicros() - armT0;
@@ -235,7 +235,6 @@ namespace xll
                     rc.regIdUs / 1000, rc.getDefUs / 1000, rc.calls, rc.resolved,
                     tm.installUs / 1000);
         core::Log::Note(b);
-        log << "  " << b << "\n";
 
         // Warn on a refusal only: an unnamed registration is ordinary, a refused call misnames every row.
         if (rc.firstFailRc != 0)
@@ -247,7 +246,6 @@ namespace xll
                         (rc.firstFailFn == xlfGetDef) ? "xlfGetDef" : "xlfRegisterId",
                         XlRetName(rc.firstFailRc), rc.calls - rc.resolved, rc.calls);
             core::Log::Warning(w);
-            log << "  " << w << "\n";
         }
 
         const InstallCost ic = TakeInstallCost();
@@ -259,7 +257,6 @@ namespace xll
                     ic.calls, procUs, tm.parseUs, ic.stubUs, ic.createUs,
                     ic.queueUs, applyUs);
         core::Log::Note(b2);
-        log << "  " << b2 << "\n";
     }
 
     // Watches for late registrations. A failure to install is not a failure to arm; it costs
@@ -342,7 +339,7 @@ namespace xll
                 rep.declined++;
                 char narrowProc[128];
                 NarrowInto(r.procedure, narrowProc, sizeof(narrowProc));
-                log << "  declined " << narrowProc << " (" << why << ")\n";
+                log << " | declined " << narrowProc << " (" << why << ")";
                 continue;
             }
 
@@ -368,12 +365,11 @@ namespace xll
                 rep.armed = 0;
                 rep.detail = "could not apply the queued detours: " + applyWhy;
                 core::Log::Note(rep.detail);
-                log << "  " << rep.detail << "\n";
             }
         }
 
         // Timing is cheap next to the calls into Excel, so it stays on.
-        ReportArmCost(armT0, enumUs, procUs, applyUs, tm, log);
+        ReportArmCost(armT0, enumUs, procUs, applyUs, tm);
 
         InstallRegisterWatch();
 
@@ -384,7 +380,7 @@ namespace xll
             DisableAll();
             // Disarm does nothing when nothing is armed, so remove the watch here.
             regwatch::Remove();
-            rep.detail = "nothing armed" + std::string(log.str());
+            rep.detail = "nothing armed -- " + log.str();
             core::Log::Note(rep.detail);
             return rep;
         }
@@ -418,7 +414,6 @@ namespace xll
         rep.detail = s.str();
         core::Log::Note(rep.detail);
         core::crashlog::Note(rep.detail.c_str());
-        log << "  " << rep.detail << "\n";
         return rep;
     }
 

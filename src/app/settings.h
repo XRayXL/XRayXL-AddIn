@@ -9,8 +9,10 @@ namespace app
 {
 namespace settings
 {
-    // (name, value) pairs in a fixed order, e.g. ("XLL DEPTH", "ALL").
-    using Snapshot = std::vector<std::pair<std::string, std::string>>;
+    // In a fixed order, e.g. { "XLL DEPTH", "ALL" }. `text` is false for an on/off setting, whose
+    // value is TRUE or FALSE.
+    struct Setting { std::string name, value; bool text = true; };
+    using Snapshot = std::vector<Setting>;
 
     Snapshot Take();
 

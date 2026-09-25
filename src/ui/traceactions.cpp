@@ -65,9 +65,11 @@ Result TailInPowerShell(const std::wstring& path)
     std::wstring quoted;
     for (wchar_t ch : path) { quoted.push_back(ch); if (ch == L'\'') quoted.push_back(ch); }
 
-    // -NoExit keeps the window after Ctrl+C. The first row creates the file, so wait for it.
+    // -NoExit keeps the window after Ctrl+C. The first row creates the file, so wait for it. The
+    // title names the file, and Windows Terminal shows it on the tab.
     const std::wstring args = L"-NoExit -NoProfile -Command \"$p='" + quoted +
-        L"'; if (-not (Test-Path -LiteralPath $p)) "
+        L"'; $Host.UI.RawUI.WindowTitle = 'XRayXL tail: ' + [IO.Path]::GetFileName($p); "
+        L"if (-not (Test-Path -LiteralPath $p)) "
         L"{ Write-Host 'Waiting for the trace file...' -ForegroundColor DarkGray; "
         L"while (-not (Test-Path -LiteralPath $p)) { Start-Sleep -Milliseconds 300 } }; "
         L"Get-Content -LiteralPath $p -Tail 40 -Wait\"";

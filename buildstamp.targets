@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- The commit and build time, written to buildstamp.h in IntDir for the resource script and the
+       About page. Under build\, never src\, so nothing in src\ changes with each build. -->
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <ResourceCompile>
+      <AdditionalIncludeDirectories>$(IntDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+  </ItemDefinitionGroup>
+
+  <Target Name="XRayBuildStamp" BeforeTargets="ClCompile;ResourceCompile">
+    <!-- The trailing dot keeps the directory's backslash from escaping the closing quote. -->
+    <Exec Command="git -C &quot;$(MSBuildThisFileDirectory).&quot; rev-parse --short HEAD"
+          ConsoleToMSBuild="true" IgnoreExitCode="true" EchoOff="true"
+          StandardOutputImportance="low" StandardErrorImportance="low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="XRayCommit" />
+      <Output TaskParameter="ExitCode" PropertyName="XRayCommitExit" />
+    </Exec>
+    <!-- Modified means the inputs to the binary, not the docs or tests beside them. -->
+    <Exec Command="git -C &quot;$(MSBuildThisFileDirectory).&quot; status --porcelain -- src version.props buildstamp.targets"
+          Condition="'$(XRayCommitExit)' == '0'"
+          ConsoleToMSBuild="true" IgnoreExitCode="true" EchoOff="true"
+          StandardOutputImportance="low" StandardErrorImportance="low">
+      <Output TaskParameter="ConsoleOutput" PropertyName="XRayChanges" />
+    </Exec>
+    <PropertyGroup>
+      <XRayCommitText>unknown</XRayCommitText>
+      <XRayCommitText Condition="'$(XRayCommitExit)' == '0'">$(XRayCommit)</XRayCommitText>
+      <XRayCommitText Condition="'$(XRayCommitExit)' == '0' and '$(XRayChanges)' != ''">$(XRayCommit) (modified)</XRayCommitText>
+      <XRayBuiltUtc>$([System.DateTime]::UtcNow.ToString('yyyy-MM-dd HH:mm')) UTC</XRayBuiltUtc>
+    </PropertyGroup>
+    <ItemGroup>
+      <XRayStampLine Include="// Written by buildstamp.targets at build time." />
+      <XRayStampLine Include="#define XRAY_COMMIT &quot;$(XRayCommitText)&quot;" />
+      <XRayStampLine Include="#define XRAY_BUILT_UTC &quot;$(XRayBuiltUtc)&quot;" />
+    </ItemGroup>
+    <MakeDir Directories="$(IntDir)" />
+    <WriteLinesToFile File="$(IntDir)buildstamp.h" Lines="@(XRayStampLine)" Overwrite="true"
+                      WriteOnlyWhenDifferent="true" />
+  </Target>
+</Project>

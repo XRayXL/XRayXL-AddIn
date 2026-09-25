@@ -34,16 +34,16 @@ namespace app
         void Named(core::ValueWriter& w, const char* name, long long v)
         {
             char t[32]; _snprintf_s(t, _TRUNCATE, "%lld", v);
-            w.BeginNamedArg(name, "LongLong"); w.Number("LongLong", t); w.EndArg();
+            w.BeginNamedArg(name, nullptr); w.Number("LongLong", t); w.EndArg();
         }
         void Named(core::ValueWriter& w, const char* name, bool v)
         {
-            w.BeginNamedArg(name, "Boolean"); w.Bool(v); w.EndArg();
+            w.BeginNamedArg(name, nullptr); w.Bool(v); w.EndArg();
         }
         void Named(core::ValueWriter& w, const char* name, const std::string& v)
         {
             std::wstring wide(v.begin(), v.end());      // ASCII: setting names and values
-            w.BeginNamedArg(name, "String");
+            w.BeginNamedArg(name, nullptr);
             w.String(wide.c_str(), static_cast<int>(wide.size()), false);
             w.EndArg();
         }
@@ -65,11 +65,12 @@ namespace app
                 Named(w, "qpcFrequency", static_cast<long long>(freq.QuadPart));
                 Named(w, "utc", std::string(utc));
                 Named(w, "pid", static_cast<long long>(GetCurrentProcessId()));
-                for (const auto& kv : settings::Take())
+                for (const settings::Setting& s : settings::Take())
                 {
-                    std::string key = kv.first;
+                    std::string key = s.name;
                     for (char& c : key) if (c == ' ') c = '_';
-                    Named(w, key.c_str(), kv.second);
+                    if (s.text) Named(w, key.c_str(), s.value);
+                    else        Named(w, key.c_str(), s.value == "TRUE");
                 }
                 w.EndArgs();
             });
@@ -220,7 +221,9 @@ namespace app
         // VBA first and unconditionally: it can be armed on a session where the
         // XLL side armed nothing, and its p-code diagnostics come from the same
         // counters at their own log levels.
-        core::Log::Note(vba::DisarmCounting());
+        std::string procedures;
+        core::Log::Note(vba::DisarmCounting(procedures));
+        core::Log::Note(procedures);
         vba::LogDisarmDiagnostics();
 
         xll::Disarm(shuttingDown);

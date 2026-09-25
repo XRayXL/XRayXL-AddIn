@@ -8,6 +8,9 @@ namespace app
     // "0.1.0", from version.props via the resource defines.
     const char* VersionText();
 
+    // "Built 2026-09-25 13:02 UTC from commit 3058d1e", from the build stamp.
+    const char* BuildText();
+
     // VBA first and independently, then the XLL side: the two are separate
     // sources, and a workbook with VBA and no XLL add-ins must still trace.
     xll::ArmReport Arm();

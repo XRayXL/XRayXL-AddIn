@@ -12,6 +12,7 @@
 #include "vba/vbatrace.h"
 #include "xll/xlltrace.h"
 #include "ui/ribbon.h"
+#include "buildstamp.h"
 
 #include <windows.h>
 #include <sstream>
@@ -78,6 +79,7 @@ extern "C" HRESULT __stdcall DllCanUnloadNow()
 namespace app
 {
     const char* VersionText() { return kVersionText; }
+    const char* BuildText()   { return "Built " XRAY_BUILT_UTC " from commit " XRAY_COMMIT; }
 }
 
 extern "C" LPXLOPER12 __stdcall xlAddInManagerInfo12(LPXLOPER12 xAction)

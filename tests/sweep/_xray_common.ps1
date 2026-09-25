@@ -535,9 +535,11 @@ function Get-XRayTraceParam($Sx, $Source, $Name) {
 }
 
 function ConvertFrom-XRayTotals([string]$Line) {
-    # "VBA trace: statements=N exits=N ..." -> object; absent keys read as 0.
+    # "VBA trace: statements=N exits=N ..." -> object; absent keys read as 0. Only that part of the
+    # disarm line, whose other parts are separated by " | ".
     $t = @{}
-    foreach ($m in [regex]::Matches($Line, '(\w+)=(\d+)')) { $t[$m.Groups[1].Value] = [int64]$m.Groups[2].Value }
+    $part = if ($Line -match 'VBA trace: ([^|]*)') { $Matches[1] } else { '' }
+    foreach ($m in [regex]::Matches($part, '(\w+)=(\d+)')) { $t[$m.Groups[1].Value] = [int64]$m.Groups[2].Value }
     return [pscustomobject]@{
         statements = [int64]$t['statements']; exits = [int64]$t['exits']
         transitions = [int64]$t['transitions']; procedures = [int64]$t['procedures']
@@ -779,8 +781,11 @@ function Test-RowInvariants($Rows) {
             foreach ($c in 'typetext', 'caller', 'argcount', 'ret', 'rettype', 'outcome', 'ticks', 'tracerticks', 'trust') {
                 if ($r.$c) { $problems += "seq $($r.seq): event row carries $c '$($r.$c)'" }
             }
-            if ($r.args -and [string]$r.args -notmatch '^[A-Za-z_]\w*:') {
-                $problems += "seq $($r.seq): event args '$($r.args)' is not <name>:<type>=<value>"
+            # Excel's events name each parameter's type; the arm and disarm rows' values need none.
+            $shape = if ($r.source -eq 'XRayXL') { '^[A-Za-z_]\w*=' } else { '^[A-Za-z_]\w*:' }
+            $form  = if ($r.source -eq 'XRayXL') { '<name>=<value>' } else { '<name>:<type>=<value>' }
+            if ($r.args -and [string]$r.args -notmatch $shape) {
+                $problems += "seq $($r.seq): event args '$($r.args)' is not $form"
             }
             continue
         }
@@ -1062,13 +1067,18 @@ function Get-FirstEntryByName($Rows, [string]$Source = 'VBA') {
 }
 
 function Read-XRayNames([string]$LogPath, [int]$Mark) {
-    # the report's resolved names are the only way to tell a name from the right name
+    # the report's resolved names are the only way to tell a name from the right name; the line
+    # follows the totals line, so a reader that waited for that one waits for this too
+    [void](Wait-LogLine $LogPath ' - VBA procedures: ' $Mark 10)
     $names = @()
     $all = @(Get-Content $LogPath -ErrorAction SilentlyContinue)
     if ($all.Count -gt $Mark) {
-        foreach ($ln in $all[$Mark..($all.Count - 1)]) {
-            if ($ln -match '^\s+\[[^\]]+\]\S*?\.(\w+)\s+\d+\s+\d+') { $names += $Matches[1] }
-            elseif ($ln -match '^\s+(0x[0-9A-Fa-f]+) \(unnamed\)') { $names += '(unnamed)' }
+        # "VBA procedures: N seen | [Book]Module.Proc calls=N ... | 0x... (unnamed) calls=N ..."
+        foreach ($ln in @($all[$Mark..($all.Count - 1)] | Where-Object { $_ -match ' - VBA procedures: ' })) {
+            foreach ($p in @($ln -split ' \| ' | Select-Object -Skip 1)) {
+                if ($p -match '^\[[^\]]+\]\S*?\.(\w+) calls=\d+') { $names += $Matches[1] }
+                elseif ($p -match '^(0x[0-9A-Fa-f]+) \(unnamed\) calls=') { $names += '(unnamed)' }
+            }
         }
     }
     return $names

@@ -50,4 +50,6 @@
     <ResourceCompile Include="$(XRayRoot)src\XRayXL.rc" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <!-- XRayXL.rc includes the build stamp. -->
+  <Import Project="$(XRayRoot)buildstamp.targets" />
 </Project>

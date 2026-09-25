@@ -15,7 +15,7 @@ reader refuses the file — and the fix updates both in the same change.
 | Channel | File | Nature |
 |---|---|---|
 | **Trace** | `%TEMP%\XRayXL\TraceFiles\XRayXL_Trace_<id>_<pid>.csv`, or `.jsonl` with `FORMAT=JSONL` | The data product: one row per event. `<id>` is a monotonic OS tick (`GetSystemTimePreciseAsFileTime`) that always rises — across arms, processes and reboots — so a re-arm never overwrites; created lazily on the first record, which is the session's `arm` row, so every arm leaves one: an arm that armed nothing leaves its `arm` and `disarm` rows. Buffered; drops shown by `input`-column holes |
-| **Log** | `%TEMP%\XRayXL\Logs\XRayXL_<pid>.log` | Control: arm outcomes, the derivation line, commands, and the disarm report — the totals line and the per-procedure name table. Appended synchronously, **never dropped**. Levelled (DEBUG/INFO/WARNING/ERROR), default INFO |
+| **Log** | `%TEMP%\XRayXL\Logs\XRayXL_<pid>.log` | Control: arm outcomes, the derivation line, commands, and the disarm report — the totals line and the procedures line. One line per message. Appended synchronously, **never dropped**. Levelled (DEBUG/INFO/WARNING/ERROR), default INFO |
 | **Crash log** | alongside the logs | Notes that must survive the process dying; opened `FILE_APPEND_DATA` per note, installed with the top-level exception filter |
 
 Totals are counted **in memory at capture** (interlocked, no I/O) and written
@@ -82,7 +82,10 @@ wildcard match.
 **Every trace starts with the `arm` row and, when tracing stops cleanly, ends with the `disarm`
 row.** `arm` carries what a reader needs to read the rest: `qpcFrequency`, the `utc` time its `qpc`
 was taken at, the `pid`, and every setting in force. `disarm` carries the session's totals
-(`rowsDropped`, `eventsRecorded` and the rest), each `0` for a source the session did not run. A trace with no `disarm` row stopped because
+(`rowsDropped`, `eventsRecorded` and the rest), each `0` for a source the session did not run.
+Both are `name=value` in `args`, with no type, and only text quoted:
+`qpcFrequency=10000000 utc="2026-09-25T15:13:00.0910753Z" pid=52204 XLL_DEPTH="ALL" XLL_ARGS=TRUE`
+and `rowsDropped=0 vbaStoodDown=FALSE`. A trace with no `disarm` row stopped because
 Excel did, by a crash or a hang.
 
 **Excel's events** are recorded in the order Excel raises them, which is not always the order one
@@ -507,7 +510,8 @@ Double included:
 | a UDT | `{"t":"Udt","ptr":"0x…"}` |
 
 On an event row, each object names its parameter instead of a slot:
-`{"name":"Target","type":"Range","value":{…}}`.
+`{"name":"Target","type":"Range","value":{…}}`. The `arm` and `disarm` rows' values have no
+`"type"` key; each value names its own `t` as always.
 
 `args` is an array with one object per slot — `{"slot":1,"type":"Variant","value":{…}}`, with
 `"address":"0x…"` after the type where the text has `@0x…`, and

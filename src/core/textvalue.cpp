@@ -150,7 +150,8 @@ namespace core
     void TextValueWriter::BeginNamedArg(const char* name, const char* type)
     {
         char t[160];
-        _snprintf_s(t, _TRUNCATE, "%s%s:%s=", TakeFirst() ? " " : "", name, type ? type : "?");
+        if (type) _snprintf_s(t, _TRUNCATE, "%s%s:%s=", TakeFirst() ? " " : "", name, type);
+        else      _snprintf_s(t, _TRUNCATE, "%s%s=", TakeFirst() ? " " : "", name);
         m_out.Append(t);
         Push(Frame::Arg);
     }

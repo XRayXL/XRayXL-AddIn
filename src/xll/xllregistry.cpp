@@ -65,12 +65,12 @@ namespace xll
     {
         std::ostringstream l;
         ComPtr<IDispatch> app(core::excelom::AcquireApplication(l));
-        if (!app) { log = l.str() + "  no Application\n"; return false; }
+        if (!app) { log = l.str() + "no Application"; return false; }
 
         DISPID id = 0;
         OLECHAR* nm = const_cast<OLECHAR*>(L"RegisteredFunctions");
         HRESULT hr = app->GetIDsOfNames(IID_NULL, &nm, 1, LOCALE_USER_DEFAULT, &id);
-        if (FAILED(hr)) { log = "  no RegisteredFunctions\n"; return false; }
+        if (FAILED(hr)) { log = "no RegisteredFunctions"; return false; }
 
         DISPPARAMS noArgs = { nullptr, nullptr, 0, 0 };
         Variant res;
@@ -78,13 +78,13 @@ namespace xll
                          DISPATCH_PROPERTYGET | DISPATCH_METHOD, &noArgs, res.Addr(), nullptr, nullptr);
         app.Release();     // not held across the walk below
 
-        if (FAILED(hr)) { log = "  RegisteredFunctions failed\n"; return false; }
+        if (FAILED(hr)) { log = "RegisteredFunctions failed"; return false; }
 
         // Null means nothing is registered: an empty table, not an error, and
         // it must not read as a failure to look.
         if (res.Type() == VT_NULL || res.Type() == VT_EMPTY)
         {
-            log = "  RegisteredFunctions: none registered\n";
+            log = "RegisteredFunctions: none registered";
             return true;
         }
 
@@ -92,7 +92,7 @@ namespace xll
         if (res.Type() == (VT_ARRAY | VT_VARIANT)) sa = res.Get().parray;
         else if (res.Type() == (VT_ARRAY | VT_VARIANT | VT_BYREF) && res.Get().pparray)
             sa = *res.Get().pparray;
-        if (sa == nullptr) { log = "  RegisteredFunctions: not an array\n"; return true; }
+        if (sa == nullptr) { log = "RegisteredFunctions: not an array"; return true; }
 
         LONG r1 = 0, r2 = 0, c1 = 0, c2 = 0;
         SafeArrayGetLBound(sa, 1, &r1); SafeArrayGetUBound(sa, 1, &r2);
@@ -117,7 +117,7 @@ namespace xll
         }
 
         std::ostringstream o;
-        o << "  RegisteredFunctions: " << out.size() << " rows\n";
+        o << "RegisteredFunctions: " << out.size() << " rows";
         log = o.str();
         return true;
     }

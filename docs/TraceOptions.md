@@ -8,14 +8,17 @@ rows *mean* is [TraceRowModel.md](./TraceRowModel.md).
 The **XRayXL group** on the Developer tab is a front end to exactly these calls —
 **Arm**, **Disarm** and **Options**, the last a dialog with six pages: Capture (a section
 per source, each a Depth drop-down and check boxes), Events (which of Excel's own events are recorded), Output (the format
-drop-down, the trace folder and file), Advanced (the output buffer, the optional `breaks` column and the log level),
-About (the version and the licence), and Notices (the third-party notices). It holds no settings of its own, so the two can never
+drop-down, the trace folder and file, the file greyed until the first arm names one), Advanced (the output buffer, the optional `breaks` column and the log level),
+About (the version, when it was built and from which commit, and the licence), and Notices (the third-party notices). It holds no settings of its own, so the two can never
 disagree: press Apply and `XRayXL_GetTraceParam` reports what you chose; change
 something from a macro and the dialog shows it the next time it opens. Cancel
 changes nothing. The dialog is reached from the ribbon button; the settings themselves are
 reachable from a macro through the functions below, which is what a script should drive.
 
-The group's fourth button, **Diagnostics**, sets nothing: it shows the modules
+**Tail**, between Disarm and Options, opens PowerShell on the current trace file and follows
+it as rows are written. It is live from the first arm, and after a disarm follows the last trace.
+
+The group's last button, **Diagnostics**, sets nothing: it shows the modules
 loaded into the process, the environment and the process counters, and is
 described in the [README](../README.md#diagnostics-what-is-actually-loaded).
 

@@ -157,7 +157,7 @@ namespace vba
 
     Totals ReadTotals();
 
-    // One line per procedure, most time first. Off the hot path.
+    // One log line, the procedures most time first. Off the hot path.
     std::string Report(int maxRows = 25);
 
     // Names exit opcodes whose return was left empty, which is correct but otherwise invisible.

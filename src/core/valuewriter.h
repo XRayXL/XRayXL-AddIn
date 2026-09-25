@@ -53,7 +53,7 @@ namespace core
         virtual void BeginArgs() = 0;
         // `address`: the argument's storage, so a reader can match it to a caller's slot; 0 for none.
         virtual void BeginArg(int slot, const char* type, std::uint64_t address) = 0;
-        // An event's parameter, known by its name rather than a slot.
+        // An event's parameter, known by its name rather than a slot. `type` null: none is shown.
         virtual void BeginNamedArg(const char* name, const char* type) = 0;
         virtual void ArgUnreadable() = 0;                            // in place of a value
         virtual void EndArg() = 0;

@@ -146,10 +146,10 @@ Point Excel at `dist\XRayXL64.xll`: either add it permanently through
 File → Options → Add-ins → Manage: Excel Add-ins, or drag the `.xll` onto an
 open Excel window to load it for that session only.
 
-An **XRayXL** group appears at the far right of the **Developer** tab, with four
-buttons: **Arm**, **Disarm**, **Options** — which opens a dialog holding the
-capture settings — and **Diagnostics**, which shows what is loaded into the
-Excel process. Two things to know: Excel hides the Developer tab by default
+An **XRayXL** group appears at the far right of the **Developer** tab, with five
+buttons: **Arm**, **Disarm**, **Tail** — which follows the trace file in PowerShell
+as rows arrive — **Options**, which opens a dialog holding the capture settings,
+and **Diagnostics**, which shows what is loaded into the Excel process. Two things to know: Excel hides the Developer tab by default
 (File → Options → Customize Ribbon, tick *Developer*), and the buttons appear once
 a workbook is open, not on Excel's start screen. Each is also a
 registered command, so a macro — or an Excel that refuses the ribbon — can drive
@@ -186,6 +186,10 @@ tools\deploy.ps1        # copies the XLL to build\addin\
 That builds into `build\x64\Release\`: the add-in itself, the `TracedAddin` the
 suites need, the two demo add-ins, and the unit tests under `tests\sweep\unit\`. A normal build never
 writes `dist\` — only `tools\release.ps1` does that, after a green sweep.
+
+Each build is stamped with its time (UTC) and the commit it came from, marked `(modified)` when
+`src\` had uncommitted changes. The stamp shows on the About page and in the file's Product version,
+which Explorer shows under Properties › Details.
 
 The output is one native DLL — `build\x64\Release\XRayXL\XRayXL64.xll` — with no
 runtime dependencies beyond Windows itself. No .NET, no installer, and nothing

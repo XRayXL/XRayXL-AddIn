@@ -3,6 +3,7 @@
 // line: every string comes out empty, with exit code 0. The 0.0.0 fallback is meant to look broken.
 
 #include <winver.h>
+#include "buildstamp.h"
 
 #ifndef XRAY_VER_MAJOR
 #define XRAY_VER_MAJOR 0
@@ -65,7 +66,8 @@ BEGIN
             // this field is what identifies a stray copy.
             VALUE "OriginalFilename", XRAY_FILE_NAME
             VALUE "FileVersion",      XRAY_VERSION_TEXT
-            VALUE "ProductVersion",   XRAY_VERSION_TEXT
+            // Explorer's Details tab shows this string, but FileVersion only as its numbers.
+            VALUE "ProductVersion",   XRAY_VERSION_TEXT ", commit " XRAY_COMMIT ", built " XRAY_BUILT_UTC
             // Separates Debug from Release by eye. Tools should read the VS_FF_DEBUG flag
             // above, which FileVersionInfo exposes as .IsDebug.
             VALUE "BuildConfig",      XRAY_CONFIG_TEXT
@@ -135,7 +137,6 @@ BEGIN
     EDITTEXT        IDC_OUT_DIR, 107, 82, 283, 13, ES_AUTOHSCROLL | ES_READONLY | NOT WS_TABSTOP | NOT WS_BORDER
     LTEXT           "Trace file:", IDC_OUT_FILELBL, 107, 98, 82, 9
     EDITTEXT        IDC_OUT_FILE, 107, 108, 283, 13, ES_AUTOHSCROLL | ES_READONLY | NOT WS_TABSTOP | NOT WS_BORDER
-    CONTROL         "&Tail in PowerShell", IDC_OUT_TAIL, "Button", BS_OWNERDRAW | WS_TABSTOP, 107, 124, 96, 15
 
     // ---- Advanced ------------------------------------------------------
     LTEXT           "The trace file's buffer and extra column, and the add-in's own log.", IDC_ADV_HDR, 122, 13, 268, 11
@@ -158,6 +159,7 @@ BEGIN
     // ---- About ---------------------------------------------------------
     LTEXT           "About XRayXL", IDC_ABT_HDR, 122, 13, 268, 11
     LTEXT           "", IDC_ABT_OWNER, 107, 36, 283, 9
+    LTEXT           "", IDC_ABT_BUILD, 107, 46, 283, 9
     LTEXT           "GNU General Public License, version 3", IDC_ABT_LICLBL, 107, 58, 283, 9
     EDITTEXT        IDC_ABT_LICENSE, 107, 68, 283, 92, ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL | WS_VSCROLL | NOT WS_BORDER
 

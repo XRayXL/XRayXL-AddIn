@@ -33,6 +33,7 @@ namespace app
 {
     bool IsArmed() { return g_armed; }
     const char* VersionText() { return "9.9.9"; }
+    const char* BuildText()   { return "Built 2000-01-02 03:04 UTC from commit abc1234"; }
     // This Excel lacks one event, so the page has a greyed row to show.
     namespace appevents
     {
@@ -50,7 +51,8 @@ namespace app
         }
     }
 }
-namespace emit { namespace csv { std::wstring Path() { return L""; } } }
+static std::wstring g_tracePath;               // what emit::csv::Path() answers
+namespace emit { namespace csv { std::wstring Path() { return g_tracePath; } } }
 namespace core
 {
     std::wstring EnsureAppSubdir(const wchar_t* leaf) { return std::wstring(L"C:\\stub\\") + leaf; }
@@ -194,6 +196,16 @@ static void Choose(HWND dlg, int id, int index)
     SendMessageW(dlg, WM_COMMAND, MAKEWPARAM(id, CBN_SELCHANGE), reinterpret_cast<LPARAM>(GetDlgItem(dlg, id)));
 }
 
+// Opens a drop-down's list and waits until it is open, as a click does. False if it never opened.
+static bool OpenList(HWND combo)
+{
+    SendMessageW(combo, CB_SHOWDROPDOWN, TRUE, 0);
+    for (int i = 0; i < 100 && !SendMessageW(combo, CB_GETDROPPEDSTATE, 0, 0); ++i) Sleep(20);
+    return SendMessageW(combo, CB_GETDROPPEDSTATE, 0, 0) != 0;
+}
+
+static bool ListOpen(HWND combo) { return SendMessageW(combo, CB_GETDROPPEDSTATE, 0, 0) != 0; }
+
 static std::wstring Wide(const std::string& s) { return std::wstring(s.begin(), s.end()); }
 
 static bool Logged(const char* needle)
@@ -326,6 +338,9 @@ int main()
         Check(SendDlgItemMessageW(dlg, IDC_OUT_FMT, CB_GETCURSEL, 0, 0) == 0, "Format shows the current setting, CSV");
         Check(Enabled(dlg, IDC_OUT_FMT), "Format can be changed while disarmed");
         Check(TextOf(dlg, IDC_OUT_HDR) == L"Where the trace goes, and in what format.", "Output's title", TextOf(dlg, IDC_OUT_HDR));
+        Check(TextOf(dlg, IDC_OUT_FILE) == L"Available once armed" && !Enabled(dlg, IDC_OUT_FILE),
+              "before any trace the trace file box is greyed and says so", TextOf(dlg, IDC_OUT_FILE));
+        Check(GetDlgItem(dlg, 1411) == nullptr, "Output has no Tail button: the ribbon has it");
 
         ShowPage(dlg, L"Advanced");
         Check(!Visible(dlg, IDC_OUT_FMT), "Advanced does not show the Format drop-down");
@@ -343,6 +358,17 @@ int main()
               "the licence's hard-wrapped lines are rejoined");
         Check(GetDlgItem(dlg, 1604) == nullptr, "About has no Third Party Notices link");
         Check(Contains(TextOf(dlg, IDC_ABT_HDR), L"9.9.9"), "About's title carries the version", TextOf(dlg, IDC_ABT_HDR));
+        {
+            RECT owner{}, build{}, licLbl{};
+            GetWindowRect(GetDlgItem(dlg, IDC_ABT_OWNER), &owner);
+            GetWindowRect(GetDlgItem(dlg, IDC_ABT_BUILD), &build);
+            GetWindowRect(GetDlgItem(dlg, IDC_ABT_LICLBL), &licLbl);
+            Check(Visible(dlg, IDC_ABT_BUILD) &&
+                  TextOf(dlg, IDC_ABT_BUILD) == L"Built 2000-01-02 03:04 UTC from commit abc1234",
+                  "About shows the build time and commit", TextOf(dlg, IDC_ABT_BUILD));
+            Check(build.top >= owner.bottom && build.bottom < licLbl.top && build.left == owner.left,
+                  "the build line sits under the copyright, above the licence");
+        }
         Check(!Visible(dlg, IDC_ARMEDNOTE), "About shows no armed note");
 
         ShowPage(dlg, L"Notices");
@@ -404,6 +430,17 @@ int main()
     });
     Check(cancelled, "Cancel reports nothing applied");
     Check(core::modes::GetFormat() == core::modes::Format::Jsonl, "Cancel left the format as it was");
+
+    // ---- once a trace has been named, the box shows it, disarmed or not -----------------------
+    g_tracePath = L"C:\\stub\\TraceFiles\\XRayXL_Trace_1_2.csv";
+    Session("disarmed: after a trace", [](HWND dlg)
+    {
+        ShowPage(dlg, L"Output");
+        Check(TextOf(dlg, IDC_OUT_FILE) == g_tracePath && Enabled(dlg, IDC_OUT_FILE),
+              "after a trace the box names the last trace file and is live", TextOf(dlg, IDC_OUT_FILE));
+        Press(dlg, IDCANCEL);
+    });
+    g_tracePath.clear();
 
     // ---- armed: the format is locked, and only the log level can light Apply ----------------
     g_armed = true;
@@ -679,23 +716,50 @@ int main()
         twice(GetDlgItem(Pane(dlg), EventId("SheetChange")));
         Check(On(dlg, "SheetChange") == change, "and on an event's box");
 
-        // Arrowing through the open list only looks; Esc leaves the ticks as they were.
-        Choose(dlg, IDC_EVT_PRESET, 1);
-        Tick(dlg, EventId("WindowResize"));
-        const std::wstring before = TextOf(dlg, IDC_EVT_COUNT);
+        // Arrowing through the open list only looks; Esc leaves the ticks as they were. A dropped
+        // list closes when another window takes the foreground, which a busy desktop can do at any
+        // moment, so an attempt that finds it closed after the arrow proves nothing and is run again.
+        // Keys are sent, not posted, so each has been handled before the next check reads the dialog.
         HWND combo = GetDlgItem(dlg, IDC_EVT_PRESET);
-        SetFocus(combo);
-        PostMessageW(combo, CB_SHOWDROPDOWN, TRUE, 0); Settle();
-        PostMessageW(combo, WM_KEYDOWN, VK_UP, 0); Settle();
-        Check(TextOf(dlg, IDC_EVT_COUNT) == before && On(dlg, "WindowResize"),
-              "arrowing through the open list changes no tick", TextOf(dlg, IDC_EVT_COUNT));
-        PostMessageW(combo, WM_KEYDOWN, VK_ESCAPE, 0); Settle();
-        Check(TextOf(dlg, IDC_EVT_COUNT) == before && Preset(dlg) == 5,
-              "and Esc puts the list back on Custom", TextOf(dlg, IDC_EVT_COUNT));
+        std::wstring before, afterArrow, afterEsc;
+        bool arrowKeptTick = false, held = false;
+        int presetAfterEsc = -1;
+        for (int attempt = 0; attempt < 5 && !held; ++attempt)
+        {
+            Choose(dlg, IDC_EVT_PRESET, 1);
+            Tick(dlg, EventId("WindowResize"));
+            before = TextOf(dlg, IDC_EVT_COUNT);
+            SendMessageW(dlg, WM_NEXTDLGCTL, reinterpret_cast<WPARAM>(combo), TRUE);
+            if (!OpenList(combo)) continue;
+            SendMessageW(combo, WM_KEYDOWN, VK_UP, 0);
+            if (!ListOpen(combo)) continue;
+            afterArrow = TextOf(dlg, IDC_EVT_COUNT);
+            arrowKeptTick = On(dlg, "WindowResize");
+            SendMessageW(combo, WM_KEYDOWN, VK_ESCAPE, 0);
+            afterEsc = TextOf(dlg, IDC_EVT_COUNT);
+            presetAfterEsc = Preset(dlg);
+            held = true;
+        }
+        Check(held, "the preset list could be opened and kept open to arrow through");
+        Check(afterArrow == before && arrowKeptTick,
+              "arrowing through the open list changes no tick", afterArrow);
+        Check(afterEsc == before && presetAfterEsc == 5,
+              "and Esc puts the list back on Custom", afterEsc);
+
         // Enter on a preset applies it.
-        PostMessageW(combo, CB_SHOWDROPDOWN, TRUE, 0); Settle();
-        PostMessageW(combo, WM_KEYDOWN, VK_UP, 0); Settle();
-        PostMessageW(combo, WM_KEYDOWN, VK_RETURN, 0); Settle();
+        held = false;
+        for (int attempt = 0; attempt < 5 && !held; ++attempt)
+        {
+            Choose(dlg, IDC_EVT_PRESET, 1);
+            Tick(dlg, EventId("WindowResize"));
+            SendMessageW(dlg, WM_NEXTDLGCTL, reinterpret_cast<WPARAM>(combo), TRUE);
+            if (!OpenList(combo)) continue;
+            SendMessageW(combo, WM_KEYDOWN, VK_UP, 0);
+            if (!ListOpen(combo)) continue;
+            SendMessageW(combo, WM_KEYDOWN, VK_RETURN, 0);
+            held = true;
+        }
+        Check(held, "the preset list could be opened and kept open to choose from");
         Check(Preset(dlg) == 4 && TextOf(dlg, IDC_EVT_COUNT) == L"53 of 53 events",
               "Enter on All applies it", TextOf(dlg, IDC_EVT_COUNT));
         Press(dlg, IDCANCEL);

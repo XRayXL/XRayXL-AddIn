@@ -38,20 +38,25 @@ namespace
     bool Is(const wchar_t* id, const wchar_t* what) { return id && wcscmp(id, what) == 0; }
 }
 
-// Four large buttons on the Developer tab; a wrong built-in id drops the lot.
+// Five large buttons on the Developer tab; a wrong built-in id drops the lot.
 const wchar_t* const kCustomUi =
 L"<customUI xmlns='http://schemas.microsoft.com/office/2009/07/customui' onLoad='OnRibbonLoad' loadImage='OnLoadImage'>"
  L"<ribbon><tabs>"
   L"<tab idMso='TabDeveloper'>"
    L"<group id='grpXRay' label='XRayXL'>"
     L"<button id='btnArm' label='Arm' size='large' getEnabled='GetEnabled' onAction='OnArm'"
-           L" imageMso='MacroRecord'"
+           L" image='arm'"
            L" screentip='Start recording'"
            L" supertip='The same as Application.Run &quot;XRayXL_Arm&quot;.'/>"
     L"<button id='btnDisarm' label='Disarm' size='large' getEnabled='GetEnabled' onAction='OnDisarm'"
            L" image='disarm'"
            L" screentip='Stop, flush and close the trace'"
            L" supertip='The same as Application.Run &quot;XRayXL_Disarm&quot;.'/>"
+    L"<button id='btnTail' label='Tail' size='large' getEnabled='GetEnabled' onAction='OnTail'"
+           L" image='tail'"
+           L" screentip='Follow the trace file'"
+           L" supertip='Opens PowerShell on the current trace file: its last rows, then each "
+           L"new row as it is written. Available once armed; after a disarm, the last trace.'/>"
     L"<button id='btnOptions' label='Options' size='large' getEnabled='GetEnabled' onAction='OnOptions'"
            L" imageMso='ApplicationOptionsDialog'"
            L" screentip='What to record, and where it goes'"
@@ -76,6 +81,7 @@ Callback CallbackForName(const wchar_t* name)
     if (_wcsicmp(name, L"OnOptions") == 0)           return CbOnOptions;
     if (_wcsicmp(name, L"OnDiagnostics") == 0)      return CbOnDiagnostics;
     if (_wcsicmp(name, L"OnLoadImage") == 0)          return CbLoadImage;
+    if (_wcsicmp(name, L"OnTail") == 0)               return CbOnTail;
     return CbUnknown;
 }
 
@@ -92,14 +98,15 @@ bool KnownControl(const wchar_t* id)
 {
     Source ignored = Source::Xll;
     return Is(id, L"btnArm") || Is(id, L"btnDisarm") || Is(id, L"btnOptions")
-        || Is(id, L"btnDiagnostics")
+        || Is(id, L"btnDiagnostics") || Is(id, L"btnTail")
         || IsToggle(id) || IsDepthControl(id, ignored);
 }
 
-bool EnabledFor(const wchar_t* id, bool armed)
+bool EnabledFor(const wchar_t* id, bool armed, bool traced)
 {
     if (Is(id, L"btnArm"))    return !armed;
     if (Is(id, L"btnDisarm")) return  armed;
+    if (Is(id, L"btnTail"))   return traced;
     // always reachable: the dialog greys what cannot be changed, which explains itself
     if (Is(id, L"btnOptions")) return true;
     if (Is(id, L"btnDiagnostics")) return true;      // read-only, so armed changes nothing

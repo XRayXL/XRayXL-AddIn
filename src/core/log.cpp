@@ -47,6 +47,22 @@ namespace
         }
     }
 
+    // One message is one line: a line break and the indent after it become " | ".
+    std::string OneLine(const std::string& msg)
+    {
+        std::string out;
+        out.reserve(msg.size());
+        size_t i = 0;
+        while (i < msg.size())
+        {
+            if (msg[i] != '\r' && msg[i] != '\n') { out += msg[i++]; continue; }
+            while (i < msg.size() && (msg[i] == '\r' || msg[i] == '\n' || msg[i] == ' ' || msg[i] == '\t')) ++i;
+            while (!out.empty() && (out.back() == ' ' || out.back() == '\t')) out.pop_back();
+            if (!out.empty() && i < msg.size()) out += " | ";
+        }
+        return out;
+    }
+
     // Caller holds g_mutex. Open/write/close per line so each is flushed: a
     // crash leaves the log complete up to the last thing that happened.
     void WriteLine(const std::string& line)
@@ -113,7 +129,7 @@ namespace Log
         char head[64];
         _snprintf_s(head, _TRUNCATE, "%s [%5lu] %-7s - ",
                     Stamp().c_str(), GetCurrentThreadId(), LevelText(lvl));
-        WriteLine(std::string(head) + msg);
+        WriteLine(std::string(head) + OneLine(msg));
     }
 
     void Debug(const std::string& m)   { Write(Level::Debug,   m); }

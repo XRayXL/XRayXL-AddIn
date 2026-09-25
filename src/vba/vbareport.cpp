@@ -126,7 +126,7 @@ namespace vba
             if (IdDeclineCount(static_cast<IdDecline>(i)))
                 o << " id[" << IdDeclineName(static_cast<IdDecline>(i)) << "]="
                   << IdDeclineCount(static_cast<IdDecline>(i));
-        if (diag && IdentityDebug() && IdentityDebug()[0]) o << "\n    " << IdentityDebug();
+        if (diag && IdentityDebug() && IdentityDebug()[0]) o << " | " << IdentityDebug();
         return o.str();
     }
 
@@ -162,8 +162,8 @@ namespace vba
                   [](const Row& a, const Row& b) { return a.ticks > b.ticks; });
 
         std::ostringstream o;
-        o << "  " << rows.size() << " VBA procedure(s) seen\n";
-        o << "      procedure                                     calls  statements       ms  depth\n";
+        o << "VBA procedures: " << rows.size() << " seen";
+        if (static_cast<int>(rows.size()) > maxRows) o << ", the " << maxRows << " slowest shown";
         int n = 0;
         for (const Row& r : rows)
         {
@@ -180,7 +180,7 @@ namespace vba
 
             char line[768];
             std::snprintf(line, sizeof(line),
-                          "      %-44s %6llu %11llu %8.2f %6llu\n", who,
+                          " | %s calls=%llu statements=%llu ms=%.2f depth=%llu", who,
                           static_cast<unsigned long long>(r.calls),
                           static_cast<unsigned long long>(r.stmts),
                           freq > 0 ? (r.ticks * 1000.0 / freq) : 0.0,

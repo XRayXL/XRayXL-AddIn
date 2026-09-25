@@ -300,8 +300,7 @@ namespace vba
                     "EVER CONFIRMED -- pinned from the handler alone, never walked "
                     "past in the offline corpus. The walk did not break on them, so the "
                     "trace stands; they are now the best candidates to measure, because "
-                    "this workbook writes a shape no generator does. ACTIONABLE: capture "
-                    "with XRAYXL_DIAG=1 and send the p-code corpus it writes:");
+                    "this workbook writes a shape no generator does:");
         j = AppendOps(b, sizeof b, j, slot, val, n);
         _snprintf_s(b + j, sizeof(b) - j, _TRUNCATE, ".");
         return b;
@@ -801,7 +800,7 @@ namespace vba
         const LONG n = InterlockedCompareExchange(&g_corpusN, 0, 0);
         LONG kept = (n < kCorpusProcs) ? n : kCorpusProcs;
         if (!g_corpusOn)
-            return "VBA p-code corpus: not collected (set XRAYXL_DIAG=1 before starting Excel)";
+            return "VBA p-code corpus: not collected";
         if (kept <= 0)
             return "VBA p-code corpus: nothing walked, nothing written";
 

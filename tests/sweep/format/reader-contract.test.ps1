@@ -5,8 +5,8 @@
 
 $hdr = 'seq,input,kind,source,span,parent,depth,thread,qpc,module,function,proc,typetext,caller,callerref,argcount,args,ret,rettype,outcome,ticks,tracerticks,trust'
 # Every trace starts with the arm row; a disarm row, when present, ends it.
-$arm    = '1,1,event,XRayXL,0,0,0,17248,2759222870000,,arm,,,,,,qpcFrequency:LongLong=10000000,,,,,,'
-$disarm = '6,7,event,XRayXL,0,0,0,17248,2767391817000,,disarm,,,,,,rowsDropped:LongLong=0,,,,,,'
+$arm    = '1,1,event,XRayXL,0,0,0,17248,2759222870000,,arm,,,,,,qpcFrequency=10000000,,,,,,'
+$disarm = '6,7,event,XRayXL,0,0,0,17248,2767391817000,,disarm,,,,,,rowsDropped=0,,,,,,'
 # `input` has a hole at 4: holes are drops, which the reader must accept while still requiring uniqueness.
 $good = @(
     '2,2,entry,XLL,74079595921409,,,17248,2759222870812,TracedAddin64.xll,TxB,TxB,"B,B",cell,[XllCase_10020.xlsx]Sheet1!A1,2,a1:B=2 a2:B=3,,,,,,'

@@ -3,6 +3,7 @@
 #include "ribbonart.h"
 #include "optionsdlg.h"
 #include "diagnosticsdlg.h"
+#include "traceactions.h"
 
 #include "app/session.h"
 #include "core/contained.h"
@@ -302,7 +303,7 @@ enum : DISPID {
     DISPID_ONLOAD     = M::CbOnLoad,     DISPID_ONARM     = M::CbOnArm,
     DISPID_ONDISARM   = M::CbOnDisarm,   DISPID_GETENABLED = M::CbGetEnabled,
     DISPID_ONOPTIONS  = M::CbOnOptions,  DISPID_LOADIMAGE = M::CbLoadImage,
-    DISPID_ONDIAGNOSTICS = M::CbOnDiagnostics
+    DISPID_ONDIAGNOSTICS = M::CbOnDiagnostics, DISPID_ONTAIL = M::CbOnTail
 };
 
 // defined with the connect plumbing below
@@ -500,14 +501,20 @@ private:
 
         if (id == DISPID_LOADIMAGE)
         {
-            // Asked once per image id and cached by Office; 'disarm' is the only one.
+            // loadImage(imageId): asked once per image id and cached by Office.
             // From the window chain, not the add-in object: the ribbon owns no lifetime state.
+            const VARIANT* which = Arg(dp, 0);
+            const wchar_t* name = (which && which->vt == VT_BSTR && which->bstrVal) ? which->bstrVal : L"";
             std::ostringstream om;
             IDispatch* app = core::excelom::AcquireApplication(om);
-            IDispatch* pic = ui::ribbon::art::DisarmPicture(app, MainWindow());
+            IDispatch* pic = nullptr;
+            std::string what = "an unknown image's";
+            if      (_wcsicmp(name, L"arm") == 0)    { pic = ui::ribbon::art::ArmPicture(app, MainWindow());    what = "Arm's"; }
+            else if (_wcsicmp(name, L"disarm") == 0) { pic = ui::ribbon::art::DisarmPicture(app, MainWindow()); what = "Disarm's"; }
+            else if (_wcsicmp(name, L"tail") == 0)   { pic = ui::ribbon::art::TailPicture(app, MainWindow());   what = "Tail's"; }
             if (app) app->Release();
-            if (!pic) core::Log::Warning("ribbon: Disarm's picture could not be made; the button shows no icon");
-            else      core::Log::Debug("ribbon: Disarm's picture made");
+            if (!pic) core::Log::Warning("ribbon: " + what + " picture could not be made; the button shows no icon");
+            else      core::Log::Debug("ribbon: " + what + " picture made");
             if (result && pic) { result->vt = VT_DISPATCH; result->pdispVal = pic; }
             else if (pic) pic->Release();
             return S_OK;
@@ -557,6 +564,15 @@ private:
             ui::diagnostics::Show(MainWindow());
             return S_OK;
 
+        case DISPID_ONTAIL:
+        {
+            core::Log::Note("ribbon: Tail pressed");
+            const ui::trace::Result r = ui::trace::TailInPowerShell(emit::csv::Path());
+            if (r != ui::trace::Result::Ok)
+                MessageBoxW(MainWindow(), ui::trace::Explain(r), L"XRayXL", MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND);
+            return S_OK;
+        }
+
         case DISPID_ONDISARM:
             core::Log::Note("ribbon: Disarm pressed");
             if (app::IsArmed() && !RunCommand(L"XRayXL_Disarm")) app::Disarm();
@@ -566,7 +582,7 @@ private:
         case DISPID_GETENABLED:
             if (result)
             {
-                const bool live = M::EnabledFor(cid, app::IsArmed());
+                const bool live = M::EnabledFor(cid, app::IsArmed(), !emit::csv::Path().empty());
                 result->vt = VT_BOOL;
                 result->boolVal = live ? VARIANT_TRUE : VARIANT_FALSE;
             }

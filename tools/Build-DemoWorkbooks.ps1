@@ -128,7 +128,7 @@ try {
 
     $armStep     = 'Developer tab > XRayXL > Arm.'
     $disarmStep  = 'Developer tab > XRayXL > Disarm.'
-    $readStep    = 'Open the trace: Options > Output > right-click Trace file > Reveal in File Explorer. (Tail in PowerShell, pressed before step 2, shows rows as they arrive.)'
+    $readStep    = 'Open the trace: Options > Output > right-click Trace file > Reveal in File Explorer. (Tail on the ribbon, pressed after arming, shows rows as they arrive.)'
 
     # ===== 01 -- the first trace: VBA and XLL in one recalculation ============
     $d = New-DemoBook 'First trace'

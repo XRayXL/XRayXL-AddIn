@@ -71,7 +71,7 @@ int main()
               "an id Office does not know degrades the button to small text, silently");
     }
 
-    for (const std::wstring& id : { std::wstring(L"btnArm"), std::wstring(L"btnDisarm"),
+    for (const std::wstring& id : { std::wstring(L"btnArm"), std::wstring(L"btnDisarm"), std::wstring(L"btnTail"),
                                     std::wstring(L"btnOptions"), std::wstring(L"btnDiagnostics") })
     {
         const size_t at = xml.find(L"id='" + id + L"'");
@@ -90,16 +90,17 @@ int main()
           "the button lives on Excel's Developer tab, not a tab of our own");
     Check("no-tab-of-our-own", xml.find(L"<tab id='") == std::wstring::npos,
           "a tab with an id of ours would be a second home for the same thing");
-    // Four items, in the order a person reads them.
+    // Five items, in the order a person reads them.
     const size_t pArm = xml.find(L"id='btnArm'");
     const size_t pDis = xml.find(L"id='btnDisarm'");
+    const size_t pTail = xml.find(L"id='btnTail'");
     const size_t pOpt = xml.find(L"id='btnOptions'");
     const size_t pDiag = xml.find(L"id='btnDiagnostics'");
-    Check("menu-has-arm-disarm-options-diagnostics",
-          pArm != std::wstring::npos && pDis != std::wstring::npos &&
+    Check("menu-has-arm-disarm-tail-options-diagnostics",
+          pArm != std::wstring::npos && pDis != std::wstring::npos && pTail != std::wstring::npos &&
           pOpt != std::wstring::npos && pDiag != std::wstring::npos &&
-          pArm < pDis && pDis < pOpt && pOpt < pDiag,
-          "Arm, Disarm, Options, Diagnostics -- in that order");
+          pArm < pDis && pDis < pTail && pTail < pOpt && pOpt < pDiag,
+          "Arm, Disarm, Tail, Options, Diagnostics -- in that order");
 
     Check("xml-declares-onload", xml.find(L"onLoad='OnRibbonLoad'") != std::wstring::npos,
           "without onLoad there is no IRibbonUI, so nothing can ever be invalidated");
@@ -144,11 +145,11 @@ int main()
               "in the XML but no handler knows it -- the control would do nothing");
     }
     // a bare count: a new control must be given a handler
-    Check("xml-has-every-control", controls.size() == 4,
-          "expected 4: Arm, Disarm, Options and Diagnostics");
+    Check("xml-has-every-control", controls.size() == 5,
+          "expected 5: Arm, Disarm, Tail, Options and Diagnostics");
 
     // ...and every handled control must be in the XML
-    const wchar_t* kExpected[] = { L"btnArm", L"btnDisarm", L"btnOptions", L"btnDiagnostics" };
+    const wchar_t* kExpected[] = { L"btnArm", L"btnDisarm", L"btnTail", L"btnOptions", L"btnDiagnostics" };
     for (const wchar_t* id : kExpected)
     {
         bool inXml = false;
@@ -159,24 +160,29 @@ int main()
     Check("unknown-control-is-not-claimed", !M::KnownControl(L"btnNoSuchThing"));
 
     // ---- enablement: the command surface's rule, shown ---------------------
-    Check("not-armed-arm-enabled",      M::EnabledFor(L"btnArm", false));
-    Check("not-armed-disarm-disabled", !M::EnabledFor(L"btnDisarm", false));
-    Check("armed-arm-disabled",        !M::EnabledFor(L"btnArm", true));
-    Check("armed-disarm-enabled",       M::EnabledFor(L"btnDisarm", true));
+    Check("not-armed-arm-enabled",      M::EnabledFor(L"btnArm", false, false));
+    Check("not-armed-disarm-disabled", !M::EnabledFor(L"btnDisarm", false, false));
+    Check("armed-arm-disabled",        !M::EnabledFor(L"btnArm", true, true));
+    Check("armed-disarm-enabled",       M::EnabledFor(L"btnDisarm", true, true));
+
+    // Tail follows the trace file, armed or not: live once one has been named, the last after a disarm.
+    Check("tail-greyed-before-any-trace", !M::EnabledFor(L"btnTail", false, false));
+    Check("tail-live-while-armed",         M::EnabledFor(L"btnTail", true, true));
+    Check("tail-live-after-disarm",        M::EnabledFor(L"btnTail", false, true));
 
     // Options is always live: the dialog greys what cannot be changed.
     // Diagnostics is always live too: it reads, and changes nothing.
     for (int a = 0; a < 2; ++a)
     {
-        Check("options-is-always-live", M::EnabledFor(L"btnOptions", a != 0));
-        Check("diagnostics-is-always-live", M::EnabledFor(L"btnDiagnostics", a != 0));
+        Check("options-is-always-live", M::EnabledFor(L"btnOptions", a != 0, a != 0));
+        Check("diagnostics-is-always-live", M::EnabledFor(L"btnDiagnostics", a != 0, a != 0));
     }
     // the settings carry the setters' rule: refused while armed
     for (const std::wstring& id : { std::wstring(L"cbXllArgs"), std::wstring(L"cbVbaObj"),
                                     std::wstring(L"ddXllDepth"), std::wstring(L"cbPauseFull") })
     {
         Check(("setting-greyed-while-armed:" + Narrow(id)).c_str(),
-              !M::EnabledFor(id.c_str(), true) && M::EnabledFor(id.c_str(), false),
+              !M::EnabledFor(id.c_str(), true, true) && M::EnabledFor(id.c_str(), false, true),
               "the setters refuse while armed, so the control must be greyed then");
     }
 
