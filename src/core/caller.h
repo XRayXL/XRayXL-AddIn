@@ -5,8 +5,11 @@
 //                              multi-cell / array-formula caller)
 //   a macro on a button,
 //   a shape, a picture      -> a string: the graphic object's name
-//   a toolbar tool          -> an array of two numbers, {toolbar, position}
-//   a menu command          -> an array of four, {bar ID, menu, submenu, command}
+//   a toolbar tool          -> an array of two, {position, toolbar}; the Quick Access
+//                              Toolbar is toolbar 0
+//   a menu command          -> an array of four, {command, menu, bar ID, submenu}; the
+//                              submenu is 0 when there is none
+//                              (both measured, and the reverse of the SDK's order)
 //   the macro dialog, an
 //   Auto macro, an event,
 //   the VBE, DDE/OLE        -> the error #REF! -- there is no caller on a sheet
@@ -29,8 +32,9 @@ namespace core
         //
         //   cell        "[Book1]Sheet1!B2"  or a whole CSE range "…!B2:D4"
         //   name        "GoButton"          -- see below
-        //   toolbar     "5/2" or "\"MyBar\"/2"
-        //   menu        "27/27/14/0"        -- four fields, per the SDK
+        //   toolbar     "2/5" or "2/\"MyBar\"" -- position, then the bar
+        //   menu        "27/27/14/0"        -- command, menu, bar, submenu
+        //   editor      ""                  -- set by the VBA tracer, not decoded here
         //   registerid  "42"
         //   none        "ref" | "nil" | "emptyref" | "sheetless-B2" | "nametoolong"
         //   unavailable "2"                 -- Excel declined; the xlret code
@@ -57,6 +61,7 @@ namespace core
     // graphic-object caller, cannot be produced by automation. `sheetName` is null or empty when
     // the sheet did not resolve, which marks a caller that is not a real cell.
     void DecodeCaller(const void* callerOper, const char* sheetName, Caller& out);
+
 
     // Asks Excel, then decodes. Only xlfCaller and xlSheetNm, and the reference is never coerced:
     // xlCoerce fails with xlretUncalced on an uncalculated cell.

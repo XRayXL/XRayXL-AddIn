@@ -324,6 +324,41 @@ void DrawButton(const DRAWITEMSTRUCT* di)
              ui::text::kCentre | ui::text::kVCentre | ui::text::kPrefix); });
 }
 
+void PaintCheckBox(HWND h, HDC dc, const RECT& b, int state, bool hot, bool disabled)
+{
+    const int side = b.right - b.left;
+    const bool on = state != 0;
+    COLORREF edge, fill;
+    if (disabled) { edge = kEdgeOff; fill = kPage; }
+    else if (on)  { edge = fill = hot ? kCheckHot : kCheckOn; }
+    else          { edge = hot ? kEdgeHot : kEdge; fill = hot ? kHotFace : kPage; }
+
+    if (state == 1 && !disabled && side == 13)
+    {
+        HBRUSH green = CreateSolidBrush(fill);
+        FillRect(dc, &b, green);
+        DeleteObject(green);
+        PlotTick(dc, b);
+        return;
+    }
+    // the border scales with the DPI here, unlike the other frames
+    ui::soft::RoundRect(dc, b, ui::soft::Box{ fill, edge, on ? 0 : Px(h, 1), Px(h, 2), true });
+    const COLORREF ink = disabled ? RGB(0x90, 0x90, 0x90) : kPage;
+    if (state == 1)
+    {
+        const POINT v[3] = { { b.left + side * 3 / 13, b.top + side * 6 / 13 },
+                             { b.left + side * 5 / 13, b.top + side * 8 / 13 },
+                             { b.left + side * 9 / 13, b.top + side * 4 / 13 } };
+        ui::soft::Stroke(dc, v, 3, Px(h, 14) / 10.0, ink);
+    }
+    else if (state == 2)
+    {
+        // mixed: a bar across the middle, as Office draws a partly ticked group
+        const POINT v[2] = { { b.left + side * 3 / 13, b.top + side / 2 }, { b.left + side * 10 / 13, b.top + side / 2 } };
+        ui::soft::Stroke(dc, v, 2, Px(h, 16) / 10.0, ink);
+    }
+}
+
 void DrawCheck(const DRAWITEMSTRUCT* di)
 {
     HWND h = di->hwndItem;
@@ -338,31 +373,7 @@ void DrawCheck(const DRAWITEMSTRUCT* di)
         FillRect(dc, &rc, g_white);
         const int side = Px(h, 13);
         const RECT b{ 0, (rc.bottom - side) / 2, side, (rc.bottom - side) / 2 + side };
-
-        COLORREF edge, fill;
-        if (disabled) { edge = kEdgeOff; fill = kPage; }
-        else if (on)  { edge = fill = hot ? kCheckHot : kCheckOn; }
-        else          { edge = hot ? kEdgeHot : kEdge; fill = hot ? kHotFace : kPage; }
-
-        if (on && !disabled && side == 13)
-        {
-            HBRUSH green = CreateSolidBrush(fill);
-            FillRect(dc, &b, green);
-            DeleteObject(green);
-            PlotTick(dc, b);
-        }
-        else
-        {
-            // the border scales with the DPI here, unlike the other frames
-            ui::soft::RoundRect(dc, b, ui::soft::Box{ fill, edge, on ? 0 : Px(h, 1), Px(h, 2), true });
-            if (on)
-            {
-                const POINT v[3] = { { side * 3 / 13, b.top + side * 6 / 13 },
-                                     { side * 5 / 13, b.top + side * 8 / 13 },
-                                     { side * 9 / 13, b.top + side * 4 / 13 } };
-                ui::soft::Stroke(dc, v, 3, Px(h, 14) / 10.0, disabled ? RGB(0x90, 0x90, 0x90) : kPage);
-            }
-        }
+        PaintCheckBox(h, dc, b, on ? 1 : 0, hot, disabled);
 
         RECT t = rc;
         t.left = b.right + Px(h, 5);
@@ -449,6 +460,8 @@ void DrawComboItem(const DRAWITEMSTRUCT* di)
         Text(di->hwndItem, dc, t, text, Face::Body, kText, ui::text::kVCentre); });
 }
 
+bool IsHot(HWND h) { return h && h == g_hotCtl; }
+
 bool IsChecked(HWND dlg, int id)
 {
     HWND h = GetDlgItem(dlg, id);
@@ -494,6 +507,13 @@ LRESULT CALLBACK ComboProc(HWND h, UINT m, WPARAM wp, LPARAM lp)
         PaintCombo(h, BeginPaint(h, &ps));
         EndPaint(h, &ps);
         return 0;
+    }
+    // The combo redraws a new selection itself, bypassing WM_PAINT, so ours would stay stale.
+    if (m == CB_SETCURSEL)
+    {
+        const LRESULT r = Previous(h, m, wp, lp);
+        InvalidateRect(h, nullptr, FALSE);
+        return r;
     }
     if (TrackHover(h, m)) InvalidateRect(h, nullptr, FALSE);
     return Previous(h, m, wp, lp);

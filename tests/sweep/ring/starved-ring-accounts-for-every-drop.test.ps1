@@ -18,9 +18,12 @@ try {
     Check 'the-ring-actually-dropped' ($r.DisarmDrops -gt 0) `
           "Disarm returned $($r.DisarmDrops) -- the ring was not starved (raise the driver count)"
     # loss is reported out of band, so nothing in the CSV may stand in for it
-    Check 'the-csv-holds-only-real-events' ($r.EntryExit.Count -eq $r.Rows.Count) `
-          ("$($r.Rows.Count - $r.EntryExit.Count) row(s) are neither entry nor exit: " +
-           (@($r.Rows | Where-Object { $_.kind -ne 'entry' -and $_.kind -ne 'exit' } | ForEach-Object { $_.kind }) -join ','))
+    $marker = @($r.Rows | Where-Object { $_.kind -ne 'entry' -and $_.kind -ne 'exit' -and $_.kind -ne 'event' })
+    Check 'the-csv-holds-only-real-events' ($marker.Count -eq 0) `
+          ("$($marker.Count) row(s) are neither a call nor an event: " + (@($marker | ForEach-Object { $_.kind }) -join ','))
+    # The session's own rows survive a starved ring, or the trace would read as a crash.
+    $all = @(Read-TraceRows $sx.ProcId)
+    Check 'the-disarm-row-survives-drop' ($all.Count -and $all[-1].function -eq 'disarm') "last row: $($all[-1].kind) $($all[-1].function)"
     # dropping everything would still reconcile, so require some rows
     Check 'the-starved-ring-still-delivered-rows' ($r.EntryExit.Count -gt 0) 'no rows were written at all'
     Check 'drops-are-locatable-via-input-holes' ($r.Holes -gt 0) `

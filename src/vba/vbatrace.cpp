@@ -16,6 +16,7 @@
 #include "core/safemem.h"
 #include "core/valueformat.h"
 #include "core/tlsstack.h"
+#include "core/log.h"
 
 #include <windows.h>
 #include <cstring>
@@ -108,6 +109,12 @@ namespace vba
             std::uint64_t argsHash;
             // A ByRef argument was written as its shape alone at entry, so no exit can compare.
             bool          argsShapeOnly;
+
+            // The editor's own wrapper, which runs a macro from Run, F8 or the Immediate window:
+            // kept on the stack but given no rows, so the macro reads as the top of its chain.
+            bool          hidden;
+            // Started from the editor, which xlfCaller answers as no caller at all.
+            bool          fromEditor;
 
             // No caller gate: the exit opcode says whether a result exists and of what kind.
         };
@@ -639,7 +646,7 @@ namespace vba
             outArgs.text = &t_argRender;
             const ArgCapture* outArgsPtr = ReadByRefChanges(f, r14, outArgs);
 
-            if (!g_topLevelOnly || f.shownDepth == 1)
+            if (!f.hidden && (!g_topLevelOnly || f.shownDepth == 1))
                 EmitRow("exit", f, nowTicks, nowTicks - f.startTicks, f.shownDepth, p,
                         outArgsPtr, nullptr, nullptr,
                         haveRet ? retText.Text() : "",
@@ -846,13 +853,31 @@ namespace vba
         return ReadTrailer(f.sp, onStack) && onStack == f.trailer;
     }
 
-    void CloseFramesThatLostTheirStack(ThreadState* s, std::uint64_t now)
+    // How many frames, from the bottom, a new activation at `dispatchSp` leaves open: those above
+    // it have returned, and those whose trailer is gone lost their stack. One read a frame, as
+    // this runs at every activation start.
+    int FramesStillOpen(ThreadState* s, std::uint64_t dispatchSp)
     {
-        while (s->depth > 0)
-        {
-            if (FrameStillLive(s->stack[s->depth - 1])) return;
-            CloseFrame(s, now);
-        }
+        int d = s->depth;
+        while (d > 0 && s->stack[d - 1].sp < dispatchSp) --d;
+        while (d > 0 && !FrameStillLive(s->stack[d - 1])) --d;
+        return d;
+    }
+
+    void CloseFramesThatLostTheirStack(ThreadState* s, std::uint64_t now, int keep)
+    {
+        while (s->depth > keep) CloseFrame(s, now);
+    }
+
+    // End kills every VBA frame on the thread, so a stack that dies whole was ended by VBA
+    // itself: End on its error dialog, or Reset. The innermost raised, unless it had stopped in
+    // the editor; the rest neither returned nor threw. From a cell entry up, the error went to
+    // the cell.
+    void MarkEndedByVba(ThreadState* s)
+    {
+        for (int i = 0; i < s->depth && !s->stack[i].fromExcel; ++i)
+            if (i < s->depth - 1 || s->stack[i].breaks > 0)
+                s->stack[i].outcome = kOutAbandoned;
     }
 
     // Only a prologue opens a frame, since `GoSub` moves rsp within one activation. A procedure
@@ -892,6 +917,13 @@ namespace vba
             Bump(g_totals.callerOther);
     }
 
+    // The procedure the VBA editor runs a macro through, from Run, F8 or the Immediate window, in
+    // a hidden module of its own project.
+    bool IsEditorWrapper(const ResolvedName& nm)
+    {
+        return std::strcmp(nm.function, "_ImmedProc") == 0 && std::strstr(nm.qualModule, "#ImmMod#") != nullptr;
+    }
+
     // Order matters: stale-close before push, and arguments captured at the first statement,
     // before the body can overwrite a ByRef.
     void OpenFrame(ThreadState* s, std::uint64_t trailer, std::uint64_t savedRegs,
@@ -929,8 +961,11 @@ namespace vba
         // Excel ran this from inside the open frame's DoEvents: a new chain, not a callee.
         const bool newChain = atEntry && s->depth > 0 && WaitingInDoEvents(s);
         if (newChain) Bump(g_totals.doEventsChains);
-        const std::uint64_t parent = (s->depth > 0 && !newChain) ? s->stack[s->depth - 1].span : 0;
-        const int shownDepth = (s->depth > 0 && !newChain) ? s->stack[s->depth - 1].shownDepth + 1 : 1;
+        const Frame* under = (s->depth > 0 && !newChain) ? &s->stack[s->depth - 1] : nullptr;
+        // A hidden frame's callees hang from where it would have.
+        const std::uint64_t parent = under ? (under->hidden ? under->parent : under->span) : 0;
+        const int shownDepth = under ? under->shownDepth + 1 : 1;
+        const bool underEditor = under && under->fromEditor;
         Frame& f = s->stack[s->depth++];
         f.trailer      = trailer;
         f.startTicks   = now;
@@ -949,14 +984,22 @@ namespace vba
         f.argsShapeOnly = false;
         f.fromExcel    = false;
         f.callerHash   = 0;
+        f.hidden       = false;
+        f.fromEditor   = underEditor;
 
         Bump(g_totals.framesOpened);
 
         ResolvedName nm{};
         Proc* p = FindProc(trailer);
-        if (p)
+        if (p) ResolveInto(p, trailer, &nm);   // fresh every call -- never cached
+        if (IsEditorWrapper(nm))
         {
-            ResolveInto(p, trailer, &nm);   // fresh every call -- never cached
+            f.hidden = f.fromEditor = true;
+            f.shownDepth -= 1;
+        }
+        // Uncounted when hidden, so the summary lists the macro and not the editor's wrapper.
+        if (p && !f.hidden)
+        {
             Bump(p->calls);
             RaiseMax64(&p->maxDepth, static_cast<std::uint64_t>(s->depth));
         }
@@ -970,7 +1013,8 @@ namespace vba
         ArgCapture args;
         args.text = &t_argRender;
         // Off, the decline is counted, so an empty column never reads as "no arguments".
-        if (haveR14 && InterlockedCompareExchange(&g_capArgs, 0, 0) != 0)
+        // Not the editor's wrapper: its signature is not the kind the decoder reads.
+        if (haveR14 && !f.hidden && InterlockedCompareExchange(&g_capArgs, 0, 0) != 0)
         {
             CaptureArgs(trailer, r14, args);
             // Kept so the exit can tell whether anything moved.
@@ -989,8 +1033,13 @@ namespace vba
         IdentifyCaller(who);
         f.callerHash = who.isCell ? core::Fnv1aText(who.desc) : 0;
         f.fromExcel  = IsExcelTheCaller(s, who.isCell, f.callerHash);
+        if (f.fromEditor && std::strcmp(who.kind, "none") == 0)
+        {
+            _snprintf_s(who.kind, _TRUNCATE, "editor");
+            who.desc[0] = 0;
+        }
 
-        if (!g_topLevelOnly || f.shownDepth == 1)
+        if (!f.hidden && (!g_topLevelOnly || f.shownDepth == 1))
             EmitRow("entry", f, now, 0, f.shownDepth, p, &args, &nm, &who);
 
         RaiseMax32(&g_totals.maxDepth, static_cast<std::uint32_t>(s->depth));
@@ -1033,8 +1082,16 @@ namespace vba
         // (trailer, sp) identifies an activation: the trailer names only a procedure, and the
         // dispatch rsp falls one step per VBA call and is stable within a frame.
 
+        int keep = s->depth;
+        if (atEntry)
+        {
+            keep = FramesStillOpen(s, dispatchSp);
+            // OpenFrame closes a frame left at this very rsp, so it is gone too.
+            const int left = (keep > 0 && s->stack[keep - 1].sp == dispatchSp) ? keep - 1 : keep;
+            if (s->depth > 0 && left == 0) MarkEndedByVba(s);
+        }
         CloseFramesThatReturned(s, dispatchSp, now);
-        if (atEntry) CloseFramesThatLostTheirStack(s, now);
+        if (atEntry) CloseFramesThatLostTheirStack(s, now, keep);
 
         bool lateOpen = false;
         if (ShouldOpenFrame(s, trailer, atEntry, dispatchSp, lateOpen))
@@ -1171,6 +1228,57 @@ namespace vba
 
     void ReleaseThreadState() { t_state.stack.Release(); }
 
+    namespace
+    {
+        // One frame of the thread's real call chain: the stack it spans, and whether it is VBE7's.
+        struct ChainFrame { std::uint64_t lo, hi; bool vbe7; };
+
+        // Walks only through loaded images: looking up an address outside one can reach
+        // Office's dynamic function table callback, which terminates the process. So the
+        // walk stops short at such an address, and at `upTo`. -1 if the stack faulted.
+        int WalkChain(std::uint64_t upTo, ChainFrame* out, int cap)
+        {
+            const HMODULE vbe7 = GetModuleHandleW(L"VBE7.DLL");
+            int n = 0;
+            __try
+            {
+                CONTEXT ctx; RtlCaptureContext(&ctx);
+                while (n < cap && ctx.Rsp <= upTo)
+                {
+                    PVOID base = nullptr;
+                    if (!RtlPcToFileHeader(reinterpret_cast<PVOID>(ctx.Rip), &base) || !base) break;
+                    const std::uint64_t lo = ctx.Rsp;
+                    DWORD64 imageBase = 0;
+                    if (PRUNTIME_FUNCTION fn = RtlLookupFunctionEntry(ctx.Rip, &imageBase, nullptr))
+                    {
+                        PVOID handlerData = nullptr; DWORD64 establisher = 0;
+                        RtlVirtualUnwind(UNW_FLAG_NHANDLER, imageBase, ctx.Rip, fn, &ctx,
+                                         &handlerData, &establisher, nullptr);
+                    }
+                    else
+                    {
+                        ctx.Rip = *reinterpret_cast<DWORD64*>(ctx.Rsp);   // a leaf: rsp is at its return address
+                        ctx.Rsp += 8;
+                    }
+                    out[n++] = { lo, ctx.Rsp, base == vbe7 };
+                }
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER) { return -1; }
+            return n;
+        }
+
+        // A live activation's sp lies inside an interpreter frame on the chain; one the walk
+        // shows inside another module's frame is dead, its stack since reused, and so is one
+        // below the walk's own start.
+        bool ProvenDead(const ChainFrame* chain, int n, std::uint64_t here, std::uint64_t sp)
+        {
+            if (sp < here) return true;
+            for (int i = 0; i < n; ++i)
+                if (sp >= chain[i].lo && sp < chain[i].hi) return !chain[i].vbe7;
+            return false;
+        }
+    }
+
     void FlushOpenFrames()
     {
         // t_state is the storage itself, not a pointer to it, so a thread that
@@ -1178,13 +1286,26 @@ namespace vba
         ThreadState* s = &t_state;
         const std::uint64_t now = Now();
         const std::uint64_t here = reinterpret_cast<std::uint64_t>(_AddressOfReturnAddress());
+
+        ChainFrame chain[128];
+        int walked = 0;
+        if (s->depth > 0)
+        {
+            walked = WalkChain(s->stack[0].sp, chain, 128);
+            if (walked < 0) { core::Log::Warning("VBA tracing: the stack walk at disarm faulted"); walked = 0; }
+        }
+        // The error dialog's End and the editor's Reset fire no opcode; this is where they show.
+        bool allDead = s->depth > 0;
+        for (int i = 0; i < s->depth && allDead; ++i) allDead = ProvenDead(chain, walked, here, s->stack[i].sp);
+        if (allDead) MarkEndedByVba(s);
+
         bool running = false;
         while (s->depth > 0)
         {
             const Frame& top = s->stack[s->depth - 1];
             // Running if above our own stack with its trailer in place (a leftover from an
             // earlier unwind fails that); a frame beneath a running one runs too.
-            running = running || (top.sp > here && FrameStillLive(top));
+            running = running || (!ProvenDead(chain, walked, here, top.sp) && FrameStillLive(top));
             CloseFrame(s, now, 0, 0, 0, "flush", running);
         }
         s->current = 0; s->currentSp = 0;

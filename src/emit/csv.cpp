@@ -108,9 +108,8 @@ namespace csv
             return t_frag.Reserve(need);   // null -- WriteRow then drops the row rather than fault
         }
 
-        // Creates the file on the first record that reaches a writer, never on the arm path, so
-        // a session that traces nothing leaves no empty file. Takes g_cs recursively and
-        // publishes g_file last, because readers gate on it.
+        // Creates the file on the first record that reaches a writer, never at Open. Takes g_cs
+        // recursively and publishes g_file last, because readers gate on it.
         bool EnsureFile()
         {
             if (g_file != INVALID_HANDLE_VALUE) return true;
@@ -394,7 +393,7 @@ namespace csv
 
     namespace
     {
-        void WriteCounted(const Row& row)
+        void WriteCounted(const Row& row, bool keep)
         {
         // Into the per-thread heap scratch, not the stack; a failed allocation drops the row. `input`
         // is consumed whether or not the row reaches the ring, so a dropped row leaves a hole.
@@ -427,7 +426,7 @@ namespace csv
 
         if (g_ring.Active())
         {
-            g_ring.TryDeposit(frag, n, g_drain.wake);   // lock-free; the drain creates the file
+            g_ring.TryDeposit(frag, n, g_drain.wake, keep);   // lock-free; the drain creates the file
             return;
         }
 
@@ -453,7 +452,15 @@ namespace csv
         // Counted in before the armed check: Close clears the flag and then waits for this count, so
         // no producer that saw it set is missed.
         InterlockedIncrement(&g_producers);
-        if (Prepared()) WriteCounted(row);   // armed? -- the file may not exist yet
+        if (Prepared()) WriteCounted(row, false);   // armed? -- the file may not exist yet
+        InterlockedDecrement(&g_producers);
+    }
+
+    void WriteRowKept(const Row& row)
+    {
+        if (!g_csReady) return;
+        InterlockedIncrement(&g_producers);
+        if (Prepared()) WriteCounted(row, true);
         InterlockedDecrement(&g_producers);
     }
 

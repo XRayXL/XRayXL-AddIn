@@ -147,6 +147,14 @@ namespace core
         Push(Frame::Arg);
     }
 
+    void TextValueWriter::BeginNamedArg(const char* name, const char* type)
+    {
+        char t[160];
+        _snprintf_s(t, _TRUNCATE, "%s%s:%s=", TakeFirst() ? " " : "", name, type ? type : "?");
+        m_out.Append(t);
+        Push(Frame::Arg);
+    }
+
     void TextValueWriter::ArgUnreadable() { m_out.Append("<unreadable>"); }
     void TextValueWriter::EndArg()        { Pop(); }
 

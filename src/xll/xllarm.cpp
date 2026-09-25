@@ -291,6 +291,7 @@ namespace xll
         if (Armed()) { rep.detail = "already armed"; return rep; }
 
         ResetDeclines();
+        ResetCounts();                    // before the off check: an XLL-off session counts nothing
 
         // XLL off means nothing hooked at all, never hooked-but-silent.
         SetCapture(core::modes::GetArgs(core::modes::Source::Xll),
@@ -465,9 +466,7 @@ namespace xll
         }
         SetArmed(false);          // then, so a re-entrant call is a no-op
         DisableAll();
-        // Count after Close: in ring mode rows are not all written until the drain has run.
         emit::csv::Close();
-        const long long rows = emit::csv::RowsWritten();
 
         // An entry without its exit reads as a hang. Non-zero only: a clean
         // session says nothing.
@@ -492,16 +491,10 @@ namespace xll
         if (missed > 0)
         {
             std::ostringstream m;
-            m << "disarmed -- WARNING: " << missed
+            m << "disarm -- WARNING: " << missed
               << " registered function(s) were never hooked. They registered after"
                  " arming, so nothing about them was traced. Arm again to include them.";
             core::Log::Note(m.str());
-        }
-        else
-        {
-            std::ostringstream d;
-            d << "disarmed -- " << rows << " row(s) written";
-            core::Log::Note(d.str());
         }
     }
 }

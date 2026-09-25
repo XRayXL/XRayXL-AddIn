@@ -43,6 +43,8 @@ namespace xll
     long long FramesResynced();
     // Calls not recorded because a thread's frame stack could not grow.
     long long StackGrowFailures();
+    // At arm, so the counts above are the session's, as the disarm row reports them.
+    void      ResetCounts();
     // At thread exit: frees the thread's frame stack.
     void      ReleaseThreadState();
 }

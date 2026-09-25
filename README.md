@@ -334,6 +334,7 @@ inventory of what each suite defends.
 | [docs/Implementation.md](./docs/Implementation.md) | How it works — the vehicle, what is derived, and the two tracers |
 | [docs/VBATracing.md](./docs/VBATracing.md) | A layered walkthrough of VBA tracing — what is patched, the shadow stack, return values and error outcomes, for a general programmer |
 | [docs/TraceRowModel.md](./docs/TraceRowModel.md) | The trace file's contract, in full |
+| [docs/ErrorsInTheTrace.md](./docs/ErrorsInTheTrace.md) | How errors read in a trace — each outcome in a real chain, VBA's error dialog, and the edge cases |
 | [docs/Testing.md](./docs/Testing.md) | How the tests are run, and the principles that decide whether a suite is worth running |
 | [tests/sweep/README.md](./tests/sweep/README.md) | What each suite defends, and how to add a test |
 

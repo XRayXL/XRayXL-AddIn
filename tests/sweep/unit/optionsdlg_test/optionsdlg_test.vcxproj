@@ -33,6 +33,7 @@
     <!-- The shipping dialog and everything it draws with, so what passes is the code that
          ships. The test stubs only what the add-in's session would supply. -->
     <ClCompile Include="$(XRayRoot)src\ui\optionsdlg.cpp" />
+    <ClCompile Include="$(XRayRoot)src\ui\eventpane.cpp" />
     <ClCompile Include="$(XRayRoot)src\ui\dlgexcelstyle.cpp" />
     <ClCompile Include="$(XRayRoot)src\ui\ribbonmodel.cpp" />
     <ClCompile Include="$(XRayRoot)src\ui\softdraw.cpp" />
@@ -43,6 +44,7 @@
     <ClCompile Include="$(XRayRoot)src\core\notify.cpp" />
     <ClCompile Include="$(XRayRoot)src\app\paramparse.cpp" />
     <ClCompile Include="$(XRayRoot)src\app\settings.cpp" />
+    <ClCompile Include="$(XRayRoot)src\core\eventlist.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="$(XRayRoot)src\XRayXL.rc" />

@@ -43,6 +43,7 @@ namespace core
 
         void BeginArgs() override;
         void BeginArg(int slot, const char* type, std::uint64_t address) override;
+        void BeginNamedArg(const char* name, const char* type) override;
         void ArgUnreadable() override;
         void EndArg() override;
         void ArgsNote(int described, int total) override;

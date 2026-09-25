@@ -5,6 +5,8 @@
 #    XRAY_SOAK_SECONDS   seconds per measured phase (default 180; two phases)
 #    XRAY_SOAK_WARMUP    discarded warm-up seconds  (default 60)
 #    XRAY_SOAK_CYCLE_MS  minimum ms between cycles  (default 200, i.e. 5/sec)
+#    XRAY_SOAK_EVENTS    All (default), Calc, Selection, CalcAndSelection or None: Excel's events
+#                        recorded while armed; every cycle raises ten kinds either way
 
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\..\sweep\_xray_common.ps1')
@@ -14,6 +16,7 @@ $PhaseSeconds  = Get-EnvInt 'XRAY_SOAK_SECONDS'  180
 $WarmupSeconds = Get-EnvInt 'XRAY_SOAK_WARMUP'    60
 $CycleMs       = Get-EnvInt 'XRAY_SOAK_CYCLE_MS' 200
 $SampleEvery   = 10          # cycles between resource samples
+$EventSet      = if ($env:XRAY_SOAK_EVENTS) { $env:XRAY_SOAK_EVENTS } else { 'All' }
 
 try {
     $sx  = Connect-TestExcel
@@ -121,6 +124,14 @@ End Sub
         @{ Kind = 'Sheet'; Code = $sheetCode }
     )
 
+    # A book of its own to raise events in, so the model's formulas never read what it writes.
+    # Its edits recalculate the volatile cells too, in both phases alike.
+    $scratch = New-EventScratchBook $sx
+    $model = (Get-XRayMacroBook 'SoakModel').Book
+    $modelLeaf = (Get-XRayMacroBook 'SoakModel').Leaf
+    $model.Activate()
+    $script:round = 0
+
     $threads = Enable-MultiThreadedCalc $app
 
     # One cycle is a full rebuild of both books plus one macro run. Rebuild, not Calculate:
@@ -128,7 +139,9 @@ End Sub
     function Invoke-SoakCycle {
         $t0 = [Diagnostics.Stopwatch]::StartNew()
         [void]$app.CalculateFullRebuild()
-        [void]$app.Run('MA_Work')
+        [void]$app.Run("'$modelLeaf'!MA_Work")      # named: with three books open, a bare name may miss
+        $script:round++
+        Invoke-EventPoke $sx $scratch $model $script:round
         # Pace from the start of the cycle: a fixed sleep after it would make the phases differ
         # by the sleep as well as the work.
         $rest = $CycleMs - $t0.ElapsedMilliseconds
@@ -172,6 +185,16 @@ End Sub
     # both sources must actually trace, or the figures measure nothing
     $bad = Set-XRayDepthAll $sx
     if ($bad) { Complete-Test -Fail -Detail $bad }
+    $chosen = switch ($EventSet) {
+        'All'              { $script:AppEvents }
+        'Calc'             { $script:CalcEvents }
+        'Selection'        { $script:SelectionEvents }
+        'CalcAndSelection' { $script:CalcEvents + $script:SelectionEvents }
+        'None'             { @() }
+        default            { Complete-Test -Fail -Detail "XRAY_SOAK_EVENTS must be All, Calc, Selection, CalcAndSelection or None, not '$EventSet'" }
+    }
+    $bad = @(Set-EventChoice $sx $chosen @{})
+    if ($bad.Count) { Complete-Test -Fail -Detail ("events setter: " + ($bad -join ' | ')) }
 
     # ---- phase 0: warm-up, discarded --------------------------------------
     # First-touch costs -- JIT of the VBA, the XLL's first calls, Excel's own
@@ -208,6 +231,14 @@ End Sub
         foreach ($line in $reader) { $rows++ }
         $rows = [math]::Max(0, $rows - 1)   # the header is not a row
     }
+    # Every chosen kind the cycle raises must be in the trace, or the soak did not exercise it.
+    $events = Get-EventCounts $csv
+    $eventRows = 0; foreach ($v in $events.Values) { $eventRows += $v }
+    $missing = @($script:PokedEvents | Where-Object { $chosen -contains $_ -and -not $events[$_] })
+    $stray = @($events.Keys | Where-Object { $chosen -notcontains $_ })
+    $eventNote = "events=$EventSet rows=$eventRows (" +
+                 (($events.Keys | Sort-Object | ForEach-Object { "$_=$($events[$_])" }) -join ' ') + ")"
+
     $mbPer100kRows = if ($rows -gt 0) {
         [math]::Round((($armed.Last.PrivateMB - $armed.First.PrivateMB) / $rows) * 100000, 2)
     } else { 0 }
@@ -219,7 +250,7 @@ End Sub
     $dropNote = if ($dropped -lt 0) { ' DROPS=UNKNOWN (the disarm faulted inside the XLL)' }
                 elseif ($dropped -gt 0) { " DROPPED={0} (per-row figure is a LOWER BOUND)" -f $dropped }
                 else { '' }
-    $detail = (("threads={0} phase_s={1} warmup_s={2} rows={3}$dropNote | " +
+    $detail = (("threads={0} phase_s={1} warmup_s={2} rows={3}$dropNote | $eventNote | " +
                 "control: cycles={4} {5}MB/1000 {6}handles/1000 | " +
                 "armed: cycles={7} {8}MB/1000 {9}handles/1000 | " +
                 "ATTRIBUTABLE: {10}MB/1000 cycles, {11} handles/1000 cycles, {12}MB/100k rows") -f `
@@ -230,6 +261,8 @@ End Sub
 
     # A soak that traced nothing measured nothing, whatever its numbers say.
     if ($rows -le 0) { Complete-Test -Fail -Detail ("armed phase produced NO trace rows -- " + $detail) }
+    if ($missing.Count) { Complete-Test -Fail -Detail ("chosen events raised every cycle are missing: $($missing -join ',') -- " + $detail) }
+    if ($stray.Count) { Complete-Test -Fail -Detail ("events recorded though not chosen: $($stray -join ',') -- " + $detail) }
 
     Complete-Test -Pass -Detail ("measured -- " + $detail)
 }

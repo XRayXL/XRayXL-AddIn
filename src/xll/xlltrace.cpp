@@ -305,5 +305,12 @@ namespace xll
     long long RecorderFaults() { return InterlockedCompareExchange64(&g_recorderFaults, 0, 0); }
     long long FramesResynced() { return InterlockedCompareExchange64(&g_framesResynced, 0, 0); }
     long long StackGrowFailures() { return InterlockedCompareExchange64(&g_stackGrowFailures, 0, 0); }
+    void ResetCounts()
+    {
+        InterlockedExchange64(&g_exitsDropped, 0);
+        InterlockedExchange64(&g_recorderFaults, 0);
+        InterlockedExchange64(&g_framesResynced, 0);
+        InterlockedExchange64(&g_stackGrowFailures, 0);
+    }
     void ReleaseThreadState() { t_state.frames.Release(); }
 }

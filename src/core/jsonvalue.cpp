@@ -308,6 +308,16 @@ namespace core
         Push(Frame::Arg);
     }
 
+    void JsonValueWriter::BeginNamedArg(const char* name, const char* type)
+    {
+        m_out.Append(TakeFirst() ? "," : "");
+        m_out.Append("{\"name\":");
+        AppendJsonString(m_out, name);
+        m_out.Append(",\"type\":");
+        AppendJsonString(m_out, type ? type : "?");
+        Push(Frame::Arg);
+    }
+
     void JsonValueWriter::ArgUnreadable() { m_out.Append(",\"unreadable\":true"); }
     void JsonValueWriter::EndArg()        { m_out.Append('}'); Pop(); }
 

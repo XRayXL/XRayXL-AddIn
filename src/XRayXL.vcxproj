@@ -117,6 +117,7 @@
     <ClCompile Include="ui\glyphs.cpp" />
     <ClCompile Include="ui\traceactions.cpp" />
     <ClCompile Include="ui\optionsdlg.cpp" />
+    <ClCompile Include="ui\eventpane.cpp" />
     <ClCompile Include="ui\diagnosticsdlg.cpp" />
     <ClCompile Include="ui\dlgexcelstyle.cpp" />
     <ClCompile Include="ui\gridlist.cpp" />
@@ -131,6 +132,7 @@
     <ClCompile Include="xll\xllhook.cpp" />
     <ClCompile Include="xll\xlltrace.cpp" />
     <ClCompile Include="core\caller.cpp" />
+    <ClCompile Include="core\sheetquote.cpp" />
     <ClCompile Include="app\commands.cpp" />
     <ClCompile Include="app\session.cpp" />
     <ClCompile Include="app\traceparam.cpp" />
@@ -142,6 +144,8 @@
     <ClCompile Include="emit\rowjson.cpp" />
     <ClCompile Include="app\paramparse.cpp" />
     <ClCompile Include="app\settings.cpp" />
+    <ClCompile Include="app\appevents.cpp" />
+    <ClCompile Include="core\eventlist.cpp" />
     <ClCompile Include="vba\vbaproctable.cpp" />
     <ClCompile Include="vba\vbaderive.cpp" />
     <ClCompile Include="vba\vbapatch.cpp" />
@@ -194,6 +198,7 @@
     <ClInclude Include="diag\snapshot.h" />
     <ClInclude Include="diag\tableout.h" />
     <ClInclude Include="core\caller.h" />
+    <ClInclude Include="core\sheetquote.h" />
     <ClInclude Include="core\render.h" />
     <ClInclude Include="core\textbuf.h" />
     <ClInclude Include="core\textvalue.h" />
@@ -205,6 +210,8 @@
     <ClInclude Include="core\text.h" />
     <ClInclude Include="core\safemem.h" />
     <ClInclude Include="core\tlsstack.h" />
+    <ClInclude Include="core\eventlist.h" />
+    <ClInclude Include="app\appevents.h" />
     <ClInclude Include="core\moduleid.h" />
     <ClInclude Include="app\session.h" />
     <ClInclude Include="app\exports.h" />

@@ -160,20 +160,21 @@ int main()
     // ---- toolbar and menu ------------------------------------------------
     {
         XLOPER12 two[2]{};
-        two[0].xltype = xltypeNum; two[0].val.num = 5;
-        two[1].xltype = xltypeInt; two[1].val.w  = 2;
+        // {position, toolbar}, as Excel sends it: the second button on toolbar 5.
+        two[0].xltype = xltypeInt; two[0].val.w  = 2;
+        two[1].xltype = xltypeNum; two[1].val.num = 5;
         XLOPER12 op{}; op.xltype = xltypeMulti;
         op.val.array.rows = 1; op.val.array.columns = 2; op.val.array.lparray = two;
-        Check("toolbar tool, built-in (numbers)", op, nullptr, "toolbar", "5/2");
+        Check("toolbar tool, built-in (numbers)", op, nullptr, "toolbar", "2/5");
 
         // A custom toolbar answers with its name, not a number, so the name is quoted and never
         // reads like a number.
         auto barName = Pascal(L"XRayProbeBar");
-        two[0].xltype = xltypeStr; two[0].val.str = barName.data();
-        Check("toolbar tool, custom (named)", op, nullptr, "toolbar", "\"XRayProbeBar\"/2");
-        two[0].xltype = xltypeNum; two[0].val.num = 5;
+        two[1].xltype = xltypeStr; two[1].val.str = barName.data();
+        Check("toolbar tool, custom (named)", op, nullptr, "toolbar", "2/\"XRayProbeBar\"");
+        two[1].xltype = xltypeNum; two[1].val.num = 5;
 
-        // A menu is four elements: {bar ID, menu, submenu, command}.
+        // A menu is four elements, as Excel sends them: {command, menu, bar ID, submenu}.
         XLOPER12 four[4]{};
         four[0].xltype = xltypeNum; four[0].val.num = 1;
         four[1].xltype = xltypeNum; four[1].val.num = 2;

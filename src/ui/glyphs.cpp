@@ -34,6 +34,11 @@ void Draw(HDC dc, const RECT& box, Kind kind, int line, COLORREF ink, COLORREF p
         ring(15, 14, 27, 26, 6);
         disc(21, 20, 3, ink);
         break;
+    case Kind::Events:                      // a lightning bolt
+        stroke(17, 2, 8, 15, line);  stroke(8, 15, 14, 15, line);
+        stroke(14, 15, 11, 26, line); stroke(11, 26, 21, 12, line);
+        stroke(21, 12, 15, 12, line); stroke(15, 12, 17, 2, line);
+        break;
     case Kind::Output:                      // a page, with an arrow leaving it
         ring(3, 1, 19, 25, 2);
         stroke(7, 7, 15, 7, line);

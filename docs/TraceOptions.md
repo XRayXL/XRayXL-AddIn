@@ -6,8 +6,8 @@ reference for those settings and for the add-in's own log. What the resulting
 rows *mean* is [TraceRowModel.md](./TraceRowModel.md).
 
 The **XRayXL group** on the Developer tab is a front end to exactly these calls —
-**Arm**, **Disarm** and **Options**, the last a dialog with five pages: Capture (a section
-per source, each a Depth drop-down and check boxes), Output (the format
+**Arm**, **Disarm** and **Options**, the last a dialog with six pages: Capture (a section
+per source, each a Depth drop-down and check boxes), Events (which of Excel's own events are recorded), Output (the format
 drop-down, the trace folder and file), Advanced (the output buffer, the optional `breaks` column and the log level),
 About (the version and the licence), and Notices (the third-party notices). It holds no settings of its own, so the two can never
 disagree: press Apply and `XRayXL_GetTraceParam` reports what you chose; change
@@ -63,6 +63,7 @@ These take no `Source`.
 | `BUFFERWHENFULL` | `PAUSE` / `DROP` | `PAUSE` | What a full ring does — make the calculation wait until it is half empty, or drop rows |
 | `FORMAT` | `CSV` / `JSONL` | `CSV` | The trace file's format: CSV, with values as text, or JSON Lines, one object a line with every value structured and typed (see [the row model](TraceRowModel.md#json-lines)). Also **Options › Output › Format** |
 | `LOGLEVEL` | `DEBUG`/`INFO`/`WARNING`/`ERROR` | `INFO` | The log's level (see [The log](#the-log)) |
+| `EVENTS` | an event's name, then `TRUE` / `FALSE` | the Calc set | Whether one of Excel's Application events is recorded (see [Excel's events](#excels-events)) |
 
 The ring keeps file I/O off the calculation thread, so tracing disturbs the
 timings as little as possible. The defaults suit most sessions.
@@ -86,6 +87,30 @@ other and waits or drops by `BUFFERWHENFULL`; one larger than the whole ring can
 it is dropped and counted even under `PAUSE`, since waiting for it would stall the calculation
 for good. A value is at most 4 MB — an array past that is written as its shape alone — so with
 the default ring only a deliberately small `BUFFERSIZE` meets this.
+
+## Excel's events
+
+While armed, XRayXL also records the events Excel raises on its `Application` object, one
+`event` row each, in the order Excel raises them ([TraceRowModel.md](./TraceRowModel.md#kinds-and-sources)).
+Each is chosen on its own:
+
+```vba
+Application.Run "XRayXL_SetTraceParam", "EVENTS", "SheetSelectionChange", True
+Application.Run "XRayXL_GetTraceParam", "EVENTS", "SheetSelectionChange"    ' TRUE or FALSE
+Application.Run "XRayXL_GetTraceParam", "EVENTS"                            ' Calc, Selection, Calc & Selection, All, None or Custom
+```
+
+A name Excel does not have is refused, so a typo fails. One that this Excel lacks but a newer
+one has is kept, and the arm log names it. The default is the **Calc** set: `SheetChange`,
+`SheetCalculate`, `AfterCalculate`, `SheetTableUpdate`, `SheetPivotTableUpdate`,
+`SheetPivotTableAfterValueChange`, `WorkbookModelChange`, `WorkbookAfterRemoteChange` and
+`RemoteSheetChange`.
+
+**Options › Events** shows every event with a check box, grouped by area, and a drop-down of
+presets — None, Calc, Selection, Calc & Selection, All — that ticks exactly a preset's events; ticking anything
+else turns it to Custom. A group's own box ticks the whole group, clears it, and on a third
+click gives back the mix it had. Events that fire often are marked ⚡, and events this Excel
+does not have are greyed.
 
 ## Arming loads VBA if it is not already loaded
 

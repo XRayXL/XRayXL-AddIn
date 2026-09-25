@@ -51,7 +51,8 @@ namespace emit
         // drop and returns false; PAUSE signals `wake` and waits until the drain has emptied
         // the ring to half. Returns false without blocking when `n` can never fit or the ring
         // is inactive.
-        bool  TryDeposit(const char* data, int n, HANDLE wake);
+        // `keep` waits for room even under DROP, for the rows a trace cannot be read without.
+        bool  TryDeposit(const char* data, int n, HANDLE wake, bool keep = false);
 
         // Consumer, single thread only. The length of the next committed record, or -1 when
         // none is ready, so the caller can size the buffer it pops into.

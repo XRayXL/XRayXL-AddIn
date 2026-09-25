@@ -66,6 +66,15 @@
 #define IDC_NOT_HDR        1700
 #define IDC_NOT_TEXT       1701
 
+// Events
+#define IDC_EVT_HDR        1800
+#define IDC_EVT_SEC1       1801
+#define IDC_EVT_RULE1      1802
+#define IDC_EVT_PRESETLBL  1803
+#define IDC_EVT_PRESET     1804
+#define IDC_EVT_COUNT      1805
+#define IDC_EVT_PANE       1806
+
 // The texts both pages show, compiled in from the repository's own files.
 #define IDR_LICENSE        300
 #define IDR_NOTICES        301

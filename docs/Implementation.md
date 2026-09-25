@@ -39,7 +39,7 @@ decisions.
 
 | Part | Files |
 |---|---|
-| **1. The vehicle** | `src/dllmain.cpp`, `src/XRayXL.def`; `src/app/` — `session` (arm and disarm both sources), `commands` (the `XRayXL_*` exports and their guards), `traceparam` (Set/Get), `summary` (the trace summary), `settings` (every setting at once, for the log), `paramparse`/`xlgrid` (their arguments and answers); `src/core/` — logging, the crash log, the Excel API wrappers, trace modes, and what both tracers share: `caller` (the calling cell), `render`, `text`, `clock`, `safemem` |
+| **1. The vehicle** | `src/dllmain.cpp`, `src/XRayXL.def`; `src/app/` — `session` (arm and disarm both sources, and write the `arm` and `disarm` rows), `appevents` (Excel's Application events; the catalogue is `src/core/eventlist`), `commands` (the `XRayXL_*` exports and their guards), `traceparam` (Set/Get), `summary` (the trace summary), `settings` (every setting at once, for the log), `paramparse`/`xlgrid` (their arguments and answers); `src/core/` — logging, the crash log, the Excel API wrappers, trace modes, and what both tracers share: `caller` (the calling cell), `render`, `text`, `clock`, `safemem` |
 | **2. Derivation** | `src/vba/vbaderive.*` — locating and verifying the dispatch table |
 | **3. XLL tracing** | `src/xll/` — `xllregistry` (enumerate), `xlltypeplan` (parse the registration), `xllhook` + `xllthunk.asm` (patch and wrap), `xlldecode` (read the values), `xlltrace` (build the row), `xllarm` (hook and unhook this source), `xllregister_watch` (add-ins loaded after arming) |
 | **4. VBA tracing** | `src/vba/` — `vbapatch` + `vbathunk.asm` (swap the slots), `vbapcode` + `vbapcode_tables.h` (the walk, and the pinned lengths it walks by), `vbatrace` (the shadow stack) + `vbareport` (its disarm report), `vbaargs`/`vbaretdecode` (read the values), `vbaidentity`/`vbaproctable`/`vbatrailer` (name the procedure) |
@@ -123,8 +123,8 @@ because there is no state to set: each page is a snapshot taken when the page is
 opened, from `CreateToolhelp32Snapshot`, `GetEnvironmentStringsW` and the
 process counters. It is enabled armed or not for the same reason.
 
-Four settings take no `Source` — `BUFFERSIZE` (ring size in MB), `BUFFERWHENFULL`
-(`DROP`/`PAUSE`), `FORMAT` (`CSV`/`JSONL`) and `LOGLEVEL` (`DEBUG`/`INFO`/`WARNING`/`ERROR`). Every
+Five settings take no `Source` — `BUFFERSIZE` (ring size in MB), `BUFFERWHENFULL`
+(`DROP`/`PAUSE`), `FORMAT` (`CSV`/`JSONL`), `EVENTS` (one of Excel's events, `TRUE`/`FALSE`) and `LOGLEVEL` (`DEBUG`/`INFO`/`WARNING`/`ERROR`). Every
 per-source setting defaults to on, with `DEPTH=ALL` for both sources. **The
 setters refuse while armed and refuse when the caller is a
 cell** — a trace setting changed mid-calculation, or written by a formula, would
@@ -320,6 +320,13 @@ Nothing beyond Windows is used.
   `src/ui/traceactions.{h,cpp}`. The file's name is known from the moment of
   arming, so Tail works before the first row is written; it waits for the file.
 - **The page glyphs** are `src/ui/glyphs.{h,cpp}`: hairline drawings in one ink.
+- **The Events page's list** is `src/ui/eventpane.{h,cpp}`: a scrolling pane of owner-drawn
+  check boxes, one per event and one per group. An owner-drawn button tells a screen reader
+  nothing, so each box's role and checked, mixed or unavailable state is set on it through
+  `IAccPropServices`. A change touches only the boxes whose state moved, and a scroll moves
+  the rows as one picture (`ScrollWindowEx`), so only rows it uncovers are drawn. The dialog
+  clips its children and changes page with redrawing suspended, so it paints once.
+  `optionsdlg_test` counts what each action repaints.
 
 ## Export-surface discipline
 
@@ -484,7 +491,7 @@ So we hook **the registered function itself**.
 | | Call-site hook (old) | Function hook (now) |
 |---|---|---|
 | Derived addresses | 1, from stack walks | **0** |
-| Stack walking | every derivation | **none** — the stack-walk hazard does not arise |
+| Stack walking | every derivation | **none** to find a hook — the stack-walk hazard does not arise |
 | Identity | runtime address→registration lookup | **free** — we know what we hooked |
 | Signature | inferred | exact, from the registration string |
 | Blast radius of a bug | every add-in call in the process | one function |
@@ -1090,10 +1097,11 @@ per traced call and is now unconditional.
 sheet event, an `Application.OnTime` macro — is not seen as a cell entry, so its
 unhandled error reads `threw` rather than `unhandled`. It is under-labelled, not
 wrong: the raiser is still located, the escape is counted, and Excel shows its own
-modal dialog. A *VBA-triggered* event (a macro writes a cell, firing
-`Worksheet_Change` beneath it) is not a gap — the error genuinely propagates to the
-macro, and the trace shows that. Both are pinned by
-`a-user-triggered-event-error-reads-threw`.
+modal dialog. Pinned by `a-user-triggered-event-error-reads-threw`. A
+*VBA-triggered* event (a macro writes a cell, firing `Worksheet_Change` beneath it)
+does not pass its error to the macro either, and nor does a macro called with
+`Application.Run`: VBA's dialog appears in the callee, and End stops the caller too,
+`On Error` or not. Pinned by `application-run-and-events-are-not-cell-escapes`.
 
 **Two supporting pieces make the chain hold up.** A frame killed by an unhandled
 error runs no epilogue, so the stack-pointer backstop never closes it; the next cell
@@ -1104,7 +1112,49 @@ closes while still running as a throw, though it has run no epilogue either: a m
 still executing at disarm keeps its outcome, and the same `FrameStillLive` check
 tells a running frame from a leftover of an earlier unwind.
 
+**A stack that dies whole was ended by VBA.** End on VBA's error dialog fires no
+opcode, so its frames stay open. End stops every VBA frame on the thread, and an
+error that is caught always leaves the catcher running, so when every open frame is
+found dead at once, `MarkEndedByVba` reads them as End left them: the innermost raised
+and reads `threw`, unless it had stopped in the editor (`breaks`), and the others read
+`abandoned`; frames from a cell entry upwards keep the cell's error. It is applied
+where the dead frames are found: at an activation start, from `FramesStillOpen`, which reads
+each frame once for both this and the closing, and at disarm.
+
+**A trailer can outlive its frame.** After End nothing overwrites a dead frame's stack,
+so its trailer still reads as running; and once anything reuses that stack, such as
+Excel's `SheetChange` recorded after the End, the same frame reads as a throw. So
+`FlushOpenFrames` first walks the thread's call stack (`WalkChain`) up to the outermost
+open frame. A frame whose recorded pointer lies below the flush's own stack, or inside
+another module's frame rather than VBE7's, is dead. The walk is the one in the product, and it keeps clear of
+the stack-walk hazard below: it looks up only addresses inside a loaded module
+(`RtlPcToFileHeader`), so no dynamic function table callback is ever reached, and it
+stops at the first address that is not. `Application.Run` and `OnTime` pass through
+such code, so a frame beyond it is left to `FrameStillLive`.
+
 ---
+
+## Excel's events
+
+The listener (`app/appevents`) subscribes to the `AppEvents` connection point of Excel's own
+`Application` object at arm, reached the way arming already reaches it (`core/excel_om`), and
+unsubscribes at disarm. Unsubscribing happens even when Excel is shutting down: a subscription
+left behind would have Excel call into an unloaded add-in.
+
+- **Events are known by DISPID,** which never changes between versions, so an older Excel
+  simply never raises one it lacks. The catalogue (`core/eventlist`) holds the 54 known ones,
+  their groups and presets; which exist in the running Excel, and every parameter's name and
+  type, come from its own type library at arm.
+- **Excel passes every argument named, by position,** not last-first as `IDispatch::Invoke`
+  otherwise defines, so each value is taken by its named position.
+- **Everything runs on Excel's main thread,** where the object model is safe to call, so a
+  `Range` or sheet argument is always described, whatever `OBJECTS` says. A `Cancel` argument
+  is read, never written.
+- **The handler's own time is added to `tracerticks`,** since an event raised inside a traced
+  call (a macro writing a cell) lands inside its span.
+
+The session opens the trace itself before either source arms, so the `arm` row is always the
+first, and closes it after both have disarmed, so the `disarm` row is always the last.
 
 # Part 5 — Safety
 

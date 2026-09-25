@@ -1,4 +1,4 @@
-# Shared plumbing for talking to the XRayXL XLL in a StretchXL session; the underscore keeps it
+﻿# Shared plumbing for talking to the XRayXL XLL in a StretchXL session; the underscore keeps it
 # out of test discovery. Product knowledge lives here so StretchXL stays product-agnostic.
 
 function Clear-XRayStaleTraces([int]$ExcelPid) {
@@ -12,6 +12,43 @@ function Clear-XRayStaleTraces([int]$ExcelPid) {
     $earlier = Join-Path $dir 'earlier'
     New-Item -ItemType Directory -Force $earlier | Out-Null
     foreach ($f in $stale) { Move-Item -LiteralPath $f.FullName -Destination $earlier -Force -ErrorAction SilentlyContinue }
+}
+
+# Excel's Application events, as issue #13 lists them; the tests' own copy, not read back from the add-in.
+$script:AppEvents = @(
+    'SheetChange', 'SheetCalculate', 'AfterCalculate', 'SheetTableUpdate', 'WorkbookModelChange',
+    'SheetSelectionChange', 'SheetActivate', 'SheetDeactivate', 'WorkbookActivate', 'WorkbookDeactivate',
+    'SheetBeforeDoubleClick', 'SheetBeforeRightClick', 'SheetFollowHyperlink',
+    'NewWorkbook', 'WorkbookOpen', 'WorkbookBeforeClose', 'WorkbookBeforeSave', 'WorkbookAfterSave',
+    'WorkbookBeforePrint', 'WorkbookNewSheet', 'WorkbookNewChart', 'SheetBeforeDelete',
+    'WorkbookAddinInstall', 'WorkbookAddinUninstall', 'SheetLensGalleryRenderComplete',
+    'WindowActivate', 'WindowDeactivate', 'WindowResize',
+    'SheetPivotTableUpdate', 'SheetPivotTableAfterValueChange', 'SheetPivotTableBeforeAllocateChanges',
+    'SheetPivotTableBeforeCommitChanges', 'SheetPivotTableBeforeDiscardChanges',
+    'WorkbookPivotTableOpenConnection', 'WorkbookPivotTableCloseConnection',
+    'WorkbookRowsetComplete', 'WorkbookBeforeXmlImport', 'WorkbookAfterXmlImport',
+    'WorkbookBeforeXmlExport', 'WorkbookAfterXmlExport', 'WorkbookSync',
+    'ProtectedViewWindowOpen', 'ProtectedViewWindowActivate', 'ProtectedViewWindowDeactivate',
+    'ProtectedViewWindowBeforeEdit', 'ProtectedViewWindowBeforeClose', 'ProtectedViewWindowResize',
+    'WorkbookBeforeRemoteChange', 'WorkbookAfterRemoteChange', 'RemoteSheetChange',
+    'RemoteWorkbookNewSheet', 'RemoteWorkbookNewChart', 'RemoteSheetBeforeDelete', 'RemoteSheetPivotTableUpdate'
+)
+$script:CalcEvents = @('SheetChange', 'SheetCalculate', 'AfterCalculate', 'SheetTableUpdate',
+    'SheetPivotTableUpdate', 'SheetPivotTableAfterValueChange', 'WorkbookModelChange',
+    'WorkbookAfterRemoteChange', 'RemoteSheetChange')
+$script:SelectionEvents = @('SheetSelectionChange', 'SheetActivate', 'SheetDeactivate', 'WorkbookActivate',
+    'WorkbookDeactivate', 'SheetBeforeDoubleClick', 'SheetBeforeRightClick', 'SheetFollowHyperlink',
+    'WindowActivate', 'WindowDeactivate', 'ProtectedViewWindowActivate', 'ProtectedViewWindowDeactivate')
+
+function Set-XRayEvents($Sx, [string[]]$On) {
+    # Records exactly these events, one setter call each. Returns the echoes that did not agree.
+    $bad = @()
+    foreach ($name in $script:AppEvents) {
+        $want = $On -contains $name
+        $echo = [string]$Sx.App.Run('XRayXL_SetTraceParam', 'EVENTS', $name, $want)
+        if ($echo -notlike "EVENTS $name=$(if ($want) { 'TRUE' } else { 'FALSE' })*") { $bad += $echo }
+    }
+    return $bad
 }
 
 function Set-XRaySessionDefaults($Sx) {
@@ -52,6 +89,7 @@ function Set-XRaySessionDefaults($Sx) {
     try { [void]$app.Run('XRayXL_SetTraceParam', 'VBA', 'BREAKPOINTS', $false) } catch {}
     $level = if ($env:XRAYXL_LOGLEVEL) { $env:XRAYXL_LOGLEVEL } else { 'INFO' }
     try { [void]$app.Run('XRayXL_SetTraceParam', 'LOGLEVEL', $level) } catch {}
+    try { [void](Set-XRayEvents $Sx $script:CalcEvents) } catch {}
     # Excel's own default; the timeline driver forces a thread count after this.
     try { $app.MultiThreadedCalculation.Enabled = $true; $app.MultiThreadedCalculation.ThreadMode = 0 } catch {}
 }
@@ -169,6 +207,22 @@ function Stop-XRayTrace($Sx) {
         return ("TRACE INCOMPLETE: the output buffer dropped $drops row(s) during this run -- " +
                 'nothing below can be asserted against a trace with holes in it ' +
                 '(raise BUFFERSIZE, or the run is emitting faster than the drain)')
+    }
+    # A clean disarm ends the trace with its disarm row; without one the file reads as a crash.
+    # The newest file in either format: a JSON Lines session writes no .csv.
+    $dir = Join-Path (Get-XRayRoot) 'TraceFiles'
+    $trace = @(Get-ChildItem (Join-Path $dir ("XRayXL_Trace_*_{0}.*" -f $Sx.ProcId)) -ErrorAction SilentlyContinue |
+               Where-Object { $_.Extension -in '.csv', '.jsonl' } | Sort-Object LastWriteTime) |
+             Select-Object -Last 1 | ForEach-Object { $_.FullName }
+    if ($trace -and (Test-Path $trace)) {
+        $last = Get-Content $trace -Tail 1
+        $isDisarm = if ($trace -like '*.jsonl') {
+            $r = $last | ConvertFrom-Json
+            $r.kind -eq 'event' -and $r.source -eq 'XRayXL' -and $r.function -eq 'disarm'
+        } else { $last -match '^\d+,\d+,event,XRayXL,0,0,0,\d+,\d+,,disarm,' }
+        if (-not $isDisarm) {
+            return "TRACE UNFINISHED: a clean disarm left no disarm row last in $trace"
+        }
     }
     return ''
 }
@@ -507,8 +561,8 @@ function ConvertFrom-XRayTotals([string]$Line) {
 # meeting a new format refuses loudly rather than mis-filtering silently.
 $script:TraceHeader = 'seq,input,kind,source,span,parent,depth,thread,qpc,module,function,proc,typetext,caller,callerref,argcount,args,ret,rettype,outcome,ticks,tracerticks,trust'
 # kind and source are separate columns so a filter on one need not spell out the other
-$script:TraceKinds   = @('entry', 'exit')
-$script:TraceSources = @('XLL', 'VBA')
+$script:TraceKinds   = @('entry', 'exit', 'event')
+$script:TraceSources = @('XLL', 'VBA', 'Excel', 'XRayXL')
 
 # In .NET because a PowerShell character loop is too slow for traces of millions of rows.
 # One row is one line: the writer turns CR and LF inside a field into spaces.
@@ -600,6 +654,18 @@ function Read-TraceFile([string]$Path) {
             } elseif ($r.breaks -ne '') { throw "trace contract: breaks '$($r.breaks)' on a $($r.source) $($r.kind) row at seq $seq in $Path" }
         }
     }
+    # The session's own rows: arm first, and a disarm, when there is one, last.
+    if ($rows.Count) {
+        $arm = $rows[0]
+        if ($arm.kind -ne 'event' -or $arm.source -ne 'XRayXL' -or $arm.function -ne 'arm') {
+            throw "trace contract: the first row is $($arm.source) $($arm.kind) $($arm.function), not the arm row, in $Path"
+        }
+        $disarms = @($rows | Where-Object { $_.source -eq 'XRayXL' -and $_.function -eq 'disarm' })
+        if ($disarms.Count -gt 1) { throw "trace contract: $($disarms.Count) disarm rows in $Path" }
+        if ($disarms.Count -eq 1 -and $disarms[0].seq -ne $rows[-1].seq) {
+            throw "trace contract: the disarm row (seq $($disarms[0].seq)) is not the last in $Path"
+        }
+    }
     return $rows
 }
 
@@ -662,8 +728,9 @@ function Read-TraceRows([int]$ExcelPid) {
 $script:CallerKinds = @{
     'cell'        = $true     # "[Book1]Sheet1!B2", or a whole CSE range
     'name'        = $true     # a shape's name, or an Auto_* macro's sheet name
-    'toolbar'     = $true     # "5/2" or "\"MyBar\"/2"
-    'menu'        = $true     # four fields
+    'toolbar'     = $true     # position, then the bar: "2/5" or "2/\"MyBar\""
+    'menu'        = $true     # command, menu, bar, submenu
+    'editor'      = $true     # the VBA editor started it: Run, F8 or the Immediate window
     'registerid'  = $true     # the DLL called itself
     'none'        = $true     # ref | nil | emptyref | sheetless-B2 | nametoolong
     'unavailable' = $true     # Excel declined; the xlret code
@@ -699,6 +766,24 @@ function Test-RowInvariants($Rows) {
     # Invariants that hold on any correct trace (docs/TraceRowModel.md); returns problem strings.
     $problems = @()
     foreach ($r in $Rows) {
+        # An event is not a call: no span, no chain, no duration; its parameters are named.
+        if ($r.kind -eq 'event') {
+            if ($r.source -ne 'Excel' -and $r.source -ne 'XRayXL') { $problems += "seq $($r.seq): event from source '$($r.source)'" }
+            if ($r.source -eq 'XRayXL' -and $r.function -ne 'arm' -and $r.function -ne 'disarm') {
+                $problems += "seq $($r.seq): XRayXL event '$($r.function)' is not arm or disarm"
+            }
+            if (-not $r.function) { $problems += "seq $($r.seq): event with no name" }
+            foreach ($c in 'span', 'parent', 'depth') {
+                if ([string]$r.$c -ne '0') { $problems += "seq $($r.seq): event row's $c is '$($r.$c)', not 0" }
+            }
+            foreach ($c in 'typetext', 'caller', 'argcount', 'ret', 'rettype', 'outcome', 'ticks', 'tracerticks', 'trust') {
+                if ($r.$c) { $problems += "seq $($r.seq): event row carries $c '$($r.$c)'" }
+            }
+            if ($r.args -and [string]$r.args -notmatch '^[A-Za-z_]\w*:') {
+                $problems += "seq $($r.seq): event args '$($r.args)' is not <name>:<type>=<value>"
+            }
+            continue
+        }
         if ($r.kind -eq 'entry') {
             # typetext has no brackets; no parameters is an empty typetext with argcount 0.
             if ([string]$r.typetext -like '(*') { $problems += "seq $($r.seq): typetext '$($r.typetext)' still carries brackets" }
@@ -790,7 +875,7 @@ function Test-RowInvariants($Rows) {
 
     # A missing exit reads as a hang. Callers that filter keep both rows of a span.
     foreach ($r in $Rows) {
-        if (-not $r.span) { continue }
+        if (-not $r.span -or $r.kind -eq 'event') { continue }
         if ($r.kind -eq 'entry' -and -not $spanSeen.ContainsKey("exit|$($r.span)")) {
             $problems += "seq $($r.seq): $($r.source) entry $($r.function) (span $($r.span)) has no exit"
         }

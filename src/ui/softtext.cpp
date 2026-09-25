@@ -143,6 +143,16 @@ namespace
                                                       : DWRITE_PARAGRAPH_ALIGNMENT_NEAR);
         if (underline != UINT32_MAX) lay->SetUnderline(TRUE, DWRITE_TEXT_RANGE{ underline, 1 });
         if (flags & kUnderline) lay->SetUnderline(TRUE, DWRITE_TEXT_RANGE{ 0, static_cast<UINT32>(text.size()) });
+        if (flags & kEllipsis)
+        {
+            IDWriteInlineObject* sign = nullptr;
+            if (SUCCEEDED(g_dw->CreateEllipsisTrimmingSign(lay, &sign)) && sign)
+            {
+                const DWRITE_TRIMMING trim{ DWRITE_TRIMMING_GRANULARITY_CHARACTER, 0, 0 };
+                lay->SetTrimming(&trim, sign);
+                sign->Release();
+            }
+        }
         return lay;
     }
 }

@@ -5,11 +5,14 @@
 #include "traceactions.h"
 #include "glyphs.h"
 #include "reflow.h"
+#include "eventpane.h"
 
 #include <algorithm>
 
+#include "app/appevents.h"
 #include "app/session.h"
 #include "app/settings.h"
+#include "core/eventlist.h"
 #include "core/log.h"
 #include "core/tracemodes.h"
 #include "core/excel_api.h"
@@ -40,6 +43,8 @@ namespace
                              IDC_XLL_ARGS, IDC_XLL_RET,
                              IDC_VBA_SEC1, IDC_VBA_RULE1, IDC_VBA_DEPTHLBL, IDC_VBA_DEPTH,
                              IDC_VBA_ARGS, IDC_VBA_RET, IDC_VBA_OBJ };
+    const int kEvents[]  = { IDC_EVT_HDR, IDC_EVT_SEC1, IDC_EVT_RULE1, IDC_EVT_PRESETLBL, IDC_EVT_PRESET,
+                             IDC_EVT_COUNT, IDC_EVT_PANE };
     const int kOut[]     = { IDC_OUT_HDR, IDC_OUT_SEC1, IDC_OUT_RULE1, IDC_OUT_FMTLBL, IDC_OUT_FMT,
                              IDC_OUT_DIRLBL, IDC_OUT_DIR, IDC_OUT_FILELBL, IDC_OUT_FILE, IDC_OUT_TAIL };
     const int kAdvanced[] = { IDC_ADV_HDR, IDC_ADV_SEC1, IDC_ADV_RULE1, IDC_ADV_BUFLBL, IDC_ADV_BUF,
@@ -51,23 +56,22 @@ namespace
 
 #define XRAY_PAGE(name, ids) { name, ids, static_cast<int>(sizeof(ids) / sizeof(int)) }
     const Page kPages[] = {
-        XRAY_PAGE(L"Capture", kCapture), XRAY_PAGE(L"Output", kOut),
+        XRAY_PAGE(L"Capture", kCapture), XRAY_PAGE(L"Events", kEvents), XRAY_PAGE(L"Output", kOut),
         XRAY_PAGE(L"Advanced", kAdvanced), XRAY_PAGE(L"About", kAbout),
         XRAY_PAGE(L"Notices", kNotices),
     };
 #undef XRAY_PAGE
     constexpr int kPageCount = static_cast<int>(sizeof(kPages) / sizeof(kPages[0]));
     constexpr int kAboutPage = kPageCount - 2;     // About and Notices change no setting
-    const glyph::Kind kPageGlyphs[kPageCount] = { glyph::Kind::Capture, glyph::Kind::Output,
+    const glyph::Kind kPageGlyphs[kPageCount] = { glyph::Kind::Capture, glyph::Kind::Events, glyph::Kind::Output,
                                                   glyph::Kind::Advanced, glyph::Kind::About,
                                                   glyph::Kind::Notices };
 
-    const int kHeadingIds[] = { IDC_XLL_SEC1, IDC_VBA_SEC1, IDC_OUT_SEC1, IDC_ADV_SEC1, IDC_ADV_SEC2 };
-    const int kRuleIds[]    = { IDC_XLL_RULE1, IDC_VBA_RULE1, IDC_OUT_RULE1, IDC_ADV_RULE1, IDC_ADV_RULE2 };
-    const int kTitleIds[]   = { IDC_CAP_HDR, IDC_OUT_HDR, IDC_ADV_HDR, IDC_ABT_HDR, IDC_NOT_HDR };
-    const int kCheckIds[]   = { IDC_XLL_ARGS, IDC_XLL_RET, IDC_VBA_ARGS, IDC_VBA_RET, IDC_VBA_OBJ, IDC_ADV_BRK };
+    const int kHeadingIds[] = { IDC_XLL_SEC1, IDC_VBA_SEC1, IDC_EVT_SEC1, IDC_OUT_SEC1, IDC_ADV_SEC1, IDC_ADV_SEC2 };
+    const int kRuleIds[]    = { IDC_XLL_RULE1, IDC_VBA_RULE1, IDC_EVT_RULE1, IDC_OUT_RULE1, IDC_ADV_RULE1, IDC_ADV_RULE2 };
+    const int kTitleIds[]   = { IDC_CAP_HDR, IDC_EVT_HDR, IDC_OUT_HDR, IDC_ADV_HDR, IDC_ABT_HDR, IDC_NOT_HDR };
     const int kButtonIds[]  = { IDOK, IDCANCEL, IDC_OUT_TAIL };
-    const int kComboIds[]   = { IDC_XLL_DEPTH, IDC_VBA_DEPTH, IDC_OUT_FMT, IDC_ADV_FULL, IDC_ADV_LVL };
+    const int kComboIds[]   = { IDC_XLL_DEPTH, IDC_VBA_DEPTH, IDC_EVT_PRESET, IDC_OUT_FMT, IDC_ADV_FULL, IDC_ADV_LVL };
     const int kEditIds[]    = { IDC_OUT_DIR, IDC_OUT_FILE, IDC_ADV_BUF, IDC_ADV_LOG, IDC_ABT_LICENSE,
                                 IDC_NOT_TEXT };
 
@@ -79,17 +83,43 @@ namespace
 
     // ---- the settings, as a draft: read on open, written on Apply ----------------
 
+    // The settings a control shows as it is: each named once, with the model key that holds it.
+    // All of them lock while armed, as the setters refuse them then.
+    enum class Kind { Toggle, Depth, WhenFull };
+    struct Setting { int id; Kind kind; const wchar_t* key; };
+    const Setting kSettings[] = {
+        { IDC_XLL_DEPTH, Kind::Depth,    L"ddXllDepth" },
+        { IDC_XLL_ARGS,  Kind::Toggle,   L"cbXllArgs" },
+        { IDC_XLL_RET,   Kind::Toggle,   L"cbXllRet" },
+        { IDC_VBA_DEPTH, Kind::Depth,    L"ddVbaDepth" },
+        { IDC_VBA_ARGS,  Kind::Toggle,   L"cbVbaArgs" },
+        { IDC_VBA_RET,   Kind::Toggle,   L"cbVbaRet" },
+        { IDC_VBA_OBJ,   Kind::Toggle,   L"cbVbaObj" },
+        { IDC_ADV_BRK,   Kind::Toggle,   L"cbVbaBrk" },
+        { IDC_ADV_FULL,  Kind::WhenFull, L"cbPauseFull" },   // Pause is item 0
+    };
+    constexpr int kSettingCount = static_cast<int>(sizeof(kSettings) / sizeof(kSettings[0]));
+
+    // Every tick box on the dialog is a Toggle setting.
+    bool IsCheck(int id)
+    {
+        for (const Setting& st : kSettings) if (st.id == id && st.kind == Kind::Toggle) return true;
+        return false;
+    }
+
+    // The table's settings, then the four that need their own handling.
     struct Draft
     {
-        int  xllDepth = 0, vbaDepth = 0;
-        bool xllArgs = false, xllRet = false;
-        bool vbaArgs = false, vbaRet = false, vbaObj = false, vbaBrk = false;
-        bool pauseOnFull = true;
-        int  format = 0;            // core::modes::Format
-        wchar_t buffer[32] = {};
-        int  logLevel = 0;
+        int  value[kSettingCount] = {};     // a toggle 0 or 1, a depth its index
+        int  format = 0;                    // core::modes::Format
+        wchar_t buffer[32] = {};            // parsed on Apply, so a typo can be refused
+        int  logLevel = 0;                  // the one setting open while armed
+        core::events::Mask events = 0;
         bool armed = false;
     };
+
+    // Which events this Excel has, read once when the dialog opens.
+    core::events::Mask g_available = 0;
 
     const char* const kLevelNames[] = { "DEBUG", "INFO", "WARNING", "ERROR" };
     constexpr int kLevelCount = static_cast<int>(sizeof(kLevelNames) / sizeof(kLevelNames[0]));
@@ -99,36 +129,44 @@ namespace
 
     void ReadCurrent(Draft& d)
     {
-        d.armed    = app::IsArmed();
-        d.xllDepth = M::DepthIndex(L"ddXllDepth");
-        d.vbaDepth = M::DepthIndex(L"ddVbaDepth");
-        d.xllArgs  = M::ReadToggle(L"cbXllArgs");
-        d.xllRet   = M::ReadToggle(L"cbXllRet");
-        d.vbaArgs  = M::ReadToggle(L"cbVbaArgs");
-        d.vbaRet   = M::ReadToggle(L"cbVbaRet");
-        d.vbaObj   = M::ReadToggle(L"cbVbaObj");
-        d.vbaBrk   = M::ReadToggle(L"cbVbaBrk");
-        d.pauseOnFull = M::ReadToggle(L"cbPauseFull");
-        d.format   = static_cast<int>(core::modes::GetFormat());
+        d.armed = app::IsArmed();
+        for (int i = 0; i < kSettingCount; ++i)
+            d.value[i] = kSettings[i].kind == Kind::Depth ? M::DepthIndex(kSettings[i].key)
+                                                          : (M::ReadToggle(kSettings[i].key) ? 1 : 0);
+        d.format = static_cast<int>(core::modes::GetFormat());
         M::BufferText(d.buffer, 32);
         const int level = static_cast<int>(core::Log::GetLevel());
         d.logLevel = (level >= 0 && level < kLevelCount) ? level : 1;
+        d.events = core::events::GetSelected();
     }
 
     void Collect(HWND dlg, Draft& d)
     {
-        d.xllDepth = static_cast<int>(SendDlgItemMessageW(dlg, IDC_XLL_DEPTH, CB_GETCURSEL, 0, 0));
-        d.vbaDepth = static_cast<int>(SendDlgItemMessageW(dlg, IDC_VBA_DEPTH, CB_GETCURSEL, 0, 0));
-        d.xllArgs  = IsChecked(dlg, IDC_XLL_ARGS);
-        d.xllRet   = IsChecked(dlg, IDC_XLL_RET);
-        d.vbaArgs  = IsChecked(dlg, IDC_VBA_ARGS);
-        d.vbaRet   = IsChecked(dlg, IDC_VBA_RET);
-        d.vbaObj   = IsChecked(dlg, IDC_VBA_OBJ);
-        d.vbaBrk   = IsChecked(dlg, IDC_ADV_BRK);
-        d.pauseOnFull = SendDlgItemMessageW(dlg, IDC_ADV_FULL, CB_GETCURSEL, 0, 0) == 0;
-        d.format   = static_cast<int>(SendDlgItemMessageW(dlg, IDC_OUT_FMT, CB_GETCURSEL, 0, 0));
+        for (int i = 0; i < kSettingCount; ++i)
+        {
+            const Setting& st = kSettings[i];
+            const int sel = static_cast<int>(SendDlgItemMessageW(dlg, st.id, CB_GETCURSEL, 0, 0));
+            d.value[i] = st.kind == Kind::Toggle ? (IsChecked(dlg, st.id) ? 1 : 0)
+                       : st.kind == Kind::Depth  ? sel
+                       : (sel == 0 ? 1 : 0);
+        }
+        d.format = static_cast<int>(SendDlgItemMessageW(dlg, IDC_OUT_FMT, CB_GETCURSEL, 0, 0));
         GetDlgItemTextW(dlg, IDC_ADV_BUF, d.buffer, 32);
         d.logLevel = static_cast<int>(SendDlgItemMessageW(dlg, IDC_ADV_LVL, CB_GETCURSEL, 0, 0));
+        d.events = eventpane::Selected(GetDlgItem(dlg, IDC_EVT_PANE));
+    }
+
+    void ShowDraft(HWND dlg, const Draft& d)
+    {
+        for (int i = 0; i < kSettingCount; ++i)
+        {
+            const Setting& st = kSettings[i];
+            if (st.kind == Kind::Toggle) SetChecked(dlg, st.id, d.value[i] != 0);
+            else SendDlgItemMessageW(dlg, st.id, CB_SETCURSEL, st.kind == Kind::Depth ? d.value[i] : (d.value[i] ? 0 : 1), 0);
+        }
+        SendDlgItemMessageW(dlg, IDC_OUT_FMT, CB_SETCURSEL, d.format, 0);
+        SetDlgItemTextW(dlg, IDC_ADV_BUF, d.buffer);
+        SendDlgItemMessageW(dlg, IDC_ADV_LVL, CB_SETCURSEL, d.logLevel, 0);
     }
 
     // Whether Apply would change anything. A buffer size that does not parse counts as a change,
@@ -139,10 +177,8 @@ namespace
         if (cur.armed) return false;        // the setters refuse everything else while armed
         std::size_t bytes = 0;
         if (!M::ParseBufferBox(d.buffer, bytes) || bytes != core::modes::GetBufferBytes()) return true;
-        return d.xllDepth != cur.xllDepth || d.vbaDepth != cur.vbaDepth ||
-               d.xllArgs != cur.xllArgs || d.xllRet != cur.xllRet ||
-               d.vbaArgs != cur.vbaArgs || d.vbaRet != cur.vbaRet || d.vbaObj != cur.vbaObj || d.vbaBrk != cur.vbaBrk ||
-               d.pauseOnFull != cur.pauseOnFull || d.format != cur.format;
+        for (int i = 0; i < kSettingCount; ++i) if (d.value[i] != cur.value[i]) return true;
+        return d.format != cur.format || d.events != cur.events;
     }
 
     // The dialog's values over the live settings, so the comparison is always with what is current.
@@ -181,20 +217,29 @@ namespace
         }
         if (d.armed) return true;           // the setters refuse everything else while armed
 
-        M::SetDepthIndex(L"ddXllDepth", d.xllDepth);
-        M::SetDepthIndex(L"ddVbaDepth", d.vbaDepth);
-        M::WriteToggle(L"cbXllArgs",  d.xllArgs);
-        M::WriteToggle(L"cbXllRet",   d.xllRet);
-        M::WriteToggle(L"cbVbaArgs",  d.vbaArgs);
-        M::WriteToggle(L"cbVbaRet",   d.vbaRet);
-        M::WriteToggle(L"cbVbaObj",   d.vbaObj);
-        M::WriteToggle(L"cbVbaBrk",   d.vbaBrk);
-        M::WriteToggle(L"cbPauseFull", d.pauseOnFull);
+        for (int i = 0; i < kSettingCount; ++i)
+        {
+            if (kSettings[i].kind == Kind::Depth) M::SetDepthIndex(kSettings[i].key, d.value[i]);
+            else                                  M::WriteToggle(kSettings[i].key, d.value[i] != 0);
+        }
         if (d.format == static_cast<int>(core::modes::Format::Csv) ||
             d.format == static_cast<int>(core::modes::Format::Jsonl))
             core::modes::SetFormat(static_cast<core::modes::Format>(d.format));
         core::modes::SetBufferBytes(bytes);
+        // Each event turned on or off, as the settings list shows only the preset or the whole set.
+        const core::events::Mask was = core::events::GetSelected();
+        for (int k = 0; k < core::events::Count(); ++k)
+            if (((was ^ d.events) >> k) & 1)
+                core::Log::Note(std::string("options: EVENTS ") + core::events::At(k).name +
+                                (((d.events >> k) & 1) ? " -> TRUE" : " -> FALSE"));
+        core::events::SetSelected(d.events);
         return true;
+    }
+
+    void ShowEventsSummary(HWND dlg)
+    {
+        eventpane::ShowSummary(GetDlgItem(dlg, IDC_EVT_PANE), GetDlgItem(dlg, IDC_EVT_PRESET),
+                               GetDlgItem(dlg, IDC_EVT_COUNT));
     }
 
     int g_page = 0;                 // the page showing, for the glyph
@@ -217,6 +262,12 @@ namespace
         { IDC_VBA_ARGS,     182, 238,   0,  17 },
         { IDC_VBA_RET,      182, 260,   0,  17 },
         { IDC_VBA_OBJ,      182, 282,   0,  17 },
+
+        { IDC_EVT_HDR,      222,  15,   0,  30 },
+        { IDC_EVT_SEC1,     169,  64,   0,  20 }, { IDC_EVT_RULE1,  169,  87,   0,  1 },
+        { IDC_EVT_PRESETLBL,182,  97, 118,  21 }, { IDC_EVT_PRESET, 302,  97, 180,  0 },
+        { IDC_EVT_COUNT,    494,  97,   0,  21 },
+        { IDC_EVT_PANE,     169, 128,   0, 214 },
 
         { IDC_OUT_HDR,      222,  15,   0,  30 },
         { IDC_OUT_SEC1,     169,  64,   0,  20 }, { IDC_OUT_RULE1,  169,  87,   0,  1 },
@@ -267,20 +318,23 @@ namespace
         const int right = client.right - margin;
         const int top   = Line(dlg, 7);
         const int pitch = Fit(dlg, 22, 36);                  // check box to check box
+        int first = 0, previous = -1;                        // the column of boxes a box belongs to
         for (const Place& pl : kPlaces)
         {
             HWND c = GetDlgItem(dlg, pl.id);
             if (!c) continue;
             const int x = left + Px(dlg, pl.x - 169);
             int y = top + Px(dlg, pl.y - 7);
-            if (In(kCheckIds, pl.id))
+            if (IsCheck(pl.id))
             {
-                const int first = (pl.y >= 238) ? 238 : 124;         // each group's first box
+                // Boxes 22 apart form a column, spaced by the pitch from its first.
+                if (pl.y != previous + 22) first = pl.y;
+                previous = pl.y;
                 y = top + Px(dlg, first - 7) + (pl.y - first) / 22 * pitch;
             }
             int h = Px(dlg, pl.h);
             if (pl.h == 1)  h = Line(dlg, 1);
-            if (pl.h == 0)  h = Px(dlg, 160);                // the open list's extent
+            if (pl.h == 0)  h = Px(dlg, pl.id == IDC_EVT_PRESET ? 140 : 160);   // the open list's extent
             if (pl.h == 21) h = Fit(dlg, 21, 33);
             place(c, x, y, pl.w ? Px(dlg, pl.w) : right - x, h);
         }
@@ -422,23 +476,28 @@ namespace
         SetDlgItemTextW(dlg, IDC_NOT_TEXT, ResourceText(IDR_NOTICES).c_str());
     }
 
+    // Each hide and show would repaint the dialog beneath it, so the page changes unseen and
+    // is drawn once. Not before the dialog is shown: turning redraw back on makes a window visible.
     void ShowPage(HWND dlg, int page)
     {
+        const bool shown = IsWindowVisible(dlg) != FALSE;
+        if (shown) SendMessageW(dlg, WM_SETREDRAW, FALSE, 0);
         for (int p = 0; p < kPageCount; ++p)
             for (int i = 0; i < kPages[p].count; ++i)
                 ShowWindow(GetDlgItem(dlg, kPages[p].ids[i]), (p == page) ? SW_SHOW : SW_HIDE);
         ShowWindow(GetDlgItem(dlg, IDC_ARMEDNOTE), page >= kAboutPage ? SW_HIDE : SW_SHOW);
         g_page = page;
-        InvalidateRect(GetDlgItem(dlg, IDC_PAGEICON), nullptr, FALSE);
+        if (!shown) return;
+        SendMessageW(dlg, WM_SETREDRAW, TRUE, 0);
+        RedrawWindow(dlg, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN);
     }
 
     // Greyed by the rule the setters refuse by.
     void ApplyArmedState(HWND dlg, bool armed)
     {
-        const int locked[] = { IDC_XLL_DEPTH, IDC_XLL_ARGS, IDC_XLL_RET,
-                               IDC_VBA_DEPTH, IDC_VBA_ARGS, IDC_VBA_RET, IDC_VBA_OBJ,
-                               IDC_ADV_BUF, IDC_ADV_FULL, IDC_ADV_BRK, IDC_OUT_FMT };
-        for (int id : locked) EnableWindow(GetDlgItem(dlg, id), armed ? FALSE : TRUE);
+        for (const Setting& st : kSettings) EnableWindow(GetDlgItem(dlg, st.id), armed ? FALSE : TRUE);
+        for (int id : { IDC_ADV_BUF, IDC_OUT_FMT, IDC_EVT_PRESET }) EnableWindow(GetDlgItem(dlg, id), armed ? FALSE : TRUE);
+        eventpane::Enable(GetDlgItem(dlg, IDC_EVT_PANE), !armed);
         SetDlgItemTextW(dlg, IDC_ARMEDNOTE, armed
             ? L"Tracing is armed. These settings are read when a session starts, so "
               L"disarm first to change them. The log level can still be changed."
@@ -458,6 +517,9 @@ namespace
         }
         for (const wchar_t* t : { L"Pause (lose nothing)", L"Drop (never wait)" })
             SendDlgItemMessageW(dlg, IDC_ADV_FULL, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(t));
+        eventpane::FillPresets(GetDlgItem(dlg, IDC_EVT_PRESET));
+        eventpane::Set(GetDlgItem(dlg, IDC_EVT_PANE), d.events, g_available);
+        ShowEventsSummary(dlg);
         // In core::modes::Format order.
         for (const wchar_t* t : { L"CSV", L"JSON Lines" })
             SendDlgItemMessageW(dlg, IDC_OUT_FMT, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(t));
@@ -468,18 +530,7 @@ namespace
             SendDlgItemMessageW(dlg, IDC_ADV_LVL, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(w));
         }
 
-        SendDlgItemMessageW(dlg, IDC_XLL_DEPTH, CB_SETCURSEL, d.xllDepth, 0);
-        SendDlgItemMessageW(dlg, IDC_VBA_DEPTH, CB_SETCURSEL, d.vbaDepth, 0);
-        SetChecked(dlg, IDC_XLL_ARGS, d.xllArgs);
-        SetChecked(dlg, IDC_XLL_RET,  d.xllRet);
-        SetChecked(dlg, IDC_VBA_ARGS, d.vbaArgs);
-        SetChecked(dlg, IDC_VBA_RET,  d.vbaRet);
-        SetChecked(dlg, IDC_VBA_OBJ,  d.vbaObj);
-        SetChecked(dlg, IDC_ADV_BRK,  d.vbaBrk);
-        SendDlgItemMessageW(dlg, IDC_ADV_FULL, CB_SETCURSEL, d.pauseOnFull ? 0 : 1, 0);
-        SendDlgItemMessageW(dlg, IDC_OUT_FMT, CB_SETCURSEL, d.format, 0);
-        SetDlgItemTextW(dlg, IDC_ADV_BUF, d.buffer);
-        SendDlgItemMessageW(dlg, IDC_ADV_LVL, CB_SETCURSEL, d.logLevel, 0);
+        ShowDraft(dlg, d);
 
         // every text static is owner-drawn, so its text goes through Text()
         for (HWND c = GetWindow(dlg, GW_CHILD); c; c = GetWindow(c, GW_HWNDNEXT))
@@ -495,7 +546,8 @@ namespace
         SetWindowPos(GetDlgItem(dlg, IDC_CATEGORIES), nullptr, 0, 0, 0, 0,
                      SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
         for (int id : kButtonIds) Subclass(GetDlgItem(dlg, id), ButtonProc);
-        for (int id : kCheckIds)  Subclass(GetDlgItem(dlg, id), ButtonProc);
+        for (const Setting& st : kSettings)
+            if (st.kind == Kind::Toggle) Subclass(GetDlgItem(dlg, st.id), ButtonProc);
         for (int id : kEditIds)   Subclass(GetDlgItem(dlg, id), EditProc);
         for (int id : kComboIds)
         {
@@ -514,6 +566,13 @@ namespace
         {
             excelstyle::Begin(dlg);
             excelstyle::SetEditMenu(PathMenu);
+            {
+                bool known = false;
+                g_available = app::appevents::Probe(known);
+            }
+            // after the count in tab order, not after Apply and Cancel
+            SetWindowPos(eventpane::Create(dlg, IDC_EVT_PANE), GetDlgItem(dlg, IDC_EVT_COUNT), 0, 0, 0, 0,
+                         SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 
             ReadCurrent(s_draft);
             InitControls(dlg, s_draft);
@@ -558,7 +617,7 @@ namespace
             const int id = static_cast<int>(di->CtlID);
             if (id == IDC_CATEGORIES)         DrawCategory(di);
             else if (id == IDC_PAGEICON)      DrawPageIcon(di);
-            else if (In(kCheckIds, id))       DrawCheck(di);
+            else if (IsCheck(id))             DrawCheck(di);
             else if (In(kRuleIds, id))        DrawRule(di);
             else if (In(kButtonIds, id))      DrawButton(di);
             else if (In(kComboIds, id))       DrawComboItem(di);
@@ -604,17 +663,36 @@ namespace
             if (In(kComboIds, id) && (HIWORD(wp) == CBN_DROPDOWN || HIWORD(wp) == CBN_CLOSEUP))
             {
                 excelstyle::SetDropping(HIWORD(wp) == CBN_DROPDOWN);
+                // Esc leaves the browsed item showing, so the list is put back on the ticks.
+                if (id == IDC_EVT_PRESET && HIWORD(wp) == CBN_CLOSEUP) ShowEventsSummary(dlg);
                 return TRUE;
             }
+            // Arrowing through the open list is looking, not choosing: a preset replaces the ticks,
+            // so it is applied when the list closes on it, and Esc puts the list back.
+            if (id == IDC_EVT_PRESET && (HIWORD(wp) == CBN_SELCHANGE || HIWORD(wp) == CBN_SELENDOK ||
+                                         HIWORD(wp) == CBN_SELENDCANCEL))
+            {
+                HWND combo = GetDlgItem(dlg, IDC_EVT_PRESET);
+                const bool open = SendMessageW(combo, CB_GETDROPPEDSTATE, 0, 0) != 0;
+                if (HIWORD(wp) == CBN_SELENDCANCEL) ShowEventsSummary(dlg);
+                else if (HIWORD(wp) == CBN_SELENDOK || !open)
+                {
+                    eventpane::ChoosePreset(GetDlgItem(dlg, IDC_EVT_PANE), combo, GetDlgItem(dlg, IDC_EVT_COUNT));
+                    UpdateApply(dlg);
+                }
+                return TRUE;
+            }
+            if (id == IDC_EVT_PANE && HIWORD(wp) == eventpane::kChanged) { ShowEventsSummary(dlg); UpdateApply(dlg); return TRUE; }
             if (In(kComboIds, id) && HIWORD(wp) == CBN_SELCHANGE) { UpdateApply(dlg); return TRUE; }
             if (id == IDC_ADV_BUF && HIWORD(wp) == EN_CHANGE)    { UpdateApply(dlg); return TRUE; }
-            if (HIWORD(wp) == BN_CLICKED && In(kCheckIds, id))
+            // An owner-drawn button reports a quick second click as a double-click instead.
+            if ((HIWORD(wp) == BN_CLICKED || HIWORD(wp) == BN_DOUBLECLICKED) && IsCheck(id))
             {
                 SetChecked(dlg, id, !IsChecked(dlg, id));   // an owner-drawn box has no state of its own
                 UpdateApply(dlg);
                 return TRUE;
             }
-            if (id == IDC_OUT_TAIL)
+            if (id == IDC_OUT_TAIL && HIWORD(wp) == BN_CLICKED)   // not again for a double-click
             {
                 const trace::Result r = trace::TailInPowerShell(emit::csv::Path());
                 if (r != trace::Result::Ok)

@@ -30,6 +30,7 @@
   <ItemGroup>
     <ClCompile Include="callerdecode.cpp" />
     <ClCompile Include="$(XRayRoot)src\core\caller.cpp" />
+    <ClCompile Include="$(XRayRoot)src\core\sheetquote.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

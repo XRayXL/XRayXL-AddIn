@@ -14,7 +14,7 @@ reader refuses the file — and the fix updates both in the same change.
 
 | Channel | File | Nature |
 |---|---|---|
-| **Trace** | `%TEMP%\XRayXL\TraceFiles\XRayXL_Trace_<id>_<pid>.csv`, or `.jsonl` with `FORMAT=JSONL` | The data product: one row per event. `<id>` is a monotonic OS tick (`GetSystemTimePreciseAsFileTime`) that always rises — across arms, processes and reboots — so a re-arm never overwrites; created lazily on the first record, so a session that traced nothing leaves none. Buffered; drops shown by `input`-column holes |
+| **Trace** | `%TEMP%\XRayXL\TraceFiles\XRayXL_Trace_<id>_<pid>.csv`, or `.jsonl` with `FORMAT=JSONL` | The data product: one row per event. `<id>` is a monotonic OS tick (`GetSystemTimePreciseAsFileTime`) that always rises — across arms, processes and reboots — so a re-arm never overwrites; created lazily on the first record, which is the session's `arm` row, so every arm leaves one: an arm that armed nothing leaves its `arm` and `disarm` rows. Buffered; drops shown by `input`-column holes |
 | **Log** | `%TEMP%\XRayXL\Logs\XRayXL_<pid>.log` | Control: arm outcomes, the derivation line, commands, and the disarm report — the totals line and the per-procedure name table. Appended synchronously, **never dropped**. Levelled (DEBUG/INFO/WARNING/ERROR), default INFO |
 | **Crash log** | alongside the logs | Notes that must survive the process dying; opened `FILE_APPEND_DATA` per note, installed with the top-level exception filter |
 
@@ -32,8 +32,8 @@ check would be vacuous.
 - One file **per arming session**, named with the monotonic `<id>` and the
   pid. A re-arm writes a **new** file with a new `<id>` and never overwrites
   the last.
-- Created lazily on the **first record** (with `CREATE_ALWAYS`), not at arm: a
-  file holds exactly **one arming session**, and `seq` restarts at 1 in each
+- Created lazily on the **first record** (with `CREATE_ALWAYS`), the session's `arm`
+  row: a file holds exactly **one arming session**, and `seq` restarts at 1 in each
   new file. Reading after a re-arm reads the new session only — this is the
   suites' isolation guarantee.
 - Flushed and closed at **disarm** (`FlushFileBuffers`). Reading after your
@@ -76,6 +76,32 @@ wildcard match.
 |---|---|---|
 | `entry` / `exit` | `XLL` | A hooked add-in function activated / returned |
 | `entry` / `exit` | `VBA` | An interpreter frame opened / closed |
+| `event` | `Excel` | Excel raised one of its Application events, named in `function` |
+| `event` | `XRayXL` | Tracing started (`arm`) or stopped (`disarm`) |
+
+**Every trace starts with the `arm` row and, when tracing stops cleanly, ends with the `disarm`
+row.** `arm` carries what a reader needs to read the rest: `qpcFrequency`, the `utc` time its `qpc`
+was taken at, the `pid`, and every setting in force. `disarm` carries the session's totals
+(`rowsDropped`, `eventsRecorded` and the rest), each `0` for a source the session did not run. A trace with no `disarm` row stopped because
+Excel did, by a crash or a hang.
+
+**Excel's events** are recorded in the order Excel raises them, which is not always the order one
+might expect: an edit reads `SheetCalculate`, `AfterCalculate`, then `SheetChange`, because Excel
+recalculates before it raises the change. Which events are recorded is the `EVENTS` setting, one
+event at a time, the Calc set by default:
+
+```
+XRayXL_SetTraceParam "EVENTS", "SheetSelectionChange", TRUE
+XRayXL_GetTraceParam "EVENTS", "SheetSelectionChange"     ' TRUE or FALSE
+XRayXL_GetTraceParam "EVENTS"                             ' the preset the set matches, else Custom
+```
+
+An event row has `span`, `parent` and `depth` `0`, since an event is not a call. `callerref` is
+the most specific place it names (the target range, else the sheet, else the workbook), quoted as
+a cell's is (`'[has space.xlsx]Sheet1'`), and `args`
+holds its parameters by name: `Sh:Object=Worksheet@0x...([Book1]Sheet1) Target:Range=Range@0x...([Book1]Sheet1!A1)=5`.
+An event a newer Excel adds, which this add-in does not know, is recorded under the name its type
+library gives it, when every known event is chosen.
 
 There is **no drop-marker row**: the CSV holds
 only real events. A `BUFFERWHENFULL=DROP` run that lost rows reports the count OUT OF
@@ -101,8 +127,8 @@ mode-independent.
 |---|---|---|
 | `seq` | int64 ≥ 1 | Stamped by the **writer** (the drain, or the sync producer under the lock): seq order **is** file order, across both sources. Strictly increasing and **dense** — every written row gets the next number, so a lossy file still reads `1..N` (which is why drops are not visible from `seq`) |
 | `input` | int64 ≥ 1 | Stamped by the **producer** at emit: unique, but **not** contiguous and **not** in file order. A dropped row consumes an `input` value that never lands, so its **holes show where, and how much, data was dropped**. Sort by `qpc` (then `input`) for event order; the holes are the in-file record of loss that replaced the `gap` row |
-| `kind` | enum | `entry`, `exit` -- see above |
-| `source` | enum | `XLL` or `VBA` -- which tracer wrote the row |
+| `kind` | enum | `entry`, `exit`, `event` -- see above |
+| `source` | enum | `XLL` or `VBA` for a call; `Excel` or `XRayXL` for an event |
 | `span` | uint64 | Pairs an entry with its exit. **One sequence for both sources**, increasing in the order calls started, and unique for the life of the Excel process. It does not restart when tracing is armed again, so a later trace file's spans need not begin at 1 — a call still running across a re-arm can never reuse a number |
 | `parent` | uint64 | **Every row, never empty.** The `span` of the activation of the same source that called this one; `0` at the top of a chain, which is a value and not an absence |
 | `depth` | int | **Every row, never empty.** How far down the call chain this activation was, counted per source and per thread; `1` when no other frame of the same source was open |
@@ -112,8 +138,8 @@ mode-independent.
 | `function` | text | XLL: the registered name. VBA: the resolved procedure name, falling back to the trailer address in hex — an address obviously *looks like* an address |
 | `proc` | text | XLL: the exported procedure name. VBA: **always** the trailer in hex — the identity the tracer actually used, which tells two same-named procedures apart |
 | `typetext` | text | **Entry rows only.** The parameter types, comma-separated, with no brackets: the XLL registration's argument codes (`B,B`, `O%`, `D%,K%,E`) or the VBA declared types (`Long,String`). **Empty** when there are no parameters, where `argcount` reads `0`; and when VBA could not recover the types, where `argcount` holds the slot count or is empty. Empty on exits |
-| `caller` | text | Entry rows only, and **never empty**: what the caller *was*, as a kind from a closed set — `cell`, `name`, `toolbar`, `menu`, `registerid`, `none`, `unavailable`, `array`, `unknown`. Two of those are different "no" answers and are kept apart deliberately: `none` is Excel saying there is no caller on a sheet, `unavailable` is Excel declining to answer. The calling cell is always resolved, so a row is never left unasked. `name` rather than `object` because a graphic object and an `Auto_*` macro both come back as a string and Excel gives no way to tell them apart — the kind says what is certain |
-| `callerref` | text | The description, whose meaning `caller` decides. `cell`: one **external address**, `[Book1]Sheet1!B2` or `'[my book.xlsx]Sheet 1'!B2` when Excel would quote it, or a whole range `…!B2:D4` for a CSE array formula — the same text `Range.Address(,,,True)` returns, so it can be pasted back. `name`: the shape's name, or an `Auto_*` macro's calling sheet. `toolbar`: `5/2`, or `"MyBar"/2` when a custom bar answers with its name. `menu`: four fields, `27/27/14/0`. `registerid`, `unavailable`, `array`, `unknown`: the one value. `none`: which no — the short name of the Excel error it answered with (`ref`, `value`, `name`, …, or `err<N>` for one without a name), `nil`, `emptyref`, `sheetless-B2`, `nametoolong` |
+| `caller` | text | Entry rows only, and **never empty**: what the caller *was*, as a kind from a closed set — `cell`, `name`, `toolbar`, `menu`, `editor`, `registerid`, `none`, `unavailable`, `array`, `unknown`. Two of those are different "no" answers and are kept apart deliberately: `none` is Excel saying there is no caller on a sheet, `unavailable` is Excel declining to answer. The calling cell is always resolved, so a row is never left unasked. `name` rather than `object` because a graphic object and an `Auto_*` macro both come back as a string and Excel gives no way to tell them apart — the kind says what is certain |
+| `callerref` | text | The description, whose meaning `caller` decides. `cell`: one **external address**, `[Book1]Sheet1!B2` or `'[my book.xlsx]Sheet 1'!B2` when Excel would quote it, or a whole range `…!B2:D4` for a CSE array formula — the same text `Range.Address(,,,True)` returns, so it can be pasted back. `name`: the shape's name, or an `Auto_*` macro's calling sheet. `toolbar`: the button's position, then the bar: `2/5`, or `2/"MyBar"` when a custom bar answers with its name; the Quick Access Toolbar is bar `0`. `menu`: the command's position, the menu's, the bar's ID and the submenu's (`0` for none), so `27/27/14/0` is the 27th command on the cell's right-click menu. Excel sends both in the reverse of the order its documentation gives. `editor`: empty; the VBA editor started it (Run, F8 or the Immediate window). `registerid`, `unavailable`, `array`, `unknown`: the one value. `none`: which no — the short name of the Excel error it answered with (`ref`, `value`, `name`, …, or `err<N>` for one without a name), `nil`, `emptyref`, `sheetless-B2`, `nametoolong` |
 | `argcount` | int | **Entry rows only.** The number of parameters. XLL: one per type code, so an `O` array counts once though it takes three slots. VBA: the parameter count when the types were recovered, the slot count when only that was, empty when capture did not check out |
 | `args` | text | **Entry rows: the values going IN. Exit rows: the ByRef ones that CHANGED** — a VBA exit row carries `args` only when a re-read at the exit differs from the entry, so a row that has them is saying "these moved"; absent means unchanged, and `byrefEligible`/`byrefChanged`/`byrefSame`/`byrefDeclined` in the disarm line separate that from "never looked". `argcount` and `typetext` stay **entry-only**: they describe the signature, which has not changed, and the entry row this pairs with by `span` already carries them. **ByVal is never reported at an exit** — the callee's copy may differ but the caller never sees it, so an "after" value would assert an effect that does not exist. One field, `a<N>:<type>=<value>` per argument on both sources — `a<N>:<type>@0x<address>=<value>` where a VBA argument's storage has an address to match on (see *Reading `args`*) — joined by single spaces — one column whatever the arity, which keeps the file rectangular. On XLL rows `N` is the argument's position. **On VBA rows `N` is the argument's first frame slot**: a `ByVal Variant` fills three slots, so the argument after one reads `a4`, and `argcount` still counts arguments, not slots. **A VBA `Variant` argument is decoded by the same code as `ret`**, so it reads its held value the same way, by the rules in *Values*: a Double bare (`1.5`), any other number named (`Integer(42)`, `Decimal(12345.678901234567890123456)`), `"text"`, `TRUE`, an array (`Variant[1..2,1..2]{{1,"x"},{2,TRUE}}`), an object (see *Objects*), `Nothing`, `Empty`, `Null`, and an Excel error **spelt as Excel spells it** — `#N/A`, `#DIV/0!`, `#VALUE!`, `#REF!`, `#NAME?`, `#NUM!`, `#NULL!`, `#GETTING_DATA` — falling back to `Error(0x…)` for an SCODE outside that set. An omitted argument reads `Missing` on both sources. A slot that decodes to nothing truthful is the raw qword (`0x…`), never a coerced value. **On VBA rows the type is the declared type where VBA's metadata named one, and a `?` marker where it did not** — see *Declared or inferred* below. On XLL rows it is the registration's code, and a value with nothing to decode reads as a bare word: `Missing`, `Empty` or `AsyncHandle`; a reference argument (`R` or `U`) reads `SRef(R2C2:R3C3)` for one area on the calling sheet and `Ref(R2C2:R3C3,R5C5:R5C5)` otherwise, the sheet not named; anything else `?xltype<N>` |
 | `ret`, `rettype` | text | **Exit** rows only. XLL: the decoded return value, and in `rettype` the registered return code followed by any registration flags — `Q`, `Q$` (thread-safe), `Q!` (volatile), `Q#` (macro-sheet equivalent), `Q&` (cluster-safe). `ret` is empty for a function registered with no return value (`>`, or a modify-in-place digit) and for an async call, whose answer arrives later. VBA: every **Function** exit at any depth, `rettype` naming the kind the exit opcode declared — `Double` (also Date), `Single`, `Byte`, `Integer` (also Boolean, as −1/0), `Long`, `LongLong`, `Currency`, `String` (quoted), `Object`, `Variant`, `Elem()` for a typed array, or `Udt` for a user-defined `Type`, whose `ret` is its address, `udt@0x…`, as a record argument reads. An array, a Variant and an object read as they do in `args`, by the rules in *Values* — `Long[1..3]{3,6,9}`, `Double[0..1,0..1]{{1234.5,2},{3,4}}`, `Long(777)` for a Variant holding a Long — so one object can be followed from argument to result. **Empty** for a Sub (no result exists) and anything whose descriptor fails validation |
@@ -146,41 +172,32 @@ which is the thing a reader is hunting for. Reading it any other way would make
 entered to compute a cell reads `unhandled`, and the cell shows `#VALUE!`. Frames it
 called keep `threw` and `unwound`, so the raise is still located, and the chain ends
 there even when a macro recalculated the cell, which then reads `returned`. The
-**A frame Excel's modal error dialog ended reads `returned`, with `trust=flush`.**
-An unhandled error in a macro or a sheet event puts up VBA's error dialog; pressing
-End there fires no opcode of any kind, so the frames stay open until disarm flushes
-them. Whether such a frame is dead or merely waiting cannot be told apart at that
-point -- a running frame keeps its trailer on the stack, and so does the stale stack
-of a dead one -- so it is closed as if it were still running. **`outcome` is not
-evidence on a row whose `trust` is `flush`**: the duration is a ceiling and the word
-is the default. The raising frame is still located when execution continues instead
-(the stack-pointer backstop closes it as `threw`).
-
-The
 frame is identified by its calling cell (`xlfCaller`, always resolved) differing
 from the frame beneath. An entry with no calling cell, such as a user-triggered sheet event, an
 `Application.OnTime` macro or an `Application.Run` macro, reads `threw` instead. A function that *returns* an error value, such as `CVErr(xlErrValue)`,
 raised nothing and reads `returned`, with the error in `ret`. A frame still
 running when disarm closes it, such as a macro that disarmed, never reads `threw` or
-`unwound`; one left open by an earlier unhandled error still reads `threw`.
+`unwound`.
 
 **`abandoned` is the fifth, and it is not an error.** `End` tears the whole VBA
 session down without running an epilogue anywhere, so the frames it kills
-neither returned nor threw. They are closed at the `End` opcode itself and
-marked `abandoned` -- never `returned`, which would assert a return that did not
-happen. Every frame of the killed chain carries it, outermost included.
+neither returned nor threw. They are marked `abandoned` -- never `returned`, which would
+assert a return that did not happen.
 
-**The `End` opcode is its only trigger**, reached three ways: the `End`
-statement; the **End** button on an unhandled-error dialog; and the **End**
-button on the *Code execution has been interrupted* dialog that Ctrl+Break or
-Esc raises. Two things that sound like they belong here do not. Excel
+**Two things give it.** The `End` statement fires the `End` opcode, which closes
+every open frame at once, `abandoned` with `trust=end`. The **End** button on VBA's
+error dialog fires no opcode, so its frames are closed later, when the next VBA call
+finds them all gone (`trust=backstop`) or at disarm (`trust=flush`). There the
+innermost frame raised the error and reads `threw`; the frames beneath read
+`abandoned`, and frames from a cell entry upwards keep the cell's `unhandled`. Every
+case, with examples, is in [ErrorsInTheTrace.md](./ErrorsInTheTrace.md). Two things that sound like they belong here do not. Excel
 rescheduling a formula whose precedent was not yet calculated does **not**
 abandon the call -- the activation runs to completion and the UDF is simply
 called *again*, so the trace shows two whole `returned` pairs, not a truncated
 one. And a user break during a long calculation is *cooperative*: an XLL is
 merely asked, through `xlAbort`, and returns of its own accord; VBA gets error
 18, a trappable error like any other, which reads `threw` or `handled`. Excel
-has no way to take a running activation away, which is why there is no fourth
+has no way to take a running activation away, which is why there is no third
 route.
 
 **An XLL exit row always reads `returned`.** The row is written only on the
@@ -489,6 +506,9 @@ Double included:
 | a reference | `{"t":"SRef","areas":[[2,2,3,3]]}` |
 | a UDT | `{"t":"Udt","ptr":"0x…"}` |
 
+On an event row, each object names its parameter instead of a slot:
+`{"name":"Target","type":"Range","value":{…}}`.
+
 `args` is an array with one object per slot — `{"slot":1,"type":"Variant","value":{…}}`, with
 `"address":"0x…"` after the type where the text has `@0x…`, and
 `"unreadable":true` in place of a value that could not be read — and, when the XLL plan
@@ -564,7 +584,8 @@ is reported as it comes, underscore and all.
 a million cells and reading it would materialise a ~25 MB array inside a
 calculation. Over the ceiling of 4,096 cells — or when the count
 could not be had at all — the address is reported and the contents are not, which
-is visible in the row: no `=` follows the address.
+is visible in the row: no `=` follows the address. The same goes for a range of
+several areas (`A1:A2,C1:C2`), whose `Value2` is the first area's alone.
 
 **What Excel hands back for `Value2` is measured, not assumed.** A single cell
 gives a **scalar**. Every multi-cell range gives a **2-D** array, including a

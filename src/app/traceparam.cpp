@@ -2,11 +2,13 @@
 // argument and an echo. Both refuse a cell caller, since a formula would reconfigure the tracer on
 // every recalc, and both refuse while armed, since the modes are read once at arm.
 #include "session.h"
+#include "appevents.h"
 #include "exports.h"
 #include "paramparse.h"
 #include "xlgrid.h"
 #include "core/log.h"
 #include "core/ascii.h"
+#include "core/eventlist.h"
 #include "core/tracemodes.h"
 #include "xlcall.h"
 
@@ -167,6 +169,47 @@ namespace
         return EchoStr(echo);
     }
 
+    // The event a call names, or -1. Case-insensitive, as Excel's names are.
+    int EventNamed(LPXLOPER12 nameArg)
+    {
+        if (ArgType(nameArg) != xltypeStr) return -1;
+        wchar_t wide[64] = {};
+        char    name[64] = {};
+        ReadUpper(nameArg, wide, 64);
+        core::NarrowAscii(wide, name, sizeof(name));
+        return core::events::Find(name);
+    }
+
+    // EVENTS is source-less: `"EVENTS", "SheetChange", TRUE` records that event or not. An unknown
+    // name is refused, so a typo fails; one this Excel lacks is kept, so settings carry over.
+    LPXLOPER12 HandleEventsParam(LPXLOPER12 srcArg, LPXLOPER12 nameArg, LPXLOPER12 valArg)
+    {
+        // Second, the word leaves no room for both the event and its value.
+        if (IsWord(nameArg, L"EVENTS"))
+            return EchoStr(L"#Err - EVENTS comes first: XRayXL_SetTraceParam(\"EVENTS\", \"SheetChange\", TRUE); nothing changed");
+        if (!IsWord(srcArg, L"EVENTS")) return nullptr;
+
+        if (AnythingArmed())
+            return EchoStr(L"#Err - cannot change settings while armed; XRayXL_Disarm first, then set, then XRayXL_Arm");
+        const int k = EventNamed(nameArg);
+        if (k < 0)
+            return EchoStr(L"#Err - EVENTS takes the name of one of Excel's Application events, such as SheetChange; nothing changed");
+        bool on = false;
+        if (!ParseOnOff(valArg, on))
+            return EchoStr(L"#Err - value must be TRUE or FALSE; nothing changed");
+
+        const core::events::Mask bit = core::events::Mask(1) << k;
+        const core::events::Mask m = core::events::GetSelected();
+        core::events::SetSelected(on ? (m | bit) : (m & ~bit));
+        const char* name = core::events::At(k).name;
+        char line[128];
+        _snprintf_s(line, _TRUNCATE, "trace param set: EVENTS %s -> %s", name, on ? "TRUE" : "FALSE");
+        core::Log::Note(line);
+        static wchar_t echo[128];
+        _snwprintf_s(echo, _TRUNCATE, L"EVENTS %S=%s (takes effect at next arm)", name, on ? L"TRUE" : L"FALSE");
+        return EchoStr(echo);
+    }
+
     LPXLOPER12 SetTraceParamBody(LPXLOPER12 srcArg, LPXLOPER12 nameArg, LPXLOPER12 valArg)
     {
         core::Log::Note("function: XRayXL_SetTraceParam");
@@ -179,6 +222,7 @@ namespace
         if (LPXLOPER12 r = HandleBufferSizeParam(srcArg, nameArg, valArg))   return r;
         if (LPXLOPER12 r = HandleBufferWhenFullParam(srcArg, nameArg, valArg)) return r;
         if (LPXLOPER12 r = HandleFormatParam(srcArg, nameArg, valArg))         return r;
+        if (LPXLOPER12 r = HandleEventsParam(srcArg, nameArg, valArg))         return r;
 
         bool both = false; core::modes::Source s = core::modes::Source::Xll;
         if (!ParseSource(srcArg, both, s))
@@ -188,7 +232,7 @@ namespace
         // With no Source, the settings of the recording as a whole are candidates too.
         if (!ParseParam(nameArg, p))
             return EchoStr(both
-                ? L"#Err - Name must be DEPTH, ARGS, RETVAL, OBJECTS, BREAKPOINTS, BUFFERSIZE, BUFFERWHENFULL, FORMAT or LOGLEVEL; nothing changed"
+                ? L"#Err - Name must be DEPTH, ARGS, RETVAL, OBJECTS, BREAKPOINTS, BUFFERSIZE, BUFFERWHENFULL, FORMAT, EVENTS or LOGLEVEL; nothing changed"
                 : L"#Err - Name must be DEPTH, ARGS, RETVAL, OBJECTS or BREAKPOINTS; nothing changed");
 
         // OBJECTS and BREAKPOINTS are VBA only, so they are refused for XLL and for an omitted Source:
@@ -261,6 +305,24 @@ namespace
 
         if (NamesWord(srcArg, nameArg, L"FORMAT"))
             return CellEcho(core::modes::FormatNameW(core::modes::GetFormat()));
+
+        // One event: TRUE or FALSE. With no name: the preset the selection matches, else Custom.
+        if (NamesWord(srcArg, nameArg, L"EVENTS"))
+        {
+            const core::events::Mask m = core::events::GetSelected();
+            if (!IsWord(srcArg, L"EVENTS") || IsMissing(nameArg))
+            {
+                bool known = false;
+                core::events::Mask have = app::appevents::Available(known);
+                if (!known) have = app::appevents::Probe(known);
+                static wchar_t w[48];
+                _snwprintf_s(w, _TRUNCATE, L"%S", core::events::PresetName(core::events::PresetOf(m, have)));
+                return CellEcho(w);
+            }
+            const int k = EventNamed(nameArg);
+            if (k < 0) return CellEcho(L"#Err - EVENTS takes the name of one of Excel's Application events, such as SheetChange");
+            return CellEcho(((m >> k) & 1) ? L"TRUE" : L"FALSE");
+        }
 
         // LOGLEVEL is source-less too, and reads back the current log level.
         if (NamesWord(srcArg, nameArg, L"LOGLEVEL"))

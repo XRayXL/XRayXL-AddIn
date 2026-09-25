@@ -154,7 +154,7 @@ namespace vba
         for (int i = 0; i < Procs().Size(); ++i)
         {
             Proc* p = Procs().At(i);
-            if (p->trailer)
+            if (p->trailer && p->calls)       // never called: the editor's wrapper
                 rows.push_back({ p->trailer, p->calls, p->statements, p->ticks,
                                  p->maxDepth, p->qualModule, p->function });
         }

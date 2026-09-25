@@ -1,5 +1,6 @@
 #include "vbaobject.h"
 #include "vbaretdecode.h"
+#include "core/sheetquote.h"
 #include <windows.h>
 #include <oaidl.h>
 #include <oleauto.h>
@@ -154,8 +155,20 @@ namespace
         return GetStr(r, L"Address", out, cap, a, 4);
     }
 
-    // Contents are declined, not cut, when too many or when the count is unknown: an unknown
-    // count may not be assumed small.
+    // Value2 of `A1,C1:D2` is A1's alone, so a range of several areas has no single value.
+    bool OneArea(IDispatch* r)
+    {
+        IDispatch* areas = GetObj(r, L"Areas");
+        if (!areas) return false;
+        Hold(areas);
+        long n = 0;
+        const bool one = GetLong(areas, L"Count", n) && n == 1;
+        Unhold(areas); areas->Release();
+        return one;
+    }
+
+    // Contents are declined, not cut, when too many, when the count is unknown (an unknown count
+    // may not be assumed small), or when there is more than one area.
     bool DescribeRange(IDispatch* r, std::uint64_t ptr, core::ValueWriter& w)
     {
         char addr[512];
@@ -165,7 +178,7 @@ namespace
         long cells = 0;
         const bool haveCount = GetLong(r, L"Count", cells);
         VARIANT v;
-        if (haveCount && cells <= kMaxCellsToRead && GetProp(r, L"Value2", v, nullptr, 0))
+        if (haveCount && cells <= kMaxCellsToRead && OneArea(r) && GetProp(r, L"Value2", v, nullptr, 0))
         {
             if (t_hold) t_hold->var = &v;
             DescribeVariantValue(reinterpret_cast<std::uint64_t>(&v), w);
@@ -176,7 +189,9 @@ namespace
         return true;
     }
 
-    bool DescribeWorksheet(IDispatch* ws, std::uint64_t ptr, core::ValueWriter& w)
+    // `[Book1]Sheet1`, quoted as a cell's callerref is; without the book, the sheet alone rather
+    // than a guess.
+    bool WorksheetWhere(IDispatch* ws, char* where, int cap)
     {
         char sheet[256];
         if (!GetStr(ws, L"Name", sheet, sizeof(sheet))) return false;
@@ -188,10 +203,25 @@ namespace
             if (!GetStr(parent, L"Name", book, sizeof(book))) book[0] = 0;
             Unhold(parent); parent->Release();
         }
-        // `[Book1]Sheet1`, as callerref; without the book, the sheet alone rather than a guess.
+        char plain[600];
+        if (book[0]) _snprintf_s(plain, _TRUNCATE, "[%s]%s", book, sheet);
+        else         _snprintf_s(plain, _TRUNCATE, "%s", sheet);
+        core::QuoteSheetPrefix(plain, where, cap);
+        return true;
+    }
+
+    bool WorkbookWhere(IDispatch* wb, char* where, int cap)
+    {
+        char book[256];
+        if (!GetStr(wb, L"Name", book, sizeof(book))) return false;
+        _snprintf_s(where, cap, _TRUNCATE, "[%s]", book);
+        return true;
+    }
+
+    bool DescribeWorksheet(IDispatch* ws, std::uint64_t ptr, core::ValueWriter& w)
+    {
         char where[600];
-        if (book[0]) _snprintf_s(where, _TRUNCATE, "[%s]%s", book, sheet);
-        else         _snprintf_s(where, _TRUNCATE, "%s", sheet);
+        if (!WorksheetWhere(ws, where, sizeof(where))) return false;
         w.BeginObject("Worksheet", ptr, where);
         w.EndObject();
         return true;
@@ -199,13 +229,19 @@ namespace
 
     bool DescribeWorkbook(IDispatch* wb, std::uint64_t ptr, core::ValueWriter& w)
     {
-        char book[256];
-        if (!GetStr(wb, L"Name", book, sizeof(book))) return false;
         char where[300];
-        _snprintf_s(where, _TRUNCATE, "[%s]", book);
+        if (!WorkbookWhere(wb, where, sizeof(where))) return false;
         w.BeginObject("Workbook", ptr, where);
         w.EndObject();
         return true;
+    }
+
+    bool WhereInner(IDispatch* d, char* out, int cap)
+    {
+        if (Answers(d, kIidRange))     return RangeAddress(d, out, cap);
+        if (Answers(d, kIidWorksheet)) return WorksheetWhere(d, out, cap);
+        if (Answers(d, kIidWorkbook))  return WorkbookWhere(d, out, cap);
+        return false;
     }
 
     // No object that needs unwinding, so the caller can wrap it in SEH.
@@ -289,6 +325,38 @@ bool DescribeObjectDetail(std::uint64_t ptr, core::ValueWriter& w)
         hold.ReleaseAll();
         t_hold = nullptr;
         w.Restore(mark);
+        return false;
+    }
+}
+
+bool ObjectWhere(std::uint64_t ptr, char* out, int cap)
+{
+    if (!ptr || cap < 1) return false;
+    out[0] = 0;
+    ComHold hold;
+    hold.n = 0; hold.var = nullptr;
+    t_hold = &hold;
+    __try
+    {
+        IDispatch* d = nullptr;
+        IUnknown*  unk = reinterpret_cast<IUnknown*>(ptr);
+        if (FAILED(unk->QueryInterface(IID_IDispatch, reinterpret_cast<void**>(&d))) || !d)
+        {
+            t_hold = nullptr;
+            return false;
+        }
+        Hold(d);
+        const bool ok = WhereInner(d, out, cap);
+        Unhold(d); d->Release();
+        t_hold = nullptr;
+        if (!ok) out[0] = 0;
+        return ok;
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER)
+    {
+        hold.ReleaseAll();
+        t_hold = nullptr;
+        out[0] = 0;
         return false;
     }
 }

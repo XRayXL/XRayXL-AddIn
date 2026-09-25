@@ -1,4 +1,5 @@
 #include "caller.h"
+#include "sheetquote.h"
 #include "excel_api.h"
 #include "text.h"
 #include "excelerr.h"
@@ -43,46 +44,6 @@ namespace core
             if (t == xltypeNum) return x.val.num;
             if (t == xltypeInt) return static_cast<double>(x.val.w);
             return 0.0;
-        }
-
-        // Excel's own quoting rule:
-        //
-        //    [Plain1.xlsx]Sheet1!A1        a dot alone does not quote
-        //    [Under_score.xlsx]Under_1!A1  underscore is safe
-        //    [Plain5.xlsx]A.B!A1           a dot in the sheet is safe too
-        //    '[has-hyphen.xlsx]Sheet1'!A1  a hyphen quotes, either side
-        //    '[has space.xlsx]Sheet1'!A1   so does a space
-        //    '[Digits123.xlsx]1Sheet'!A1   and a sheet name starting with a digit
-        //    '[Plain4.xlsx]Bob''s'!A1      an apostrophe is doubled inside
-        //
-        // The safe set is no wider than this. Quoting too much still pastes back; quoting too
-        // little does not.
-        void QuoteSheetPrefix(const char* prefix, char* out, int cap)
-        {
-            const char* sheet = std::strchr(prefix, ']');
-            sheet = sheet ? sheet + 1 : prefix;
-
-            bool needs = (*sheet >= '0' && *sheet <= '9');
-            for (const char* p = prefix; *p && !needs; ++p)
-            {
-                const char c = *p;
-                if (c == '[' || c == ']') continue;
-                const bool safe = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
-                                  (c >= '0' && c <= '9') || c == '_' || c == '.';
-                if (!safe) needs = true;
-            }
-            if (!needs) { _snprintf_s(out, cap, _TRUNCATE, "%s", prefix); return; }
-
-            int j = 0;
-            const int lim = cap - 2;               // the closing quote and the NUL
-            if (j < lim) out[j++] = '\'';
-            for (const char* p = prefix; *p && j < lim; ++p)
-            {
-                if (*p == '\'' && j < lim - 1) out[j++] = '\'';   // doubled, as Excel does
-                out[j++] = *p;
-            }
-            if (j < cap - 1) out[j++] = '\'';
-            out[j] = 0;
         }
 
         // A custom toolbar puts its name where a built-in one puts a number, so a string is quoted
@@ -178,8 +139,8 @@ namespace core
 
         case xltypeMulti:
         {
-            // Two elements is a toolbar tool {toolbar, position}; four is a menu command {bar ID,
-            // menu, submenu, command}. Any other shape is written as its size.
+            // Two elements is a toolbar tool {position, toolbar}; four is a menu command {command,
+            // menu, bar ID, submenu}, as Excel sends them. Any other shape is written as its size.
             const int n = caller.val.array.rows * caller.val.array.columns;
             const XLOPER12* a = caller.val.array.lparray;
             if (a && (n == 2 || n == 4))

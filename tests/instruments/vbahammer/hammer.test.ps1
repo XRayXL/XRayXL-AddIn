@@ -4,6 +4,8 @@
 #   * VBA DEPTH=ALL, every dispatch slot patched, and rapid arm/disarm in a reused process.
 #   * A volatile UDF and a Worksheet_Calculate handler: VBA re-entered from the calc engine.
 #   * A second workbook of VBA returning arrays, Variants, objects and strings, decoded every frame.
+#   * Excel's events: a combination chosen each cycle, subscribed at arm and dropped at disarm, and a
+#     third workbook poked while armed to raise ten kinds of them, some from inside VBA.
 #
 # Multithreaded calc and settings re-randomised every cycle make a rare event happen in minutes.
 # crashlog's first-chance handler writes the evidence: the faulting stack and a minidump.
@@ -116,6 +118,18 @@ End Sub
         @{ Kind = 'Sheet'; Code = $sheetCode }
     )
 
+    # A book of its own to raise events in, so the hammer book's formulas never read what it writes.
+    $scratch = New-EventScratchBook $sx
+    $hammerBook = (Get-XRayMacroBook 'Hammer').Book
+    $hammerBook.Activate()
+    # The combinations a cycle picks from: the dialog's presets, and a random mix of the rest.
+    $presets = @(
+        @(), $script:CalcEvents, $script:SelectionEvents, ($script:CalcEvents + $script:SelectionEvents), $script:AppEvents
+    )
+    $eventsNow = @{}
+    $eventFaults = [System.Collections.Generic.List[string]]::new()
+    $eventRows = 0
+
     # worker threads traverse the shared patched slots concurrently
     $threads = Enable-MultiThreadedCalc $app
 
@@ -150,12 +164,28 @@ End Sub
             [void](Set-XRayTraceParam $sx 'XLL' 'DEPTH'  $depths[$rand.Next(0, 2)])
             [void](Set-XRayTraceParam $sx 'XLL' 'ARGS'   ($rand.Next(0, 2) -eq 1))
             [void](Set-XRayTraceParam $sx 'XLL' 'RETVAL' ($rand.Next(0, 2) -eq 1))
+            $pick = $rand.Next(0, $presets.Count + 1)
+            $chosen = if ($pick -lt $presets.Count) { @($presets[$pick]) }
+                      else { @($script:AppEvents | Where-Object { $rand.Next(0, 2) -eq 1 }) }
+            $bad = @(Set-EventChoice $sx $chosen $eventsNow)
+            if ($bad.Count) { throw ("events setter at $i : " + ($bad -join ' | ')) }
             if (-not $Control) {
                 $pressed = Invoke-XRayCommand $sx 'XRayXL_Arm'
                 if ($pressed -ne 'pressed') { throw "arm refused at $i : $pressed" }
             }
             $app.CalculateFull()
-            if (-not $Control) { [void](Invoke-XRayCommand $sx 'XRayXL_Disarm') }
+            Invoke-EventPoke $sx $scratch $hammerBook $i
+            if (-not $Control) {
+                [void](Invoke-XRayCommand $sx 'XRayXL_Disarm')
+                # The cycle's own file: exactly the chosen kinds among those it raised.
+                $got = Get-EventCounts (Get-XRayTraceCsv $sx.ProcId)
+                foreach ($v in $got.Values) { $eventRows += $v }
+                $stray = @($got.Keys | Where-Object { $chosen -notcontains $_ })
+                $missing = @($script:PokedEvents | Where-Object { $chosen -contains $_ -and -not $got[$_] })
+                if (($stray.Count -or $missing.Count) -and $eventFaults.Count -lt 5) {
+                    $eventFaults.Add("cycle $i stray=[$($stray -join ',')] missing=[$($missing -join ',')]")
+                }
+            }
             $done = $i
             if (Test-Path $dumpPath) { $stoppedOn = 'minidump written'; break }   # the fault we are hunting
             if (($i % $SampleEveryArms) -eq 0) {
@@ -216,12 +246,14 @@ End Sub
     $detail = ("{7}iterations={0} completed={1} armed={2} secs={3} mtcThreads={4} seed={5} stoppedOn={6} | $memNote" -f
                $Iterations, $done, $armed, [math]::Round($sw.Elapsed.TotalSeconds, 1), $threads, $seed, $stoppedOn,
                $(if ($Control) { 'CONTROL (never armed) ' } else { '' }))
+    $detail += "; event rows=$eventRows"
+    if ($eventFaults.Count) { $detail += "; EVENTS WRONG: " + ($eventFaults -join '; ') }
     if ($died) { $detail += "; excel died: $died" }
     if ($execFault) { $detail += "; EXEC-FAULT CAPTURED: $execFault" }
     if ($haveDump) { $detail += "; dump: $dumpPath" }
 
     # a crash is the finding this instrument exists for, so it fails, with where the evidence is
-    if ($died -or $execFault) { Complete-Test -Fail -Detail $detail }
+    if ($died -or $execFault -or $eventFaults.Count) { Complete-Test -Fail -Detail $detail }
     Complete-Test -Pass -Detail ("survived -- " + $detail)
 }
 catch {

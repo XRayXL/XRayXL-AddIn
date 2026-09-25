@@ -91,7 +91,7 @@ IDR_NOTICES RCDATA "..\\THIRD-PARTY-NOTICES.txt"
 
 IDD_XRAY_OPTIONS DIALOGEX 0, 0, 400, 186
 STYLE DS_SETFONT | DS_MODALFRAME | DS_CENTER |
-      WS_POPUP | WS_CAPTION | WS_SYSMENU
+      WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_CLIPCHILDREN
 CAPTION "XRayXL Options"
 FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
@@ -116,6 +116,14 @@ BEGIN
     CONTROL         "Capture ar&gument values", IDC_VBA_ARGS, "Button", BS_OWNERDRAW | WS_TABSTOP, 198, 140, 192, 10
     CONTROL         "Capture re&turn values", IDC_VBA_RET, "Button", BS_OWNERDRAW | WS_TABSTOP, 198, 152, 192, 10
     CONTROL         "Describe &objects (Range, Worksheet, Workbook)", IDC_VBA_OBJ, "Button", BS_OWNERDRAW | WS_TABSTOP, 198, 164, 192, 10
+
+    // ---- Events --------------------------------------------------------
+    LTEXT           "Which of Excel's own events XRayXL records.", IDC_EVT_HDR, 122, 13, 268, 11
+    LTEXT           "Application events", IDC_EVT_SEC1, 100, 36, 290, 9
+    CONTROL         "", IDC_EVT_RULE1, "Static", SS_OWNERDRAW, 100, 40, 290, 1
+    LTEXT           "Record:", IDC_EVT_PRESETLBL, 107, 56, 82, 9
+    COMBOBOX        IDC_EVT_PRESET, 196, 54, 110, 60, CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "", IDC_EVT_COUNT, 312, 56, 78, 9
 
     // ---- Output --------------------------------------------------------
     LTEXT           "Where the trace goes, and in what format.", IDC_OUT_HDR, 122, 13, 268, 11

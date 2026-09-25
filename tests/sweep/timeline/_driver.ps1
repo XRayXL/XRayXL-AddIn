@@ -90,7 +90,7 @@ End Function
 
         # ---- 3. every entry paired with its exit --------------------------
         $bad = @()
-        foreach ($g in ($rows | Where-Object { $_.span } | Group-Object span)) {
+        foreach ($g in ($rows | Where-Object { $_.span -and $_.kind -ne 'event' } | Group-Object span)) {
             $en = @($g.Group | Where-Object { $_.kind -eq 'entry' })
             $ex = @($g.Group | Where-Object { $_.kind -eq 'exit' })
             if ($en.Count -ne 1 -or $ex.Count -ne 1) { $bad += "span $($g.Name): $($en.Count)/$($ex.Count)"; continue }
@@ -137,7 +137,7 @@ End Function
             Check 'mtc-really-engaged' ($threadIds.Count -gt 1) `
                   "only $($threadIds.Count) thread(s) -- a run where MTC never engaged proves nothing"
             $split = @()
-            foreach ($g in ($rows | Where-Object { $_.span } | Group-Object span)) {
+            foreach ($g in ($rows | Where-Object { $_.span -and $_.kind -ne 'event' } | Group-Object span)) {
                 $t = @($g.Group | ForEach-Object { $_.thread } | Sort-Object -Unique)
                 if ($t.Count -ne 1) { $split += "span $($g.Name) on $($t.Count) threads" }
             }
@@ -154,7 +154,7 @@ End Function
         }
         Check 'qpc-monotonic-within-thread' ($backwards.Count -eq 0) ($backwards -join '; ')
         $unordered = @()
-        foreach ($g in ($rows | Where-Object { $_.span } | Group-Object span)) {
+        foreach ($g in ($rows | Where-Object { $_.span -and $_.kind -ne 'event' } | Group-Object span)) {
             $en = @($g.Group | Where-Object { $_.kind -eq 'entry' } | Select-Object -First 1)
             $ex = @($g.Group | Where-Object { $_.kind -eq 'exit' } | Select-Object -First 1)
             if ($en -and $ex -and [int64]$ex.qpc -lt [int64]$en.qpc) { $unordered += "span $($g.Name)" }

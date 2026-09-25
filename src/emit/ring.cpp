@@ -72,7 +72,7 @@ namespace emit
         memcpy(dst + first, m_buf, static_cast<std::size_t>(n) - first);
     }
 
-    bool ByteRing::TryDeposit(const char* data, int n, HANDLE wake)
+    bool ByteRing::TryDeposit(const char* data, int n, HANDLE wake, bool keep)
     {
         if (m_cap == 0 || n < 0) return false;
         const std::size_t need = kHdr + Align16(static_cast<std::size_t>(n));
@@ -90,17 +90,19 @@ namespace emit
             pos = LoadAcq(&m_tail);
             const std::size_t used = static_cast<std::size_t>(pos - LoadAcq(&m_headPub));
             const bool fits = need <= m_cap - used;
-            if (!fits && !m_pauseOnFull) { InterlockedIncrement64(&m_drops); return false; }
+            const bool wait = m_pauseOnFull || keep;
+            if (!fits && !wait) { InterlockedIncrement64(&m_drops); return false; }
             // PAUSE: once the ring fills, every producer waits until the drain has emptied it to
             // half, so the calculation resumes with room for a burst rather than refilling at once.
-            if (m_pauseOnFull && (!fits || InterlockedCompareExchange(&m_refilling, 0, 0) != 0))
+            if (wait && (!fits || InterlockedCompareExchange(&m_refilling, 0, 0) != 0))
             {
                 if (fits && used <= m_cap / 2)
                     InterlockedExchange(&m_refilling, 0);
                 else
                 {
                     InterlockedExchange(&m_refilling, 1);
-                    if (!waited) { InterlockedIncrement64(&m_pauses); if (wake) SetEvent(wake); waited = true; }
+                    // Counted under PAUSE only: a kept row's wait under DROP is not a throttled calc.
+                    if (!waited) { if (m_pauseOnFull) InterlockedIncrement64(&m_pauses); if (wake) SetEvent(wake); waited = true; }
                     // Yield, then sleep, so a drain stalled in a write does not cost a core per waiter.
                     if (++spins < 64) SwitchToThread(); else Sleep(1);
                     continue;

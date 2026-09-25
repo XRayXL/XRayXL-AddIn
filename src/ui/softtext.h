@@ -14,6 +14,7 @@ namespace text
     constexpr unsigned kPrefix  = 4;   // '&' underlines the next character
     constexpr unsigned kWrap    = 8;
     constexpr unsigned kUnderline = 16;
+    constexpr unsigned kEllipsis  = 32;   // text too long for its box ends in "..."
 
     // Whether Direct2D and DirectWrite loaded. There is no other way to draw text here.
     bool Ready();

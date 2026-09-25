@@ -15,14 +15,18 @@ End Sub
      Trigger=@{ Kind='Run'; Name='RaiseTop'; MayRaise=$true; ExpectDialog=$true }
      Expect={ param($t)
         # An unhandled Err.Raise under Application.Run raises Excel's modal VBA dialog, which
-        # blocks the calling thread until the watchdog presses End. Frames abandoned that way
-        # fire no exit opcode, so the stack-pointer backstop has to balance them.
+        # blocks the calling thread until the watchdog presses End. That fires no exit opcode,
+        # so disarm finds the three frames dead: the leaf raised, and the two beneath were ended.
         if ($t.dialogs -lt 1) { return "expected the modal VBA dialog, none appeared" }
         if ($t.framesOpened -lt 3) { return "expected >=3 frames, got $($t.framesOpened)" }
         $why = Assert-VbaTraced $t 'RaiseTop','RaiseMid','RaiseLeaf'; if ($why) { return $why }
+        $x = @($t.rows | Where-Object { $_.kind -eq 'exit' -and $_.source -eq 'VBA' })
+        $want = @{ RaiseLeaf = 'threw'; RaiseMid = 'abandoned'; RaiseTop = 'abandoned' }
+        $wrong = @($x | Where-Object { $_.outcome -ne $want[$_.function] -or $_.trust -ne 'flush' })
+        if ($x.Count -ne 3 -or $wrong.Count) {
+            return ("expected RaiseLeaf threw, RaiseMid and RaiseTop abandoned, all flush; got " +
+                    (($x | ForEach-Object { "$($_.function)=$($_.outcome)/$($_.trust)" }) -join ' ')) }
         $null }
-     # One chain, three deep, with no outcome expected: End kills these frames, and what a frame
-     # closed that way reads is a documented limitation (docs/TraceRowModel.md).
      Calls=@(
         @{ Function='RaiseTop';  Depth='1'; Parent=-1 }
         @{ Function='RaiseMid';  Depth='2'; Parent=0 }

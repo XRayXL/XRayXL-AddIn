@@ -55,6 +55,8 @@ namespace csv
     // writer and `input` by the producer, so its holes are where rows were dropped. WriteRow
     // materialises the row before returning.
     void WriteRow(const Row& row);
+    // Never dropped, even under DROP: the arm and disarm rows a reader needs to read the rest.
+    void WriteRowKept(const Row& row);
 
     // Frees this thread's row scratch. Called as a thread ends, never at process exit.
     void ReleaseThreadScratch();

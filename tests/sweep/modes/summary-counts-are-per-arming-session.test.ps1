@@ -31,7 +31,7 @@ try {
     Check 'first-arm-armed' ([bool]($s1.ArmLine -match 'armed \d+ of')) "$($s1.ArmLine)"
     $first = [double]$s1.Result
     Check 'first-session-counts-its-calls' ($first -ge 3) "TxB=$first after 3 rebuilds"
-    # Session 1 traced, so it wrote a file; a re-arm that traces nothing must not write a newer one.
+    # Each session writes its own file from the moment it arms, beginning with its arm row.
     $s1file = Get-XRayTraceCsv $sx.ProcId
 
     # ---- session 2: arm again, read before calculating anything, then one recalc
@@ -47,9 +47,9 @@ try {
     Check 're-arm-starts-with-nothing-traced' ($s2.Result.NamedBefore -notcontains 'TxB') `
           ("summary named: " + (($s2.Result.NamedBefore | Sort-Object) -join ',') + " -- expected none")
 
-    # The trace file is the second witness: lazy creation means no new file yet.
-    Check 'nothing-traced-wrote-no-new-file' ($s2.Result.FileBefore -eq $s1file) `
-          "newest after a no-trace re-arm: $(Split-Path $s2.Result.FileBefore -Leaf); session 1's was $(Split-Path $s1file -Leaf)"
+    # The trace file is the second witness: a re-arm starts a new one, not session 1's.
+    Check 're-arm-starts-its-own-file' ($s2.Result.FileBefore -ne $s1file) `
+          "newest after the re-arm: $(Split-Path $s2.Result.FileBefore -Leaf); session 1's was $(Split-Path $s1file -Leaf)"
 
     $second = [double]$s2.Result.Calls
     Check 'second-session-counts-its-own-calls' ($second -ge 1) "TxB=$second after 1 rebuild"

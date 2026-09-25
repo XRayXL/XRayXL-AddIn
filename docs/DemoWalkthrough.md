@@ -286,7 +286,8 @@ What to notice:
 **Try it:** Arm, press **Ctrl+Alt+F9**, press **Run the error chain**, then Disarm.
 
 The `outcome` column says how each call ended: `returned`, `threw`, `unwound`, `handled`,
-`unhandled` or `abandoned`.
+`unhandled` or `abandoned`. [ErrorsInTheTrace.md](./ErrorsInTheTrace.md) explains each one, and the cases
+where VBA stops at its error dialog instead of passing an error on.
 
 ### An error passed up a chain
 

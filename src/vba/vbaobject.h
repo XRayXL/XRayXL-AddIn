@@ -22,4 +22,8 @@ namespace vba
     // False, having written nothing, when the class cannot be named. A COM call that faults
     // costs this description and nothing else.
     bool DescribeObjectDetail(std::uint64_t ptr, core::ValueWriter& w);
+
+    // Where a Range, Worksheet or Workbook is, as its description writes it (`[Book1]Sheet1!A1`),
+    // for an event row's `callerref`. False, with `out` empty, for anything else.
+    bool ObjectWhere(std::uint64_t ptr, char* out, int cap);
 }

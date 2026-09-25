@@ -34,6 +34,7 @@
     <ClCompile Include="decode_test.cpp" />
     <ClCompile Include="$(XRayRoot)src\vba\vbaretdecode.cpp" />
     <ClCompile Include="$(XRayRoot)src\vba\vbaobject.cpp" />
+    <ClCompile Include="$(XRayRoot)src\core\sheetquote.cpp" />
     <ClCompile Include="$(XRayRoot)src\core\textvalue.cpp" />
     <ClCompile Include="$(XRayRoot)src\core\jsonvalue.cpp" />
   </ItemGroup>

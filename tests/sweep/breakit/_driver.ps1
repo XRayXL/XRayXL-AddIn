@@ -42,7 +42,7 @@ function Invoke-FuzzCase($Case) {
             if ($e.caller -ne 'cell') { $problems += "entry $($e.function): caller '$($e.caller)', expected 'cell'" }
         }
 
-        foreach ($g in ($rows | Where-Object { $_.span } | Group-Object span)) {
+        foreach ($g in ($rows | Where-Object { $_.span -and $_.kind -ne 'event' } | Group-Object span)) {
             $fns = @($g.Group | Select-Object -ExpandProperty function -Unique)
             if ($fns.Count -gt 1) { $problems += "span $($g.Name) names more than one function: $($fns -join ', ')" }
             $en = $g.Group | Where-Object { ($_.kind -eq 'entry' -and $_.source -eq 'XLL') } | Select-Object -First 1

@@ -74,20 +74,31 @@ try {
 
     $rows = @(Read-TraceRows $sx.ProcId)
 
-    # asserts threw, since "not unhandled" alone would pass a wrong `returned`
+    # The callee's error never reaches the caller: VBA's dialog stops it in the callee, and End
+    # ends both. Asserts threw, since "not unhandled" alone would pass a wrong `returned`.
     $rt = @(ExitsOf $rows 'RunThrower')
+    $rd = @(ExitsOf $rows 'RunDriver')
     Check 'application-run-macro-was-traced-once' ($rt.Count -eq 1) "RunThrower rows: $($rt.Count)"
     Check 'application-run-error-reads-threw' `
           (($rt.Count -eq 1) -and ($rt[0].outcome -eq 'threw')) `
-          "RunThrower=$(OutcomesOf $rows 'RunThrower') -- must propagate as VBA, reading threw"
+          "RunThrower=$(OutcomesOf $rows 'RunThrower'), the raiser, reading threw"
+    Check 'its-caller-reads-abandoned' `
+          (($rd.Count -eq 1) -and ($rd[0].outcome -eq 'abandoned')) `
+          "RunDriver=$(OutcomesOf $rows 'RunDriver'), ended by the dialog despite On Error Resume Next"
 
-    # End on the event's dialog fires no opcode, so disarm flushes the frame as if still
-    # running: `returned` with trust `flush` (docs/TraceRowModel.md).
+    # End on the event's dialog fires no opcode, so disarm finds the handler and the macro that
+    # set the cell dead: the handler raised, and the macro was ended. Excel's SheetChange, recorded
+    # after the End, reuses their stack, so a check on the stack's contents alone would misread them.
     $ev = @(ExitsOf $rows 'Worksheet_Change')
+    $cd = @(ExitsOf $rows 'ChangeDriver')
     Check 'sheet-event-was-traced-once' ($ev.Count -eq 1) "Worksheet_Change rows: $($ev.Count)"
-    Check 'event-error-ends-at-the-dialog-and-flushes' `
-          (($ev.Count -eq 1) -and ($ev[0].outcome -eq 'returned') -and ($ev[0].trust -eq 'flush')) `
-          "Worksheet_Change=$(OutcomesOf $rows 'Worksheet_Change') trust='$(if ($ev.Count) { $ev[0].trust })'"
+    Check 'event-error-ended-at-the-dialog' `
+          (($ev.Count -eq 1) -and ($ev[0].outcome -eq 'threw') -and ($ev[0].trust -eq 'flush') -and
+           ($cd.Count -eq 1) -and ($cd[0].outcome -eq 'abandoned') -and ($cd[0].trust -eq 'flush')) `
+          ("Worksheet_Change=$(OutcomesOf $rows 'Worksheet_Change')/$(if ($ev.Count) { $ev[0].trust }) " +
+           "ChangeDriver=$(OutcomesOf $rows 'ChangeDriver')/$(if ($cd.Count) { $cd[0].trust })")
+    $sc = @($rows | Where-Object { $_.kind -eq 'event' -and $_.source -eq 'Excel' -and $_.function -eq 'SheetChange' })
+    Check 'excel-sheetchange-was-recorded' ($sc.Count -ge 1) "SheetChange rows: $($sc.Count)"
 
     # The only cell escapes in a session are worksheet functions; there are none here.
     $escapes = @($rows | Where-Object { $_.kind -eq 'exit' -and $_.outcome -eq 'unhandled' })
@@ -96,7 +107,7 @@ try {
 
     $checkFails = Get-XRayCheckFailures
     if ($checkFails) { Complete-Test -Fail -Detail "$checkFails case(s) failed" }
-    Complete-Test -Pass -Detail ("Application.Run and a sheet event propagate as VBA, neither a cell escape; $dlgNew dialog(s) dismissed")
+    Complete-Test -Pass -Detail ("errors in an Application.Run macro and a sheet event stop at the dialog, neither a cell escape; $dlgNew dialog(s) dismissed")
 }
 catch {
     Complete-Test -Fail -Detail ("exception: " + ($_.Exception.Message -replace '\s+', ' ') +

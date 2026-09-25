@@ -191,7 +191,10 @@ call carries an **outcome** that says how it ended, from a fixed list:
 | `unwound` | an error passed through this call on its way out; it did nothing after the raise |
 | `handled` | this call caught an error raised below it and carried on |
 | `unhandled` | an error left VBA through this call into a worksheet cell (the cell shows `#VALUE!`) |
-| `abandoned` | the `End` statement tore the session down; the call neither returned nor threw |
+| `abandoned` | `End` stopped all VBA, from code or from the error dialog; the call neither returned nor threw |
+
+How each of these reads in a real chain, and the cases where VBA handles an error
+unexpectedly, is in [ErrorsInTheTrace.md](./ErrorsInTheTrace.md).
 
 **Why the outcome is decided when the call closes.** An error can be raised by
 `Err.Raise` or by VBA itself, in the middle of a division, a conversion or an
@@ -274,6 +277,11 @@ handles deliberately, each covered by a test.
 - **The `End` statement.** `End` stops all VBA immediately, running no endings at
   all. We intercept it directly and mark every still-open call `abandoned`, because
   they neither returned nor threw.
+- **End on VBA's error dialog.** This End runs no code we can intercept, so its
+  calls stay open until the next VBA call finds none of them still on the stack, or
+  until disarm, which walks the real call stack and finds them gone. Only End stops
+  every call at once, so the innermost call is taken to have raised the error and
+  reads `threw`, and the rest read `abandoned`.
 - **A same-procedure `On Error Resume Next` of a real error.** The call caught its
   own error and runs its normal ending, so it reads `returned`: nothing left it.
 - **An error passed an Excel object.** Passing something like a `Range` to a VBA
@@ -301,8 +309,9 @@ error in one of those reads `threw` rather than `unhandled`. This is under-label
 not wrong — the failing call is still identified, the escape is still counted, and
 Excel shows its own dialog. Closing this gap would need a different signal than the
 calling cell, and none cheap and reliable is in hand. An event *triggered by VBA* (a
-macro writes a cell, firing an event beneath it) is not affected: there the error
-genuinely propagates to the macro, and the trace shows that.
+macro writes a cell, firing an event beneath it) behaves the same way: the error does
+not reach the macro, VBA's dialog appears in the event handler, and End stops both, so
+the handler reads `threw` and the macro `abandoned`.
 
 ---
 

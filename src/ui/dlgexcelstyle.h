@@ -87,6 +87,10 @@ namespace excelstyle
     void DrawRule(const DRAWITEMSTRUCT* di);
     void DrawButton(const DRAWITEMSTRUCT* di);
     void DrawCheck(const DRAWITEMSTRUCT* di);
+    // A check box's square at `box`: state 0 clear, 1 ticked, 2 mixed.
+    void PaintCheckBox(HWND h, HDC dc, const RECT& box, int state, bool hot, bool disabled);
+    // Whether the pointer is over `h`, for controls that draw their own hover.
+    bool IsHot(HWND h);
     void DrawCategory(const DRAWITEMSTRUCT* di);
     void DrawComboItem(const DRAWITEMSTRUCT* di);
     void DrawPaneFrame(HWND h, HDC dc, const RECT& windowRc);

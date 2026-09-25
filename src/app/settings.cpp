@@ -1,6 +1,8 @@
 #include "settings.h"
 #include "paramparse.h"
 #include "core/log.h"
+#include "appevents.h"
+#include "core/eventlist.h"
 #include "core/tracemodes.h"
 
 namespace app
@@ -37,6 +39,13 @@ namespace settings
         s.emplace_back("BUFFERSIZE",     BufferText(GetBufferBytes()));
         s.emplace_back("BUFFERWHENFULL", GetPauseOnFull() ? "PAUSE" : "DROP");
         s.emplace_back("FORMAT",         FormatName(GetFormat()));
+        {
+            // Against the events this Excel has, as the dialog and the arm log read it.
+            bool known = false;
+            char ev[2048];
+            core::events::DescribeSelection(core::events::GetSelected(), appevents::Available(known), ev, sizeof(ev));
+            s.emplace_back("EVENTS", ev);
+        }
         s.emplace_back("LOGLEVEL",       core::Log::LevelName(core::Log::GetLevel()));
         return s;
     }
