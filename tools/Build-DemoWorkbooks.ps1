@@ -439,7 +439,9 @@ End Function
 Public Sub DescribeThings()
     Describe ActiveSheet
     Describe ThisWorkbook
-    Describe New Collection
+    Dim items As New Collection
+    items.Add "a": items.Add CLng(2)
+    Describe items
     Dim c As Range
     Set c = FirstDataCell()
 End Sub
@@ -468,7 +470,7 @@ End Function
     $r++
     $ws.Range("A$r").Value2 = 'Objects passed by a macro:'
     Add-Button $ws 'DescribeTheObjects' 'Describe the objects' 'DescribeThings' "B$r"
-    $ws.Range("J$r").Value2 = 'Describe three times: Worksheet@0x...([06_Objects.xlsm]Objects), Workbook@0x...([06_Objects.xlsm]), Collection@0x...; FirstDataCell ret Range@0x...(...!B' + $dataRow + ')=1.5'
+    $ws.Range("J$r").Value2 = 'Describe three times: Worksheet@0x...([06_Objects.xlsm]Objects), Workbook@0x...([06_Objects.xlsm]), Collection@0x...=Variant[1..2]{"a",Long(2)}; FirstDataCell ret Range@0x...(...!B' + $dataRow + ')=1.5'
     $ws.Range("J$r").Font.Color = 0x606060
     $ws.Range("A$dataRow").Value2 = 'The range RangeInfo reads:'
     $ws.Range("B$dataRow").Name = 'DataStart'

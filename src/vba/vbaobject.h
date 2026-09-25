@@ -15,9 +15,10 @@ namespace vba
 
     // `ptr` is an IUnknown*/IDispatch* from a VBA slot:
     //
-    //    Collection@0x27DB4C21EE0
     //    Worksheet@0x27DB4C21EE0([Book1]Sheet1)
     //    Range@0x27DB4C21EE0([Book1]Sheet1!A1:B2)=Variant[1..2,1..2]{{1,2},{"x",TRUE}}
+    //    Collection@0x27DB4C21EE0=Variant[1..2]{1,Nothing}
+    //    Dictionary@0x27DB4C21EE0=Variant[0..1,0..1]{{"a",1},{"b",Empty}}   one {key,item} row each
     //
     // False, having written nothing, when the class cannot be named. A COM call that faults
     // costs this description and nothing else.

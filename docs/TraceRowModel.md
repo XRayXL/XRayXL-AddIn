@@ -475,8 +475,8 @@ A typed array's elements are bare, because the header already names them — `Lo
 — and so is a declared scalar argument, `a1:Long=5`. `Range.Value2` hands back only Doubles,
 strings, Booleans, errors and Empty, so a range's contents are never tagged.
 
-An object reads `Class@0x…(where)`, and a Range whose contents were read is followed by `=` and
-its value (see *Objects*). A user-defined Type reads `udt@0x…`. An XLL reference reads
+An object reads `Class@0x…(where)`, and a Range, Collection or Dictionary whose contents were
+read is followed by `=` and its value (see *Objects*). A user-defined Type reads `udt@0x…`. An XLL reference reads
 `SRef(R2C2:R3C3)` or `Ref(R2C2:R3C3,R5C5:R5C5)`: its cells are not read, because `xlCoerce` on a
 cell not yet calculated makes Excel abandon the call and run it again later.
 
@@ -549,27 +549,31 @@ reports what the parameter holds.
 ## Objects
 
 With `OBJECTS` on — the default — an object argument or return is named, and a
-`Range`, `Worksheet` or `Workbook` is described. The address is always kept, so
-one object can be followed from row to row:
+`Range`, `Worksheet`, `Workbook`, `Collection` or `Scripting.Dictionary` is
+described. The address is always kept, so one object can be followed from row to
+row:
 
 ```
 a1:Variant=Range@0x000001E2…('[Book1]Sheet1'!A1:C2)=Variant[1..2,1..3]{{11,12,13},{21,22,23}}
 a1:Variant=Range@0x000001E2…('[Book1]Sheet1'!A:A)   -- addressed, deliberately not read
 a1:Variant=Worksheet@0x000001E2…([Book1]Sheet1)
 a1:Variant=Workbook@0x000001E2…([Book1])
-a1:Variant=Collection@0x000001E2…                   -- named; no detail we know how to fetch
+a1:Variant=Collection@0x000001E2…=Variant[1..3]{1.5,"x",Nothing}
+a1:Variant=Dictionary@0x000001E2…=Variant[0..1,0..1]{{"a",Integer(1)},{Long(2),Empty}}
+a1:Variant=Position@0x000001E2…                     -- named; no detail we know how to fetch
 a1:Variant=object@0x000001E2…                       -- OBJECTS off, or nothing worked out
+a1:Object=Nothing                                   -- no object at all
 ```
 
 **This is the one setting that makes the tracer TALK to Excel.** Everything else
 reads memory or asks the flat C API, which is passive. This calls the object
-model — `Address`, `Count`, `Value2`, `Name` — on the calculating thread, at a
-statement boundary. `XRayXL_SetTraceParam VBA, "OBJECTS", FALSE` returns the
+model — `Address`, `Count`, `Value2`, `Name`, and a container's `Keys`, `Items`
+or enumerator — on the calculating thread, at a statement boundary. `XRayXL_SetTraceParam VBA, "OBJECTS", FALSE` returns the
 tracer to pure observation, and every object then reads `object@0x…`.
 
-**A class is identified, never guessed.** `QueryInterface` against Excel's
-published interface ids decides whether a Range, Worksheet or Workbook detail may
-be fetched — not the presence of an `Address` property, and not a familiar-looking
+**A class is identified, never guessed.** `QueryInterface` against the published
+interface ids — Excel's, VBA's `_Collection` and the Scripting Runtime's
+`IDictionary` — decides whether a detail may be fetched — not the presence of an `Address` property, and not a familiar-looking
 vtable. An interface id that is wrong, or that Excel changes, simply never
 matches and the object falls through to being named.
 
@@ -591,6 +595,20 @@ several areas (`A1:A2,C1:C2`), whose `Value2` is the first area's alone.
 gives a **scalar**. Every multi-cell range gives a **2-D** array, including a
 single row — `A1:C1` is `[1..1,1..3]{{1,2,3}}`, *not* a 1-D array of 3. Rows come
 first, one brace level each: `A1:C2` reads `{{11,12,13},{21,22,23}}`.
+
+**A Collection reads as a 1-D Variant array from 1**, in the order `For Each`
+gives. Its keys are not shown: a Collection has no way to give them back. **A Dictionary reads as a 2-D Variant
+array of `{key,item}` rows**, in `Keys` order, the rows numbered as `Keys()`
+numbers them. Every key and item is read as a Variant array's element is, so each
+is any type — a number named, a string quoted, `Empty`, `Nothing`, an array, or
+another object described by these same rules. An empty one keeps its shape:
+`Variant[1..0]{}` and `Variant[0..-1,0..1]{}`.
+
+**A container's contents are declined, not cut**, as a range's are: over 4,096
+items, or when its items cannot all be read, it is named with no `=`. A container
+already being read — one that holds itself, or holds one that holds it — is named
+where it recurs rather than read again, and past eight containers deep the next is
+named only.
 
 **Any failure renders the address.** A call that fails, a class with no name, the
 setting off — all produce `object@0x…`, which is what this always said and is

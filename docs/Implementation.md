@@ -721,8 +721,9 @@ Inside the hook, on the traced thread:
   it holds, so no depth goes unrecorded; it is freed when its thread ends. The settings that do cost a call
   are stated: the calling cell is resolved on every call (`xlfCaller`, `xlSheetNm`)
   and is not a setting -- the VBA tracer needs it to attribute an error that escapes
-  into a cell; `OBJECTS` calls the object model (`Address`, `Count`, `Value2`, `Name`) for an
-  object argument or result; `BUFFERWHENFULL=PAUSE`, the default, makes the
+  into a cell; `OBJECTS` calls the object model (`Address`, `Count`, `Value2`, `Name`, and a
+  Collection's enumerator or a Dictionary's `Keys` and `Items`) for an object argument
+  or result; `BUFFERWHENFULL=PAUSE`, the default, makes the
   traced thread wait when the ring fills, until it is half empty; and
   `BUFFERSIZE=0` writes each row under a lock.
 - **Per-thread state via TLS only.**

@@ -452,19 +452,21 @@ span parent depth module                      function          args            
   the object once the function has finished, so the destructor is not nested under it.
 
 **Excel objects as arguments.** With **Describe objects** on (Options ▸ Capture, the
-default), an object argument is named and, for a Range, Worksheet or Workbook, described:
+default), an object argument is named and, for a Range, Worksheet, Workbook, Collection or
+Dictionary, described:
 
 ```
 RangeInfo      a1:Object=Range@0x228072FDBE0([06_Objects.xlsm]Objects!B17:C18)=Variant[1..2,1..2]{{1.5,"a"},{2.5,"b"}}
 Describe       a1:Object=Worksheet@0x2280464D740([06_Objects.xlsm]Objects)
 Describe       a1:Object=Workbook@0x2280464A040([06_Objects.xlsm])
-Describe       a1:Object=Collection@0x2281D2B2EF0
+Describe       a1:Object=Collection@0x2281D2B2EF0=Variant[1..2]{"a",Long(2)}
 FirstDataCell  ret Range@0x228072FBD20([06_Objects.xlsm]Objects!B17)=1.5
 ```
 
 The class comes from the object itself, so a parameter declared `As Object` still reads
-`Worksheet`. A Range shows its address and then its cells. A single cell is a plain value,
-and a Collection is named but has nothing to describe. The address after `@` lets you
+`Worksheet`. A Range shows its address and then its cells, and a single cell is a plain
+value. A Collection shows its items as a 1-D array; a Dictionary would show one `{key,item}`
+row per entry, as a 2-D array. The address after `@` lets you
 follow one object from row to row. Turning **Describe objects** off leaves only
 `object@0x…`, which also stops the tracer asking Excel anything during the call.
 

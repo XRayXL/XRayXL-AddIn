@@ -19,8 +19,8 @@ End Sub
         $e = @($t.rows | Where-Object { $_.kind -eq 'entry' -and $_.source -eq 'VBA' -and $_.function -eq 'TakeV' }) | Select-Object -First 1
         if (-not $e) { return 'TakeV was not traced' }
         # Each element by its own rule: a bare Double, a nested array with its bounds,
-        # the object by class and address, and a Boolean spelt as Excel spells it.
-        $want = '^a1:Variant=Variant\[0\.\.3\]\{1\.5,Variant\[0\.\.1\]\{Integer\(2\),Integer\(3\)\},Collection@0x[0-9A-Fa-f]+,TRUE\}$'
+        # the Collection by class, address and contents, and a Boolean spelt as Excel spells it.
+        $want = '^a1:Variant=Variant\[0\.\.3\]\{1\.5,Variant\[0\.\.1\]\{Integer\(2\),Integer\(3\)\},Collection@0x[0-9A-Fa-f]+=Variant\[1\.\.1\]\{Integer\(1\)\},TRUE\}$'
         if ([string]$e.args -cnotmatch $want) { return "args [$($e.args)] do not match $want" }
         $null }
      Why='a Variant array of a Double, a nested array, an object and a Boolean in one argument: every element renders by its own rule inside the one args grammar' }

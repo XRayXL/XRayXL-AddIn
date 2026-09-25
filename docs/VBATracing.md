@@ -320,9 +320,9 @@ the handler reads `threw` and the macro `abandoned`.
 - It does not modify your workbook or its code.
 - It does not follow an error's *identity* — the outcome column says where an error
   was thrown and who caught it, never which error number it was.
-- It does not dereference objects; an object argument is described by its class and,
-  for a few known types, an identifying detail, but the tracer never calls into your
-  objects to inspect them beyond that.
+- It does not call into your own classes. An object argument is described by its class
+  and, for a few known types, a detail: where a Range, sheet or book is, a Range's cells,
+  and a Collection's or Dictionary's contents.
 - It runs 64-bit Excel only.
 
 See `docs/TraceOptions.md` for the settings, `docs/TraceRowModel.md` for the exact

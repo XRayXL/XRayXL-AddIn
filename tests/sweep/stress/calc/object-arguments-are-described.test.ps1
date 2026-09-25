@@ -42,7 +42,7 @@ Public Sub TakeObj2(ByVal tag As String, ByVal v As Variant)
     z = 1
 End Sub
 
-' A class Excel does not own, to prove an unknown object is still NAMED.
+' A class Excel does not own, named by VBA's library and read through its enumerator.
 Public Function TakeColl(ByVal tag As String) As Variant
     Dim c As New Collection
     c.Add 1
@@ -102,14 +102,13 @@ End Function
         if ($ours['sheet'] -notmatch '^Worksheet@0x[0-9A-F]+\(') { return "sheet : got [$($ours['sheet'])]" }
         if ($ours['book']  -notmatch '^Workbook@0x[0-9A-F]+\(')  { return "book : got [$($ours['book'])]" }
 
-        # ---- an unknown class is still named -------------------------------
-        # The class name is what VBA's TypeName says; the address follows it and
-        # is ours, so compare only the part that is a claim about the class.
+        # ---- a Collection is named as TypeName names it, and read ----------
+        # The address follows the class and is ours, so compare only the class.
         $collCls = ($ours['coll'] -split '@')[0]
         if ($collCls -ne $vba['coll']) {
             return "coll : tracer says [$collCls], VBA's TypeName says [$($vba['coll'])]" }
-        if ($ours['coll'] -notmatch '@0x[0-9A-F]+$') {
-            return "coll : lost its address [$($ours['coll'])] -- an object is followed by that, not by its class" }
+        if ($ours['coll'] -cnotmatch '^Collection@0x[0-9A-F]+=Variant\[1\.\.1\]\{Integer\(1\)\}$') {
+            return "coll : expected its address and its one item, got [$($ours['coll'])]" }
 
         # ---- the ceiling: a whole column is addressed, never read -----------
         if ($ours['wholecol'] -match '\)=') {
@@ -128,8 +127,8 @@ End Function
         # Expect returns its result, so a stray Write-Output here would become the return value
         # instead of the verdict.
         $null }
-     Why='a Range, Worksheet, Workbook and an unowned class reaching a VBA UDF:
-          each described, the unknown one still named, a whole column addressed
+     Why='a Range, Worksheet, Workbook and Collection reaching a VBA UDF:
+          each described, the Collection named as TypeName names it, a whole column addressed
           but not read, and the shape Excel returns for Value2 measured rather
           than assumed' }
 if ($StretchCollectOnly) { return }

@@ -25,7 +25,7 @@ End Sub
         if (-not $e) { return 'Take2 was not traced' }
         # A level per row: {a(1,1),a(1,2)},{a(2,1),a(2,2)}. The bytes lie column-major, which
         # would put the object in the first row. Array(2, 3) holds Integers, so they are named.
-        $want = '^a1:Variant=Variant\[1\.\.2,1\.\.2\]\{\{1\.5,Variant\[0\.\.1\]\{Integer\(2\),Integer\(3\)\}\},\{Collection@0x[0-9A-Fa-f]+,TRUE\}\}$'
+        $want = '^a1:Variant=Variant\[1\.\.2,1\.\.2\]\{\{1\.5,Variant\[0\.\.1\]\{Integer\(2\),Integer\(3\)\}\},\{Collection@0x[0-9A-Fa-f]+=Variant\[1\.\.1\]\{Integer\(1\)\},TRUE\}\}$'
         if ([string]$e.args -cnotmatch $want) { return "args [$($e.args)] do not match $want" }
         $null }
      Why='a 2-D Variant array of a Double, a nested array, an object and a Boolean: elements read row by row, each by its own rule' }

@@ -15,11 +15,25 @@ Public Function J_Take(ByVal v As Variant, ByVal d As Double) As Variant
     e = d * 1
     J_Take = Array(CLng(7), e, "x")
 End Function
+
+Public Function J_Containers() As Long
+    Dim c As New Collection, d As Object
+    c.Add 1.5
+    Set d = CreateObject("Scripting.Dictionary")
+    d.Add "k", Nothing
+    J_See c
+    J_See d
+    J_Containers = 1
+End Function
+
+Public Sub J_See(ByVal o As Variant)
+End Sub
 '@
     New-XRayMacroBook $sx 'JsonlFormat' @(@{ Kind = 1; Name = 'M'; Code = $m }) @{
         'A1' = '1.5'; 'B1' = 'x'; 'A2' = '2'; 'B2' = 'TRUE'
         'D1' = '=J_Take(A1:B2,2.5)'
         'H1' = '=TxB(2,3)'
+        'J1' = '=J_Containers()'
     }
     $book = Get-XRayMacroBook
 
@@ -68,6 +82,21 @@ End Function
                                        ($r1[1].t -eq 'String') -and ($r1[1].v -eq 'x')) ($grid.v[0] | ConvertTo-Json -Compress)
     Check 'row-2-types-kept' (($r2.Count -eq 2) -and ($r2[0].t -eq 'Double') -and ([double]$r2[0].v -eq 2) -and
                                ($r2[1].t -eq 'Boolean') -and ($r2[1].v -eq $true)) ($grid.v[1] | ConvertTo-Json -Compress)
+
+    # ---- a Collection is a 1-D array of Variants, a Dictionary a 2-D one of {key,item} ----
+    $seen = @($mine | Where-Object { $_.kind -eq 'entry' -and $_.function -eq 'J_See' } | ForEach-Object { $_.args[0].value })
+    $coll = $seen | Where-Object { $_.class -eq 'Collection' } | Select-Object -First 1
+    $dict = $seen | Where-Object { $_.class -eq 'Dictionary' } | Select-Object -First 1
+    Check 'collection-value-is-a-1d-array' ($coll -and ($coll.value.t -eq 'Array') -and ($coll.value.elem -eq 'Variant') -and
+                                            ((@($coll.value.bounds[0]) -join '..') -eq '1..1') -and
+                                            ($coll.value.v[0].t -eq 'Double') -and ([double]$coll.value.v[0].v -eq 1.5)) `
+          ($coll | ConvertTo-Json -Compress -Depth 8)
+    $pair = if ($dict) { @($dict.value.v[0]) } else { @() }
+    Check 'dictionary-value-is-key-item-rows' ($dict -and ($dict.value.t -eq 'Array') -and (@($dict.value.bounds).Count -eq 2) -and
+                                               ((@($dict.value.bounds[0]) -join '..') -eq '0..0') -and
+                                               ((@($dict.value.bounds[1]) -join '..') -eq '0..1') -and ($pair.Count -eq 2) -and
+                                               ($pair[0].t -eq 'String') -and ($pair[0].v -eq 'k') -and ($pair[1].t -eq 'Nothing')) `
+          ($dict | ConvertTo-Json -Compress -Depth 8)
 
     # ---- a declared Double keeps its type descriptor ---------------------------
     $d = $e.args | Where-Object { $_.type -eq 'Double' }

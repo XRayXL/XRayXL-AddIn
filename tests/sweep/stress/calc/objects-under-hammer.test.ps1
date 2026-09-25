@@ -15,8 +15,9 @@ $case = @{ Name='objects-under-hammer'
 '   big    a whole column           -- Count checked, Value2 NEVER asked for
 '   sheet  a Worksheet              -- Name, then Parent, which is another object
 '   book   a Workbook               -- Name
-'   coll   a Collection             -- QueryInterface says no to all three, then
-'                                      IProvideClassInfo names it
+'   coll   a Collection             -- Count, then its enumerator walked to the end
+'   dict   a Dictionary             -- Count, Keys and Items, two SAFEARRAYs to free
+'   fso    a FileSystemObject       -- no detail known, so only named
 '   noObj  Nothing                  -- the path that must call nothing at all
 '
 ' WHAT IS ON TRIAL is not the values -- the sibling cases assert those. It is
@@ -30,13 +31,18 @@ Public Function HAll(ByVal n As Double, ByVal r As Variant, ByVal big As Variant
     ' opening in break mode and the case timing out, not as a failed assertion.
     Dim coll As New Collection
     Dim noObj As Object
+    Dim dict As Object
     coll.Add 1
+    Set dict = CreateObject("Scripting.Dictionary")
+    dict.Add "k", 2
 
     Take r
     Take big
     Take Application.ThisWorkbook.Worksheets("S1")
     Take Application.ThisWorkbook
     Take coll
+    Take dict
+    Take CreateObject("Scripting.FileSystemObject")
     Take noObj
     HAll = n
 End Function
@@ -85,7 +91,9 @@ End Function
             'wholecol'  = @($vals | Where-Object { $_ -match '^Range@0x[0-9A-F]+\(.*![A-Z]+:[A-Z]+\)$' }).Count
             'worksheet' = @($vals | Where-Object { $_ -match '^Worksheet@0x' }).Count
             'workbook'  = @($vals | Where-Object { $_ -match '^Workbook@0x' }).Count
-            'collection'= @($vals | Where-Object { $_ -match '^Collection@0x' }).Count
+            'collection'= @($vals | Where-Object { $_ -cmatch '^Collection@0x[0-9A-F]+=Variant\[1\.\.1\]\{Integer\(1\)\}$' }).Count
+            'dictionary'= @($vals | Where-Object { $_ -cmatch '^Dictionary@0x[0-9A-F]+=Variant\[0\.\.0,0\.\.1\]\{\{"k",Integer\(2\)\}\}$' }).Count
+            'named'     = @($vals | Where-Object { $_ -cmatch '^FileSystemObject@0x[0-9A-F]+$' }).Count
             'nothing'   = @($vals | Where-Object { $_ -eq 'Nothing' }).Count
         }
         foreach ($k in $shapes.Keys) {

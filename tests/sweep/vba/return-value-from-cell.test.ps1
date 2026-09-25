@@ -344,19 +344,19 @@ End Function
     }
 
     # the address is what follows one object from an argument to a result
-    $obj = '^[A-Za-z_][A-Za-z0-9_]*@0x[0-9A-Fa-f]+$'
+    $emptyColl = '^Collection@0x[0-9A-Fa-f]+=Variant\[1\.\.0\]\{\}$'
     $x = Get-Return 'R_Obj'
     if (-not $x) { Check 'R_Obj-has-exit-row' $false 'no paired exit row' }
-    else { Check 'R_Obj-object-returned' (($x.ret -match $obj) -and ($x.rettype -eq 'Object')) ("ret='{0}' rettype='{1}'" -f $x.ret, $x.rettype) }
+    else { Check 'R_Obj-object-returned' (($x.ret -match $emptyColl) -and ($x.rettype -eq 'Object')) ("ret='{0}' rettype='{1}'" -f $x.ret, $x.rettype) }
     $x = Get-Return 'R_ObjNothing'
     if (-not $x) { Check 'R_ObjNothing-has-exit-row' $false 'no paired exit row' }
     else { Check 'R_ObjNothing-is-Nothing' (($x.ret -eq 'Nothing') -and ($x.rettype -eq 'Object')) ("ret='{0}' rettype='{1}'" -f $x.ret, $x.rettype) }
     $x = Get-Return 'R_VarObj'
     if (-not $x) { Check 'R_VarObj-has-exit-row' $false 'no paired exit row' }
-    else { Check 'R_VarObj-object-in-variant' (($x.ret -match $obj) -and ($x.rettype -eq 'Variant')) ("ret='{0}' rettype='{1}'" -f $x.ret, $x.rettype) }
+    else { Check 'R_VarObj-object-in-variant' (($x.ret -match $emptyColl) -and ($x.rettype -eq 'Variant')) ("ret='{0}' rettype='{1}'" -f $x.ret, $x.rettype) }
     $x = Get-Return 'R_ArrWithObj'
     if (-not $x) { Check 'R_ArrWithObj-has-exit-row' $false 'no paired exit row' }
-    else { Check 'R_ArrWithObj-object-in-array' (($x.ret -match '^Variant\[0\.\.1\]\{[A-Za-z_][A-Za-z0-9_]*@0x[0-9A-Fa-f]+,1234\.5\}$') -and ($x.rettype -eq 'Variant')) ("ret='{0}'" -f $x.ret) }
+    else { Check 'R_ArrWithObj-object-in-array' (($x.ret -match '^Variant\[0\.\.1\]\{Collection@0x[0-9A-Fa-f]+=Variant\[1\.\.0\]\{\},1234\.5\}$') -and ($x.rettype -eq 'Variant')) ("ret='{0}'" -f $x.ret) }
 
     # the object handed down as an argument comes back as the result, at one address
     $e = @($rows | Where-Object { ($_.kind -eq 'entry' -and $_.source -eq 'VBA') -and $_.function -eq 'R_TakesObj' }) | Select-Object -First 1
