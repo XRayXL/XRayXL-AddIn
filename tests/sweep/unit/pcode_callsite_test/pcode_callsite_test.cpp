@@ -36,7 +36,7 @@ namespace
         Code& D(std::int32_t v) { for (int i = 0; i < 4; ++i) b.push_back(static_cast<std::uint8_t>(v >> (8 * i))); return *this; }
         Code& Op(std::uint16_t op, std::int32_t operand) { return W(op).D(operand); }
         Code& Str() { return W(kLitStr).W(0); }
-        Code& Call(std::uint16_t argBytes) { return W(kCall).W(0).W(argBytes); }
+        Code& Call(std::uint16_t argBytes, std::uint16_t index = 0) { return W(kCall).W(index).W(argBytes); }
         Code& Redim(std::uint16_t elem) { return W(kRedim).W(1).W(elem).W(8).W(0x80); }
     };
 
@@ -121,6 +121,24 @@ int main()
     {
         const std::uint64_t t = Place(Code().Op(kLitI4, 2).Op(kFLdRf, -64).Redim(5));
         Check(Is(vba::ReadLocalTypeName(t, -64), "Ref"), "a local ReDimmed is an array");
+    }
+
+    // The calls a procedure passes one of its parameters to.
+    {
+        vba::CallPass c[4] = {};
+        std::uint64_t t = Place(Code().Op(kFLdAd, 8).Call(0x08, 5));
+        Check(vba::ReadCallsPassing(t, 8, c, 4) == 1 && c[0].index == 5 && c[0].argBytes == 8 &&
+              c[0].argSlot == 1 && c[0].pushOp == kFLdAd,
+              "a ByRef parameter passed on is found, with the pool index and the slot it lands in");
+        t = Place(Code().Op(kFLdRf, 16).Op(kLitI4, 3).Call(0x10));
+        Check(vba::ReadCallsPassing(t, 16, c, 4) == 1 && c[0].argSlot == 2 && c[0].pushOp == kFLdRf,
+              "pushed first, it is the callee's second slot");
+        t = Place(Code().Op(kFLdAd, 8).Op(kLitI4, 1).W(kMulI4).Call(0x10));
+        Check(vba::ReadCallsPassing(t, 8, c, 4) == 0, "a call with an expression argument is not read");
+        t = Place(Code().Op(kFLdAd, 8).Call(0x08, 1).Op(kBos, 0).Op(kFLdAd, 8).Call(0x08, 2));
+        Check(vba::ReadCallsPassing(t, 8, c, 4) == 2 && c[0].index == 1 && c[1].index == 2,
+              "every call it is passed to, in body order");
+        Check(vba::ReadCallsPassing(t, 16, c, 4) == 0, "a slot not passed on is in no call");
     }
 
     // The literal table and the names.

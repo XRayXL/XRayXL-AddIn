@@ -982,7 +982,14 @@ bytes; otherwise the procedure was not called by the paused one. The call takes 
 `argBytes/8` slots, so the last that many instructions must each be one push — a literal, a
 typed load, or a frame slot's address, the last push slot 1 (`ReadCallPushes`). An address
 takes its variable's type from the caller's code (`ReadLocalTypeName`), or from the caller's
-own parameter, one level further up. The exit re-read types the slots the same way.
+own parameter, one level further up.
+
+Then downward (`FillFromCallees`): a slot the body passes by address to an `ImpAdCallBasic`
+whose arguments are all single pushes (`ReadCallsPassing`) takes the callee's own type for it,
+the callee found through this frame's pool entry, checked by its argument bytes; every such call
+must agree. Until a procedure is compiled its pool entry names a compile-on-demand stub, which
+the argument-bytes check refuses. The entry records what it named from calls on the frame, and
+the exit re-read reuses exactly that.
 
 **A parameter the body only passes on to a typed `ByRef` parameter has no type of its
 own, so the row says where its storage is.** The procedure it was passed to reads it with a typed

@@ -170,4 +170,23 @@ namespace vba
 
     // Adds parameters typed by their caller to the disarm line. Entry only, like NoteLabels.
     void NoteCallerTyped(int typed);
+
+    // ImpAdCallBasic and its typed forms: a call to a VBA procedure through the module's
+    // constant pool, 6 bytes, pool index at +2 and argument bytes at +4.
+    bool PcodeIsBasicCall(std::uint32_t op);
+
+    // A call in a procedure's own body that passes one of its frame slots by address.
+    struct CallPass
+    {
+        std::uint16_t callOp, index, argBytes;
+        std::uint16_t pushOp;        // 751 for a ByRef parameter's pointer, 671 or 662 a slot's address
+        int           argSlot;       // the callee's slot it lands in
+    };
+
+    // The VBA calls in the procedure behind `trailer` whose arguments are all single pushes and
+    // one of which is the address at frame `operand`; up to `cap`, in body order.
+    int ReadCallsPassing(std::uint64_t trailer, std::int32_t operand, CallPass* out, int cap);
+
+    // Adds parameters typed by the procedure they are passed to. Entry only.
+    void NoteCalleeTyped(int typed);
 }

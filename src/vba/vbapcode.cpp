@@ -61,8 +61,9 @@ namespace vba
         // Parameters typed by the Variant label after their push, and labels no type name fits.
         volatile LONG64 g_labelTyped = 0;
         volatile LONG64 g_labelDeclined = 0;
-        // Parameters typed by what their caller pushed.
+        // Parameters typed by what their caller pushed, and by the procedure they are passed to.
         volatile LONG64 g_callerTyped = 0;
+        volatile LONG64 g_calleeTyped = 0;
 
         // One untyped procedure's (opcode, operand) stream. Bounded, once per arm.
         constexpr int kDumpMax = 64;
@@ -344,6 +345,7 @@ namespace vba
         g_labelTyped = 0;
         g_labelDeclined = 0;
         g_callerTyped = 0;
+        g_calleeTyped = 0;
         InterlockedExchange(&g_dumpTaken, 0);
         InterlockedExchange(&g_dumpWriting, 0);
         g_dumpN = 0; g_dumpTrailer = 0; g_rawN = 0;
@@ -861,6 +863,24 @@ namespace vba
         if (typed > 0) InterlockedExchangeAdd64(&g_callerTyped, typed);
     }
 
+    void NoteCalleeTyped(int typed)
+    {
+        if (typed > 0) InterlockedExchangeAdd64(&g_calleeTyped, typed);
+    }
+
+    bool PcodeIsBasicCall(std::uint32_t op)
+    {
+        // Read from the handlers: each saves rsi past its 6 bytes before calling.
+        switch (op)
+        {
+        case 1296: case 1297: case 1298: case 1299: case 1300: case 1301: case 1303: case 1304:
+        case 1307: case 1308: case 1309: case 1311: case 1379: case 1647:
+            return true;
+        default:
+            return false;
+        }
+    }
+
     const char* PcodeLiteralTypeName(std::uint32_t op)
     {
         // Measured one literal at a time into a typed ByVal parameter. Shared handlers push the
@@ -1035,6 +1055,47 @@ namespace vba
              : (strncmp(name, "Variant", 7) == 0 ? "Variant" : nullptr);
     }
 
+    int ReadCallsPassing(std::uint64_t trailer, std::int32_t operand, CallPass* out, int cap)
+    {
+        constexpr int kRing = 16;
+        struct Seen { std::uint16_t op; std::int32_t operand; bool have; };
+        Seen ring[kRing] = {};
+        int seen = 0, n = 0;
+        if (!out || cap <= 0 || operand <= 0 || (operand % 8) != 0) return 0;
+        WalkStraight(trailer, [&](std::uint64_t code, std::uint32_t i, std::uint16_t op,
+                                  std::int32_t opd, bool have) {
+            if (IsBosSlot(op)) { seen = 0; return true; }
+            if (!PcodeIsBasicCall(op))
+            {
+                ring[seen % kRing] = { op, opd, have };
+                ++seen;
+                return true;
+            }
+            std::uint16_t index = 0, argBytes = 0;
+            const int args = (RdU16(code + i + 2, index) && RdU16(code + i + 4, argBytes)) ? argBytes / 8 : 0;
+            if (args >= 1 && args <= kRing && seen >= args)
+            {
+                // The last push is the callee's slot 1; every argument must be one push.
+                int hit = 0;
+                std::uint16_t hitOp = 0;
+                bool single = true;
+                for (int k = 0; k < args && single; ++k)
+                {
+                    const Seen& s = ring[(seen - 1 - k) % kRing];
+                    PcodePush p{};
+                    single = ClassifyPush(s.op, s.operand, s.have, p);
+                    if (single && !hit && p.operand == operand &&
+                        (p.kind == PushKind::SlotAddress || p.kind == PushKind::HeldPointer))
+                    { hit = k + 1; hitOp = s.op; }
+                }
+                if (single && hit) out[n++] = { op, index, argBytes, hitOp, hit };
+            }
+            seen = 0;   // what the call leaves is not tracked
+            return n < cap;
+        });
+        return n;
+    }
+
     const char* PcodeStopLine()
     {
         static char b[1600];
@@ -1198,6 +1259,9 @@ namespace vba
         if (g_callerTyped)
             j += _snprintf_s(b + j, sizeof(b) - j, _TRUNCATE, ", %lld parameter(s) typed by their caller",
                              static_cast<long long>(g_callerTyped));
+        if (g_calleeTyped)
+            j += _snprintf_s(b + j, sizeof(b) - j, _TRUNCATE, ", %lld parameter(s) typed by the procedure they are passed to",
+                             static_cast<long long>(g_calleeTyped));
         for (int i = 0; i < static_cast<int>(PcDecline::Count_); ++i)
         {
             if (!g_declines[i]) continue;

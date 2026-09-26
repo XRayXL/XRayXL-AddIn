@@ -290,6 +290,13 @@ still untyped takes that type, `ByRef` for an address — which covers one passe
 made this procedure, and only for an argument that is a single push. A procedure a cell,
 `Application.Run` or an event started, or an argument that is an expression, stays as it was.
 
+**Or the procedure it goes to says.** A parameter the body passes on by address, as a single
+push, to another VBA procedure takes that procedure's type for the slot: a `ByRef` argument must
+match its parameter exactly. It needs no caller, so it also types a procedure a cell or
+`Application.Run` started. It reads one level down, and only a procedure that is compiled: in a
+project compiled on demand, a procedure that has not yet run has no types to read, so the calls
+before its first run leave the parameter untyped.
+
 The word after `?` says which case it was:
 
 | `a1:` | meaning |

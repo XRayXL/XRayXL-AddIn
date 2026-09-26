@@ -52,7 +52,7 @@ namespace vba
         char signature[256] = {};
 
         // Names the argument slots the callee's own p-code left untyped, from what its caller
-        // pushed; null when there is no caller to ask. Runs after the walk, before rendering.
+        // pushed or the procedures it passes them to. Runs after the walk, before rendering.
         void (*typeFromCaller)(void* ctx, ArgTypes& types, int firstSlot, int slots) = nullptr;
         void* typeFromCallerCtx = nullptr;
     };

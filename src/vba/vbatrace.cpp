@@ -117,8 +117,12 @@ namespace vba
             // Started from the editor, which xlfCaller answers as no caller at all.
             bool          fromEditor;
 
-            // The interpreter's rbp while this frame runs; XRAYXL_DIAG only, for the call-site probe.
+            // The interpreter's rbp while this frame runs, where its callers' calls are read.
             std::uint64_t rbp;
+
+            // The names the entry took from a call, per argument slot (an index into kCallNames,
+            // 0 for none), so the exit re-read names them the same way.
+            std::uint8_t  callTyped[16];
 
             // No caller gate: the exit opcode says whether a result exists and of what kind.
         };
@@ -564,7 +568,7 @@ namespace vba
 
         bool IsBasicPoolCall(std::uint16_t op)
         {
-            return ((op >= 1296 && op <= 1311) || op == 1379 || op == 1647) && CallSaveAdvance(op) == 4;
+            return PcodeIsBasicCall(op) && CallSaveAdvance(op) == 4;
         }
 
         // The pushes for the call that opened stack[callee], the first pushed first; -1 when it
@@ -629,23 +633,96 @@ namespace vba
             return nullptr;
         }
 
-        struct CallerTyping { const ThreadState* s; int callee; bool entry; };
+        struct CallerTyping { ThreadState* s; int callee; bool entry; };
 
-        void FillFromCaller(void* ctx, ArgTypes& types, int firstSlot, int slots)
+        // A ByVal Variant spans three slots; the two after it are not parameters.
+        int SlotStep(const ArgTypes& types, int k)
+        {
+            return (types.name[k] && std::strcmp(types.name[k], "Variant") == 0) ? 3 : 1;
+        }
+
+        // Every name ArgTypeName gives, so a frame can keep one in a byte.
+        constexpr const char* kCallNames[] = {
+            nullptr, "Byte", "Byte&", "Integer", "Integer&", "Long", "Long&", "Single", "Single&",
+            "Double", "Double&", "Currency", "Currency&", "String", "String&", "Object", "Object&",
+            "LongLong", "Ref&", "Variant&",
+        };
+        constexpr int kCallTypedSlots = 16;
+
+        std::uint8_t CallNameIndex(const char* name)
+        {
+            for (int i = 1; i < static_cast<int>(sizeof(kCallNames) / sizeof(kCallNames[0])); ++i)
+                if (std::strcmp(kCallNames[i], name) == 0) return static_cast<std::uint8_t>(i);
+            return 0;
+        }
+
+        // Downward: a slot this frame passes on by address, to a VBA procedure its own pool names,
+        // has that procedure's type for it. ByRef must match exactly; every such call must agree.
+        void FillFromCallees(const CallerTyping& ct, ArgTypes& types, int firstSlot, int slots)
+        {
+            const Frame& f = ct.s->stack[ct.callee];
+            std::uint64_t pool = 0;
+            if (!f.rbp || !core::RdU64(f.rbp - 0xA0, pool) || !pool) return;
+            int typed = 0;
+            for (int k = firstSlot; k < firstSlot + slots && k < ArgTypes::kMax; k += SlotStep(types, k))
+            {
+                if (types.name[k]) continue;
+                CallPass pass[8];
+                const int n = ReadCallsPassing(f.trailer, 8 * k, pass, 8);
+                const char* agreed = nullptr;
+                std::uint16_t agreedOp = 0;
+                bool conflict = false;
+                for (int q = 0; q < n && !conflict; ++q)
+                {
+                    std::uint64_t entry = 0, callee = 0;
+                    std::uint16_t argSz = 0;
+                    ArgTypes t;
+                    if (!core::RdU64(pool + 8ull * pass[q].index, entry) || !core::RdU64(entry + 8, callee) ||
+                        !core::RdU16(callee + kTrl_argSz, argSz) || argSz != pass[q].argBytes + 8 ||
+                        pass[q].argSlot >= ArgTypes::kMax || !ReadArgTypes(callee, t, argSz / 8 - 1)) continue;
+                    const char* theirs = t.name[pass[q].argSlot];
+                    const size_t len = theirs ? std::strlen(theirs) : 0;
+                    if (!len || theirs[len - 1] != '&') continue;   // an address lands in a ByRef slot
+                    // Our ByRef pointer passed on is the same ByRef; our ByVal slot's address, the value.
+                    const char* mine = ArgTypeName(theirs, PcodePassesHeldPointer(pass[q].pushOp));
+                    if (!mine) continue;
+                    if (agreed && std::strcmp(agreed, mine) != 0) conflict = true;
+                    else { agreed = mine; agreedOp = pass[q].pushOp; }
+                }
+                if (agreed && !conflict)
+                {
+                    types.name[k] = agreed;
+                    types.op[k]   = agreedOp;
+                    ++typed;
+                }
+            }
+            NoteCalleeTyped(typed);
+        }
+
+        // At entry, the caller's pushes and then where the slots are passed, recorded on the frame.
+        // At the exit re-read, those names again: a callee compiled since would otherwise name a
+        // slot the entry did not, and the ByRef comparison would see a change that never happened.
+        void FillFromCalls(void* ctx, ArgTypes& types, int firstSlot, int slots)
         {
             const CallerTyping& ct = *static_cast<const CallerTyping*>(ctx);
+            Frame& f = ct.s->stack[ct.callee];
+            const int end = (firstSlot + slots < kCallTypedSlots) ? firstSlot + slots : kCallTypedSlots;
+            if (!ct.entry)
+            {
+                for (int k = firstSlot; k < end; ++k)
+                    if (!types.name[k] && f.callTyped[k]) types.name[k] = kCallNames[f.callTyped[k]];
+                return;
+            }
+            bool unnamed[kCallTypedSlots] = {};
             bool any = false;
-            for (int k = firstSlot; k < firstSlot + slots && k < ArgTypes::kMax; ++k)
-                if (!types.name[k]) { any = true; break; }
+            for (int k = firstSlot; k < end; ++k) any |= (unnamed[k] = (types.name[k] == nullptr));
             if (!any) return;
+
             PcodePush push[16];
             std::uint16_t callOp = 0;
             const int n = CallerPushes(ct.s, ct.callee, push, 16, callOp);
-            if (n <= 0) return;
             int typed = 0;
-            // A ByVal Variant spans three slots; the two after it are not parameters.
-            for (int k = firstSlot; k < firstSlot + slots && k < ArgTypes::kMax && k <= n;
-                 k += (types.name[k] && std::strcmp(types.name[k], "Variant") == 0) ? 3 : 1)
+            for (int k = firstSlot; n > 0 && k < end && k <= n; k += SlotStep(types, k))
             {
                 if (types.name[k]) continue;
                 if (const char* tn = TypeOfPush(ct.s, ct.callee - 1, push[n - k], 0))
@@ -655,7 +732,10 @@ namespace vba
                     ++typed;
                 }
             }
-            if (ct.entry) NoteCallerTyped(typed);
+            NoteCallerTyped(typed);
+            FillFromCallees(ct, types, firstSlot, end - firstSlot);
+            for (int k = firstSlot; k < end; ++k)
+                if (unnamed[k] && types.name[k]) f.callTyped[k] = CallNameIndex(types.name[k]);
         }
 
         ThreadState* State()
@@ -928,7 +1008,7 @@ namespace vba
             outArgs.text = &t_argRender;
             // The caller is still paused at the same call, so the exit names the slots as the entry did.
             CallerTyping callerTyping{ s, s->depth - 1, false };
-            if (s->depth >= 2) { outArgs.typeFromCaller = FillFromCaller; outArgs.typeFromCallerCtx = &callerTyping; }
+            outArgs.typeFromCaller = FillFromCalls; outArgs.typeFromCallerCtx = &callerTyping;
             const ArgCapture* outArgsPtr = ReadByRefChanges(f, r14, outArgs);
 
             if (!f.hidden && (!g_topLevelOnly || f.shownDepth == 1))
@@ -1273,6 +1353,7 @@ namespace vba
         f.fromEditor   = underEditor;
         f.rbp          = 0;
         ReadReg(savedRegs, kReg_rbp, f.rbp);
+        std::memset(f.callTyped, 0, sizeof f.callTyped);
 
         Bump(g_totals.framesOpened);
 
@@ -1302,7 +1383,7 @@ namespace vba
         ArgCapture args;
         args.text = &t_argRender;
         CallerTyping callerTyping{ s, s->depth - 1, true };
-        if (s->depth >= 2) { args.typeFromCaller = FillFromCaller; args.typeFromCallerCtx = &callerTyping; }
+        args.typeFromCaller = FillFromCalls; args.typeFromCallerCtx = &callerTyping;
         // Off, the decline is counted, so an empty column never reads as "no arguments".
         // Not the editor's wrapper: its signature is not the kind the decoder reads.
         if (haveR14 && !f.hidden && InterlockedCompareExchange(&g_capArgs, 0, 0) != 0)
