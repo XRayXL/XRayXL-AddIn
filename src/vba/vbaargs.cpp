@@ -358,6 +358,7 @@ namespace vba
         // Bounded before any result slot is taken off: an index past that is provably wrong.
         ArgTypes types;
         const bool haveTypes = ReadArgTypes(trailer, types, slots - 1);
+        if (haveTypes && !out.byRefOnly) NoteLabels(types);
 
         // A Function returning a Variant or a record gets the caller's result buffer first.
         const RetKind rk = ExitReturnKind(types.exitOp);

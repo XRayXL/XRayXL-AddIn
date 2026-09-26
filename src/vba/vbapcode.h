@@ -80,6 +80,10 @@ namespace vba
 
         // Stopped early or resynchronised, so a `?` may be a skipped load, not an unread parameter.
         bool          partial    = false;
+
+        // Slots typed by the Variant label after their push, and labels no type name fits.
+        int           labelled      = 0;
+        int           labelDeclined = 0;
     };
 
     enum class PcDecline
@@ -133,4 +137,8 @@ namespace vba
     // Walks the procedure behind `trailer`. `maxArg` is the argument slot count from argSz; an
     // index above it is discarded. 0 when unknown.
     bool ReadArgTypes(std::uint64_t trailer, ArgTypes& out, int maxArg = 0);
+
+    // Adds one walk's label counts to the disarm line. Entry walks only: the exit re-read walks
+    // the same procedure again.
+    void NoteLabels(const ArgTypes& types);
 }

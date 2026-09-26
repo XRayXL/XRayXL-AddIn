@@ -967,8 +967,14 @@ parameter's declared type from the opcode that touched its slot, and renders the
 value. An opcode that touches a parameter slot but is not in the type table
 renders the declared type as `?opNNN` rather than guessing, and is counted.
 
-**A parameter the body only passes on has no type of its own, so the row says
-where its storage is.** The procedure it was passed to reads it with a typed
+**A parameter passed on into a Variant is typed by the Variant's label.** Its push
+(751, 671) is followed by `CVarRef` (951) or `CDargRef` (950), whose `VARTYPE` the
+callee reads it by; an array parameter's `ReDim` (1473, 1474) names its element type
+the same way. `ReadArgTypes` (`vba/vbapcode.cpp`) takes the label only from the
+instruction straight after the push, and only for a slot no typed instruction named.
+
+**A parameter the body only passes on to a typed `ByRef` parameter has no type of its
+own, so the row says where its storage is.** The procedure it was passed to reads it with a typed
 load, and the two slots are the same storage. So a `ByRef` slot, and a `?none`
 slot passed on by 751 or 671, carry `@0x<address>`: the pointer the slot holds,
 or for 671 the slot's own address. The callee's `ByRef` row carries the same

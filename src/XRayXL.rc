@@ -117,7 +117,7 @@ BEGIN
     COMBOBOX        IDC_VBA_DEPTH, 196, 124, 110, 60, CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS | WS_VSCROLL | WS_TABSTOP
     CONTROL         "Capture ar&gument values", IDC_VBA_ARGS, "Button", BS_OWNERDRAW | WS_TABSTOP, 198, 140, 192, 10
     CONTROL         "Capture re&turn values", IDC_VBA_RET, "Button", BS_OWNERDRAW | WS_TABSTOP, 198, 152, 192, 10
-    CONTROL         "Describe &objects (Range, Worksheet, Workbook)", IDC_VBA_OBJ, "Button", BS_OWNERDRAW | WS_TABSTOP, 198, 164, 192, 10
+    CONTROL         "Describe &objects (Range, Worksheet, Workbook, Collection, Dictionary)", IDC_VBA_OBJ, "Button", BS_OWNERDRAW | WS_TABSTOP, 198, 164, 192, 10
 
     // ---- Events --------------------------------------------------------
     LTEXT           "Which of Excel's own events XRayXL records.", IDC_EVT_HDR, 122, 13, 268, 11

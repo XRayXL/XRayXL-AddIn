@@ -58,6 +58,10 @@ namespace vba
         // Walks from offset 0 to a clean end with no resync; a correct table makes every walk clean.
         volatile LONG64 g_cleanWalks = 0;
 
+        // Parameters typed by the Variant label after their push, and labels no type name fits.
+        volatile LONG64 g_labelTyped = 0;
+        volatile LONG64 g_labelDeclined = 0;
+
         // One untyped procedure's (opcode, operand) stream. Bounded, once per arm.
         constexpr int kDumpMax = 64;
         volatile LONG g_dumpTaken = 0;
@@ -335,6 +339,8 @@ namespace vba
           g_unverifiedOp[i] = 0; g_openExitOp[i] = 0; }
         g_closureUnchecked = 0;
         g_cleanWalks = 0;
+        g_labelTyped = 0;
+        g_labelDeclined = 0;
         InterlockedExchange(&g_dumpTaken, 0);
         InterlockedExchange(&g_dumpWriting, 0);
         g_dumpN = 0; g_dumpTrailer = 0; g_rawN = 0;
@@ -575,6 +581,52 @@ namespace vba
             else if (!control && !out.op[idx])   out.op[idx] = op;
         }
 
+        // The parameter slot whose address this instruction pushes, or 0. Attribute's gate.
+        int PushedSlot(const PcodeLengths* L, std::uint16_t op, std::int32_t operand,
+                       bool haveOperand, int maxArg)
+        {
+            if (!PcodePassesHeldPointer(op) && !PcodePassesSlotAddress(op)) return 0;
+            if (!haveOperand || operand <= 0 || (operand % 8) != 0) return 0;
+            if (L->framedCount != 0 && !L->framesR14[op]) return 0;
+            const int idx = operand / 8;
+            const int cap = (maxArg > 0 && maxArg < ArgTypes::kMax) ? maxArg + 1
+                                                                   : ArgTypes::kMax;
+            return (idx >= 1 && idx < cap) ? idx : 0;
+        }
+
+        // CVarRef and CDargRef wrap the value just pushed in a by-reference Variant for a callee
+        // that takes one. The callee reads it by this VARTYPE, so it is the parameter's type.
+        constexpr std::uint16_t kOpCDargRef = 950;   // VARTYPE at +2, 4 bytes
+        constexpr std::uint16_t kOpCVarRef  = 951;   // frame temporary at +2, VARTYPE at +6, 8 bytes
+
+        // ReDim of a typed dynamic array names its element type; a Variant's is RedimVar, 1475.
+        constexpr std::uint16_t kOpRedim         = 1473;   // dimensions at +2, element VARTYPE at +4, 10 bytes
+        constexpr std::uint16_t kOpRedimPreserve = 1474;   // the same
+        constexpr std::uint16_t kVtByRef = 0x4000, kVtArray = 0x2000;
+
+        // Spelt as the loads spell them, so Date reads Double and Boolean Integer; a ByRef array
+        // or LongLong is Ref&, as opcode 747 names both. An array needs an element type named here.
+        const char* LabelTypeName(std::uint16_t vt, bool byRef)
+        {
+            const bool array = (vt & 0xF000) == (kVtByRef | kVtArray);
+            if (!array && (vt & 0xF000) != kVtByRef) return nullptr;
+            struct Lt { std::uint16_t vt; const char* byVal; const char* byRefName; };
+            static constexpr Lt kLabels[] = {
+                {  2, "Integer",  "Integer&"  }, { 11, "Integer",  "Integer&"  },   // I2, BOOL
+                {  3, "Long",     "Long&"     }, {  4, "Single",   "Single&"   },
+                {  5, "Double",   "Double&"   }, {  7, "Double",   "Double&"   },   // R8, DATE
+                {  6, "Currency", "Currency&" }, {  8, "String",   "String&"   },
+                {  9, "Object",   "Object&"   }, { 13, "Object",   "Object&"   },   // DISPATCH, UNKNOWN
+                { 17, "Byte",     "Byte&"     }, { 20, "LongLong", "Ref&"      },
+                // A ByVal Variant is three slots and typed by its own load.
+                { 12, nullptr,    "Variant&"  },
+            };
+            for (const Lt& t : kLabels)
+                if (t.vt == (vt & 0x0FFF)) return !byRef ? (array ? nullptr : t.byVal)
+                                                         : (array ? "Ref&" : t.byRefName);
+            return nullptr;
+        }
+
         struct Seen
         {
             std::uint16_t op[kDumpMax];
@@ -643,6 +695,14 @@ namespace vba
         std::uint16_t prevOp = 0;
         Seen seen{};
 
+        // A Variant label read straight after a parameter's push; applied after the walk, so a
+        // typed instruction anywhere in the body still decides.
+        int pushedSlot = 0;
+        bool pushedRef = false;
+        std::uint16_t labelVt[ArgTypes::kMax] = {};
+        std::uint16_t labelOp[ArgTypes::kMax] = {};
+        bool labelRef[ArgTypes::kMax] = {};
+
         // Resynchronises rather than guessing a step, since a wrong step types the wrong
         // parameters. Blame only before any resync: after one, the fault may be several steps
         // back. False when nothing recognisable remains.
@@ -663,6 +723,11 @@ namespace vba
         {
             std::uint16_t op = 0;
             if (!RdU16(code + i, op)) { NoteDecline(PcDecline::CodeUnreadable); return false; }
+
+            // Only the instruction right after the push can label it; every path below forgets it.
+            const int labelSlot = pushedSlot;
+            const bool labelSlotRef = pushedRef;
+            pushedSlot = 0;
 
             // Outside the table, prevOp's length is a suspect; on the invalid handler it is
             // certainly wrong.
@@ -719,6 +784,28 @@ namespace vba
             seen.Note(op, haveOperand ? operand : 0);
             Attribute(out, L, op, operand, haveOperand, maxArg);
 
+            // The label's offset holds only if this build's table gives the length it implies.
+            if (labelSlot && !labelVt[labelSlot])
+            {
+                std::uint16_t vt = 0, word = 0;
+                if (op == kOpCVarRef && L->len[op] == 8 && RdU16(code + i + 6, word)) vt = word;
+                else if (op == kOpCDargRef && L->len[op] == 4 && RdU16(code + i + 2, word)) vt = word;
+                else if ((op == kOpRedim || op == kOpRedimPreserve) && L->len[op] == 10 &&
+                         RdU16(code + i + 4, word) && word && !(word & 0xF000))
+                    vt = static_cast<std::uint16_t>(kVtByRef | kVtArray | word);   // the pushed array
+                if (vt)
+                {
+                    labelVt[labelSlot]  = vt;
+                    labelOp[labelSlot]  = op;
+                    labelRef[labelSlot] = labelSlotRef;
+                }
+            }
+            if (const int s = PushedSlot(L, op, operand, haveOperand, maxArg))
+            {
+                pushedSlot = s;
+                pushedRef  = PcodePassesHeldPointer(op);
+            }
+
             std::uint32_t len = L->len[op];
             if (len && L->varUnit[op])
             {
@@ -740,12 +827,30 @@ namespace vba
             i += len;
         }
 
+        for (int k = 1; k < ArgTypes::kMax; ++k)
+        {
+            if (!labelVt[k] || out.name[k]) continue;
+            if (const char* tn = LabelTypeName(labelVt[k], labelRef[k]))
+            {
+                out.name[k] = tn;
+                out.op[k]   = labelOp[k];
+                ++out.labelled;
+            }
+            else ++out.labelDeclined;
+        }
+
         if (i == procSize) clean = true;
         if (clean && resyncs == 0) InterlockedIncrement64(&g_cleanWalks);
         InterlockedIncrement64(&g_walks);
         out.partial = !clean || resyncs > 0;
         OfferEvidence(trailer, code, procSize, out, maxArg, resyncs, seen);
         return true;
+    }
+
+    void NoteLabels(const ArgTypes& types)
+    {
+        if (types.labelled)      InterlockedExchangeAdd64(&g_labelTyped, types.labelled);
+        if (types.labelDeclined) InterlockedExchangeAdd64(&g_labelDeclined, types.labelDeclined);
     }
 
     const char* PcodeStopLine()
@@ -904,6 +1009,10 @@ namespace vba
         if (g_closureUnchecked)
             j += _snprintf_s(b + j, sizeof(b) - j, _TRUNCATE, ", %lld ending on an exit of unmeasured length",
                              static_cast<long long>(g_closureUnchecked));
+        if (g_labelTyped || g_labelDeclined)
+            j += _snprintf_s(b + j, sizeof(b) - j, _TRUNCATE,
+                             ", %lld parameter(s) typed by a Variant label (%lld label(s) fit no type)",
+                             static_cast<long long>(g_labelTyped), static_cast<long long>(g_labelDeclined));
         for (int i = 0; i < static_cast<int>(PcDecline::Count_); ++i)
         {
             if (!g_declines[i]) continue;

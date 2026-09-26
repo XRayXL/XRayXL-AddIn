@@ -272,7 +272,19 @@ that still parses satisfies every check, and only the declaration rules that out
 **Why a type is missing.** VBA's bytecode names a parameter's type only at an instruction
 that uses it in a typed way. A parameter the body never reads, or reads only by passing it
 on, never meets one. The type exists in the source — `ByVal n As Long` — but not in the
-instructions the tracer reads. The word after `?` says which case it was:
+instructions the tracer reads.
+
+**Except when it is passed on into a Variant.** Handing a parameter to a `Variant` parameter,
+or to a built-in such as `Year()`, makes VBA wrap it in a by-reference Variant, and the
+instruction that does so carries the Variant's `VARTYPE`: the callee reads the parameter by it,
+so it is the declared type. The tracer reads that label from the instruction straight after the
+push, and the parameter is named like any other, `Date` as `Double` and `Boolean` as `Integer`,
+as their loads spell them. A `ReDim` of an array parameter names it the same way, as `Ref&`,
+from the element type the `ReDim` allocates. A typed instruction anywhere in the body still decides. What the
+label cannot reach is a parameter passed on to a typed `ByRef` parameter of another procedure:
+there is no Variant, and it stays `?none`.
+
+The word after `?` says which case it was:
 
 | `a1:` | meaning |
 |---|---|
