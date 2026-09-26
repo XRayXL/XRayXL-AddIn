@@ -298,6 +298,7 @@ namespace vba
         // Past the last refusal. No hook can fire until the loop below writes a slot.
         SetPcodeDiagnostics(core::modes::DiagEnabled());
         SetArgTypeOpcodeDiagnostics(core::modes::DiagEnabled());
+        SetCallSiteDiagnostics(core::modes::DiagEnabled());
         ResetTracing();
 
         // Latched here, never read on the hot path; the setter refuses while armed.
@@ -574,6 +575,14 @@ namespace vba
           << " | " << PcodeStopLine();
         // One untyped procedure's instruction stream, telling a table gap from a walk gap.
         if (core::modes::DiagEnabled() && PcodeUntypedDump()[0]) o << " | " << PcodeUntypedDump();
+        // The call-site probe: one line per new frame that had a caller, the first 256.
+        if (core::modes::DiagEnabled())
+            for (int i = 0, n = CallSitesSeen(); i < n; ++i)
+            {
+                const std::string line = CallSiteLine(i);
+                if (line.empty()) break;
+                core::Log::Info(line);
+            }
         procedures = Report();
         if (quiet) ClearArmedLengths();
         return o.str();

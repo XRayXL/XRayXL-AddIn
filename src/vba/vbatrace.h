@@ -160,6 +160,12 @@ namespace vba
     // One log line, the procedures most time first. Off the hot path.
     std::string Report(int maxRows = 25);
 
+    // The call-site probe, XRAYXL_DIAG only: where each new frame's caller was paused. Latched
+    // and cleared at arm; one log line per record at disarm.
+    void        SetCallSiteDiagnostics(bool on);
+    int         CallSitesSeen();
+    std::string CallSiteLine(int i);
+
     // Names exit opcodes whose return was left empty, which is correct but otherwise invisible.
 
     std::string ReturnTypeUnknownWarning();

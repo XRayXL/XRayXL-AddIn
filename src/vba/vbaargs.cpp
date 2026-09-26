@@ -374,6 +374,9 @@ namespace vba
         }
         if (out.slots < 0) out.slots = 0;
 
+        if (haveTypes && out.typeFromCaller)
+            out.typeFromCaller(out.typeFromCallerCtx, types, out.firstSlot, out.slots);
+
         BuildSignature(types, haveTypes, out);
 
         // The label a<n> counts slots, so after a ByVal Variant at a1 the next parameter is a4.

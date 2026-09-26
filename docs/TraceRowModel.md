@@ -280,9 +280,15 @@ instruction that does so carries the Variant's `VARTYPE`: the callee reads the p
 so it is the declared type. The tracer reads that label from the instruction straight after the
 push, and the parameter is named like any other, `Date` as `Double` and `Boolean` as `Integer`,
 as their loads spell them. A `ReDim` of an array parameter names it the same way, as `Ref&`,
-from the element type the `ReDim` allocates. A typed instruction anywhere in the body still decides. What the
-label cannot reach is a parameter passed on to a typed `ByRef` parameter of another procedure:
-there is no Variant, and it stays `?none`.
+from the element type the `ReDim` allocates. A typed instruction anywhere in the body still decides.
+
+**Or its caller says.** When VBA code called the procedure, its caller is paused on the call,
+and the instructions straight before it pushed the arguments: a literal, a typed load, or the
+address of one of the caller's own variables, whose type the caller's code states. A parameter
+still untyped takes that type, `ByRef` for an address — which covers one passed on to a typed
+`ByRef` parameter, and one never used at all. The tracer does this only when the call provably
+made this procedure, and only for an argument that is a single push. A procedure a cell,
+`Application.Run` or an event started, or an argument that is an expression, stays as it was.
 
 The word after `?` says which case it was:
 

@@ -1,5 +1,7 @@
 # A parameter the body only passes on carries its callee's address: it has no type of its own,
 # so that is how a reader types it. The callee's VarPtr is the independent expected address.
+# Each parent is called with an expression, which its caller's call does not type; called with
+# a plain variable it would be typed by that call instead.
 . (Join-Path $PSScriptRoot '..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\_xray_common.ps1')
 
@@ -8,11 +10,11 @@ Public pTakeD As LongPtr, pTakeL As LongPtr, pTakeS As LongPtr, pTakeCopy As Lon
 Private gD As Double, gL As Long, gS As String
 
 Public Sub Drive()
-    Dim d As Double, s As String
-    d = 2.5: s = "abc"
-    PassRef d
-    PassVal 5
-    PassStr s
+    Dim d As Double, s As String, n As Long
+    d = 2.5: s = "abc": n = 5
+    PassRef d + 0
+    PassVal n + 0
+    PassStr s & ""
     PassCopy d
 End Sub
 Public Function Ptrs() As String

@@ -98,8 +98,8 @@ End Sub
         }
         # a desynced p-code walk yields plausible types for the wrong positions
         $wantSig = @{ 'T_FL1'='Long'; 'T_FL2'='Long,Long';
-                      'T_FL3'='Long,Long,Long'; 'T_FLStr'='String,?unseen';
-                      'T_FLDbl'='Double,?unseen' }
+                      'T_FL3'='Long,Long,Long'; 'T_FLStr'='String,Long';
+                      'T_FLDbl'='Double,Long' }
         # T_FLRef's second slot reads String& or ? from run to run: both are honest, a wrong type never is.
         if ($entry['T_FLRef'].typetext -notin @('Long&,String&','Long&,?')) {
             return "T_FLRef signature was [$($entry['T_FLRef'].typetext)], expected Long&,String& or Long&,?" }
@@ -107,9 +107,7 @@ End Sub
             if ($entry[$fn].typetext -ne $wantSig[$fn]) {
                 return "$fn signature was [$($entry[$fn].typetext)], expected $($wantSig[$fn])" }
         }
-        # a parameter the body never reads has no type to recover; the tracer must say so
-        if ($entry['T_FLStr'].typetext -notmatch '\?\w*$') {
-            return "T_FLStr's unread second parameter should be unknown" }
+        # a parameter the body never reads takes its type from the Long literal its caller pushed
 
         # values are rendered using the recovered type
         if ($entry['T_FL3'].args -ne 'a1:Long=287454020 a2:Long=1432778632 a3:Long=439041101') {
@@ -119,9 +117,9 @@ End Sub
         if ($entry['T_FL0'].args -ne '') {
             return "T_FL0 takes no arguments but reported [$($entry['T_FL0'].args)]" }
         # 2748.5 is exactly 0x40A5790000000000; only the type turns those bits back into it
-        if ($entry['T_FLDbl'].args -ne 'a1:Double=2748.5 a2:?unseen=0x5D5D5D5D') {
+        if ($entry['T_FLDbl'].args -ne 'a1:Double=2748.5 a2:Long=1566399837') {
             return "T_FLDbl args were [$($entry['T_FLDbl'].args)]" }
-        if ($entry['T_FLStr'].args -ne 'a1:String="XRAYSENTINEL" a2:?unseen=0x2A2A2A2A') {
+        if ($entry['T_FLStr'].args -ne 'a1:String="XRAYSENTINEL" a2:Long=707406378') {
             return "T_FLStr args were [$($entry['T_FLStr'].args)]" }
         # a ByRef slot holds a pointer, followed only because it is known to be `Long&`
         if ((Remove-ArgAddress $entry['T_FLRef'].args) -notmatch '^a1:Long&=1280068684 ') {

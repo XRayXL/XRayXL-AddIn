@@ -6,6 +6,7 @@
 #include "vbaargs.h"
 #include "vbaretdecode.h"
 #include "vbapcode.h"
+#include "vbaderive.h"
 #include "vbaboundary.h"
 #include "core/caller.h"
 #include "vbaregs.h"
@@ -115,6 +116,9 @@ namespace vba
             bool          hidden;
             // Started from the editor, which xlfCaller answers as no caller at all.
             bool          fromEditor;
+
+            // The interpreter's rbp while this frame runs; XRAYXL_DIAG only, for the call-site probe.
+            std::uint64_t rbp;
 
             // No caller gate: the exit opcode says whether a result exists and of what kind.
         };
@@ -374,6 +378,284 @@ namespace vba
                 return true;
             }
             __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+        }
+
+        // ---- The call-site probe, XRAYXL_DIAG only ------------------------------------------
+        // Where each new frame's caller was paused, so the call that made it and the argument
+        // pushes before it can be checked in real Excel. Recorded here, written at disarm.
+
+        bool g_callSiteDiag = false;   // latched at arm
+
+        struct CallSite
+        {
+            char          callee[48];
+            char          caller[48];
+            std::uint64_t calleeTrailer, callerTrailer, callerRbp, pos, poolEntry;
+            std::int64_t  spDelta;           // the caller's rsp less the callee's
+            std::int32_t  posOff;            // pos from the caller's code start; -1 outside it
+            std::int32_t  callOff;           // the call instruction; -1 when none is found
+            std::int32_t  stmtOff;           // the statement holding it; -1 when not found
+            std::uint16_t calleeArgSz, callOp, w1, w2;
+            int           nInstr;            // instructions from the statement start to the call
+            bool          reached;           // the statement walk landed exactly on the call
+            std::uint16_t instrOp[8];        // the last eight of them
+            std::int32_t  instrOperand[8];
+            std::uint64_t poolQ[8];          // the pool entry's first qwords, raw
+            char          poolHit[48];       // where under the pool entry the callee's trailer is
+        };
+        constexpr int kCallSites = 256;
+        CallSite g_callSites[kCallSites];
+        volatile LONG g_callSiteN = 0;
+
+        // Bytes past the opcode at which each call handler saves rsi to [rbp-0x50], read from the
+        // handlers of 7.01.1158 and 7.01.1033; -1 for anything that is not a call.
+        int CallSaveAdvance(std::uint16_t op)
+        {
+            switch (op)
+            {
+            case 498: case 499: case 1168: case 1169: case 1170: case 1171: case 1172: case 1173:
+            case 1175: case 1176: case 1179: case 1180: case 1181: case 1183: case 1184:
+            case 1200: case 1201: case 1202: case 1203: case 1204: case 1205: case 1207: case 1208:
+            case 1211: case 1216: case 1232: case 1233: case 1234: case 1235: case 1236: case 1237:
+            case 1239: case 1240: case 1243: case 1244: case 1245: case 1247: case 1248:
+                return 0;
+            case 1661:
+                return 2;
+            case 500: case 1212: case 1213: case 1215: case 1264: case 1265: case 1266: case 1267:
+            case 1268: case 1269: case 1271: case 1272: case 1275: case 1276: case 1277: case 1279:
+            case 1296: case 1297: case 1298: case 1299: case 1300: case 1301: case 1303: case 1304:
+            case 1307: case 1308: case 1309: case 1311: case 1378: case 1379: case 1488: case 1492:
+            case 1647: case 1660: case 1684:
+                return 4;
+            case 1496: case 1500: case 1502: case 1504:
+                return 6;
+            case 1280: case 1312: case 1490: case 1506: case 1508: case 1679: case 1682:
+                return 8;
+            case 1498: case 1503:
+                return 10;
+            case 1507:
+                return 12;
+            default:
+                return -1;
+            }
+        }
+
+        // The ImpAdCall families take a constant-pool index first.
+        bool IsPoolCall(std::uint16_t op)
+        {
+            return (op >= 1264 && op <= 1280) || (op >= 1296 && op <= 1312) ||
+                   op == 1378 || op == 1379 || op == 1647;
+        }
+
+        // Memory reads only; a record left part-filled says where the reading stopped.
+        void NoteCallSite(const Frame& caller, std::uint64_t calleeTrailer, std::uint64_t calleeSp,
+                          const char* calleeName)
+        {
+            const LONG n = InterlockedIncrement(&g_callSiteN) - 1;
+            if (n >= kCallSites) return;
+            CallSite& c = g_callSites[n];
+            std::memset(&c, 0, sizeof c);
+            c.posOff = c.callOff = c.stmtOff = -1;
+            _snprintf_s(c.callee, _TRUNCATE, "%s", calleeName ? calleeName : "");
+            ResolvedName cn{};
+            ResolveInto(nullptr, caller.trailer, &cn);
+            _snprintf_s(c.caller, _TRUNCATE, "%s", cn.function);
+            c.calleeTrailer = calleeTrailer;
+            c.callerTrailer = caller.trailer;
+            c.callerRbp     = caller.rbp;
+            c.spDelta       = static_cast<std::int64_t>(caller.sp - calleeSp);
+            core::RdU16(calleeTrailer + kTrl_argSz, c.calleeArgSz);
+
+            std::uint16_t procSize = 0;
+            if (!caller.rbp || !core::RdU64(caller.rbp - 0x50, c.pos) ||
+                !core::RdU16(caller.trailer + kTrl_procSize, procSize)) return;
+            const std::uint64_t code = caller.trailer - procSize;
+            if (c.pos < code || c.pos > caller.trailer) return;
+            c.posOff = static_cast<std::int32_t>(c.pos - code);
+
+            for (int adv = 0; adv <= 12 && c.callOff < 0; adv += 2)
+            {
+                const std::uint64_t at = c.pos - 2 - static_cast<std::uint64_t>(adv);
+                std::uint16_t op = 0;
+                if (at < code || !core::RdU16(at, op) || CallSaveAdvance(op) != adv) continue;
+                c.callOp  = op;
+                c.callOff = static_cast<std::int32_t>(at - code);
+                core::RdU16(at + 2, c.w1);
+                core::RdU16(at + 4, c.w2);
+            }
+            if (c.callOff < 0) return;
+            if (IsPoolCall(c.callOp))
+            {
+                std::uint64_t pool = 0;
+                if (core::RdU64(caller.rbp - 0xA0, pool)) core::RdU64(pool + 8ull * c.w1, c.poolEntry);
+                // What the entry is: search it, and one pointer deeper, for the callee's trailer
+                // or its code start.
+                std::uint16_t calleeSize = 0;
+                core::RdU16(calleeTrailer + kTrl_procSize, calleeSize);
+                const std::uint64_t calleeCode = calleeTrailer - calleeSize;
+                for (int q = 0; q < 8; ++q) core::RdU64(c.poolEntry + 8ull * q, c.poolQ[q]);
+                for (int q = 0; q < 32 && !c.poolHit[0] && c.poolEntry; ++q)
+                {
+                    std::uint64_t v = 0;
+                    if (!core::RdU64(c.poolEntry + 8ull * q, v)) break;
+                    if (v == calleeTrailer || v == calleeCode)
+                    {
+                        _snprintf_s(c.poolHit, _TRUNCATE, "%s at +0x%X", v == calleeTrailer ? "trailer" : "code", q * 8);
+                        break;
+                    }
+                    if (!core::InUserRange(v)) continue;
+                    for (int r = 0; r < 32; ++r)
+                    {
+                        std::uint64_t w = 0;
+                        if (!core::RdU64(v + 8ull * r, w)) break;
+                        if (w == calleeTrailer || w == calleeCode)
+                        {
+                            _snprintf_s(c.poolHit, _TRUNCATE, "%s at [+0x%X]+0x%X",
+                                        w == calleeTrailer ? "trailer" : "code", q * 8, r * 8);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // The statement holding the call, by the BoS chain from offset 0, then forward to it.
+            const PcodeLengths* L = ArmedLengths();
+            if (!L) return;
+            const std::uint32_t callAt = static_cast<std::uint32_t>(c.callOff);
+            std::uint32_t i = 0;
+            for (int hops = 0; hops < 4096 && i + 6 <= procSize; ++hops)
+            {
+                std::uint16_t op = 0;
+                std::int32_t next = 0;
+                if (!core::RdU16(code + i, op) || !IsBosSlot(op) || !core::RdI32(code + i + 2, next)) return;
+                if (next <= 0 || i + static_cast<std::uint32_t>(next) > callAt) { c.stmtOff = static_cast<std::int32_t>(i); break; }
+                i += static_cast<std::uint32_t>(next);
+            }
+            if (c.stmtOff < 0) return;
+            for (int steps = 0; steps < 1024 && i < callAt; ++steps)
+            {
+                std::uint16_t op = 0;
+                std::int32_t operand = 0;
+                if (!core::RdU16(code + i, op) || op >= L->slots) return;
+                core::RdI32(code + i + 2, operand);
+                std::uint32_t len = L->len[op];
+                if (len && L->varUnit[op])
+                {
+                    std::uint16_t count = 0;
+                    if (!core::RdU16(code + i + 2, count)) return;
+                    len += static_cast<std::uint32_t>(L->varUnit[op]) * count;
+                }
+                if (!len) return;
+                c.instrOp[c.nInstr % 8]      = op;
+                c.instrOperand[c.nInstr % 8] = operand;
+                ++c.nInstr;
+                i += len;
+            }
+            c.reached = (i == callAt);
+        }
+
+        // ---- Types from the caller's call site --------------------------------------------
+        // A parameter the callee's own p-code leaves untyped takes the type its caller pushed.
+        // Only when every check says this call made this frame: a VBA ImpAdCallBasic straight
+        // before the caller's saved position, the caller's rsp 0x160 above, and the constant-pool
+        // entry naming this trailer with this callee's argument bytes.
+
+        constexpr int kCallerHops = 4;   // how far up a passed-on parameter is followed
+
+        bool IsBasicPoolCall(std::uint16_t op)
+        {
+            return ((op >= 1296 && op <= 1311) || op == 1379 || op == 1647) && CallSaveAdvance(op) == 4;
+        }
+
+        // The pushes for the call that opened stack[callee], the first pushed first; -1 when it
+        // is not provably that call.
+        int CallerPushes(const ThreadState* s, int callee, PcodePush* out, int cap, std::uint16_t& callOp)
+        {
+            if (callee < 1 || callee >= s->depth) return -1;
+            const Frame& f = s->stack[callee];
+            const Frame& c = s->stack[callee - 1];
+            if (!c.rbp || c.sp - f.sp != 0x160) return -1;
+            std::uint64_t pos = 0;
+            std::uint16_t procSize = 0;
+            if (!core::RdU64(c.rbp - 0x50, pos) || !core::RdU16(c.trailer + kTrl_procSize, procSize)) return -1;
+            const std::uint64_t code = c.trailer - procSize;
+            const std::uint64_t at = pos - 6;              // an ImpAdCallBasic saves rsi past its 6 bytes
+            if (pos < code + 6 || pos > c.trailer) return -1;
+            std::uint16_t op = 0, index = 0, argBytes = 0, argSz = 0;
+            if (!core::RdU16(at, op) || !IsBasicPoolCall(op) ||
+                !core::RdU16(at + 2, index) || !core::RdU16(at + 4, argBytes) ||
+                !core::RdU16(f.trailer + kTrl_argSz, argSz) || argBytes + 8 != argSz) return -1;
+            std::uint64_t pool = 0, entry = 0, named = 0;
+            if (!core::RdU64(c.rbp - 0xA0, pool) || !core::RdU64(pool + 8ull * index, entry) ||
+                !core::RdU64(entry + 8, named) || named != f.trailer) return -1;
+            const int n = argBytes / 8;
+            if (n > cap || !ReadCallPushes(c.trailer, static_cast<std::uint32_t>(at - code), n, out)) return -1;
+            callOp = op;
+            return n;
+        }
+
+        const char* TypeOfPush(const ThreadState* s, int caller, const PcodePush& p, int hops);
+
+        // A frame's own parameter type from its p-code, or else from what its caller pushed.
+        const char* OwnParamType(const ThreadState* s, int frame, int slot, int hops)
+        {
+            std::uint16_t argSz = 0;
+            ArgTypes t;
+            if (core::RdU16(s->stack[frame].trailer + kTrl_argSz, argSz) && slot < ArgTypes::kMax &&
+                ReadArgTypes(s->stack[frame].trailer, t, argSz / 8 - 1) && t.name[slot])
+                return t.name[slot];
+            if (hops >= kCallerHops) return nullptr;
+            PcodePush push[16];
+            std::uint16_t callOp = 0;
+            const int n = CallerPushes(s, frame, push, 16, callOp);
+            if (n <= 0 || slot < 1 || slot > n) return nullptr;
+            return TypeOfPush(s, frame - 1, push[n - slot], hops + 1);
+        }
+
+        // The last push is slot 1. An address carries its variable's type, ByRef.
+        const char* TypeOfPush(const ThreadState* s, int caller, const PcodePush& p, int hops)
+        {
+            switch (p.kind)
+            {
+            case PushKind::Literal:
+            case PushKind::Value:
+                return ArgTypeName(p.type, false);
+            case PushKind::SlotAddress:
+                if (p.operand < 0) return ArgTypeName(ReadLocalTypeName(s->stack[caller].trailer, p.operand), true);
+                return ArgTypeName(OwnParamType(s, caller, p.operand / 8, hops), true);
+            case PushKind::HeldPointer:
+                return ArgTypeName(OwnParamType(s, caller, p.operand / 8, hops), true);
+            }
+            return nullptr;
+        }
+
+        struct CallerTyping { const ThreadState* s; int callee; bool entry; };
+
+        void FillFromCaller(void* ctx, ArgTypes& types, int firstSlot, int slots)
+        {
+            const CallerTyping& ct = *static_cast<const CallerTyping*>(ctx);
+            bool any = false;
+            for (int k = firstSlot; k < firstSlot + slots && k < ArgTypes::kMax; ++k)
+                if (!types.name[k]) { any = true; break; }
+            if (!any) return;
+            PcodePush push[16];
+            std::uint16_t callOp = 0;
+            const int n = CallerPushes(ct.s, ct.callee, push, 16, callOp);
+            if (n <= 0) return;
+            int typed = 0;
+            // A ByVal Variant spans three slots; the two after it are not parameters.
+            for (int k = firstSlot; k < firstSlot + slots && k < ArgTypes::kMax && k <= n;
+                 k += (types.name[k] && std::strcmp(types.name[k], "Variant") == 0) ? 3 : 1)
+            {
+                if (types.name[k]) continue;
+                if (const char* tn = TypeOfPush(ct.s, ct.callee - 1, push[n - k], 0))
+                {
+                    types.name[k] = tn;
+                    types.op[k]   = callOp;
+                    ++typed;
+                }
+            }
+            if (ct.entry) NoteCallerTyped(typed);
         }
 
         ThreadState* State()
@@ -644,6 +926,9 @@ namespace vba
             // Reuses the per-thread render buffer: the entry's text is written and only its hash kept.
             ArgCapture outArgs;
             outArgs.text = &t_argRender;
+            // The caller is still paused at the same call, so the exit names the slots as the entry did.
+            CallerTyping callerTyping{ s, s->depth - 1, false };
+            if (s->depth >= 2) { outArgs.typeFromCaller = FillFromCaller; outArgs.typeFromCallerCtx = &callerTyping; }
             const ArgCapture* outArgsPtr = ReadByRefChanges(f, r14, outArgs);
 
             if (!f.hidden && (!g_topLevelOnly || f.shownDepth == 1))
@@ -986,6 +1271,8 @@ namespace vba
         f.callerHash   = 0;
         f.hidden       = false;
         f.fromEditor   = underEditor;
+        f.rbp          = 0;
+        ReadReg(savedRegs, kReg_rbp, f.rbp);
 
         Bump(g_totals.framesOpened);
 
@@ -1003,6 +1290,8 @@ namespace vba
             Bump(p->calls);
             RaiseMax64(&p->maxDepth, static_cast<std::uint64_t>(s->depth));
         }
+        if (g_callSiteDiag && atEntry && under && !f.hidden)
+            NoteCallSite(*under, trailer, dispatchSp, nm.function);
         // R14 is the VBA frame base. Checked, so a broken assembly contract is not mistaken for
         // a frame with no base.
         std::uint64_t r14 = 0;
@@ -1012,6 +1301,8 @@ namespace vba
 
         ArgCapture args;
         args.text = &t_argRender;
+        CallerTyping callerTyping{ s, s->depth - 1, true };
+        if (s->depth >= 2) { args.typeFromCaller = FillFromCaller; args.typeFromCallerCtx = &callerTyping; }
         // Off, the decline is counted, so an empty column never reads as "no arguments".
         // Not the editor's wrapper: its signature is not the kind the decoder reads.
         if (haveR14 && !f.hidden && InterlockedCompareExchange(&g_capArgs, 0, 0) != 0)
@@ -1385,5 +1676,54 @@ namespace vba
         Totals t = g_totals;
         t.procedures = static_cast<std::uint64_t>(g_procs.Count());
         return t;
+    }
+
+    void SetCallSiteDiagnostics(bool on)
+    {
+        g_callSiteDiag = on;
+        InterlockedExchange(&g_callSiteN, 0);
+    }
+
+    int CallSitesSeen() { return static_cast<int>(InterlockedCompareExchange(&g_callSiteN, 0, 0)); }
+
+    std::string CallSiteLine(int i)
+    {
+        if (i < 0 || i >= kCallSites || i >= CallSitesSeen()) return std::string();
+        const CallSite& c = g_callSites[i];
+        char b[1024];
+        int j = _snprintf_s(b, _TRUNCATE,
+            "VBA call site %d: %s -> %s | callee trailer 0x%llX argSz 0x%X | caller rbp 0x%llX sp-delta 0x%llX | saved +0x%X",
+            i, c.caller, c.callee, static_cast<unsigned long long>(c.calleeTrailer), c.calleeArgSz,
+            static_cast<unsigned long long>(c.callerRbp), static_cast<unsigned long long>(c.spDelta),
+            static_cast<unsigned>(c.posOff));
+        if (c.posOff < 0 && j > 0)
+            j += _snprintf_s(b + j, sizeof(b) - j, _TRUNCATE, " (0x%llX, outside the caller)",
+                             static_cast<unsigned long long>(c.pos));
+        if (c.callOff >= 0 && j > 0)
+            j += _snprintf_s(b + j, sizeof(b) - j, _TRUNCATE,
+                             " | call op%u at +0x%X words 0x%X 0x%X pool entry 0x%llX %s",
+                             c.callOp, static_cast<unsigned>(c.callOff), c.w1, c.w2,
+                             static_cast<unsigned long long>(c.poolEntry),
+                             c.poolEntry == 0 ? "" : c.poolEntry == c.calleeTrailer ? "IS the callee" : "is not the callee");
+        else if (j > 0)
+            j += _snprintf_s(b + j, sizeof(b) - j, _TRUNCATE, " | no call found before it");
+        if (c.poolEntry && j > 0)
+        {
+            j += _snprintf_s(b + j, sizeof(b) - j, _TRUNCATE, " | callee %s | entry",
+                             c.poolHit[0] ? c.poolHit : "not found under the pool entry");
+            for (int q = 0; q < 8 && j > 0; ++q)
+                j += _snprintf_s(b + j, sizeof(b) - j, _TRUNCATE, " %llX", static_cast<unsigned long long>(c.poolQ[q]));
+        }
+        if (c.stmtOff >= 0 && j > 0)
+        {
+            j += _snprintf_s(b + j, sizeof(b) - j, _TRUNCATE, " | statement +0x%X, %d instr%s:",
+                             static_cast<unsigned>(c.stmtOff), c.nInstr,
+                             c.reached ? "" : " (walk did NOT land on the call)");
+            const int first = c.nInstr > 8 ? c.nInstr - 8 : 0;
+            for (int k = first; k < c.nInstr && j > 0; ++k)
+                j += _snprintf_s(b + j, sizeof(b) - j, _TRUNCATE, " %u@%d",
+                                 c.instrOp[k % 8], c.instrOperand[k % 8]);
+        }
+        return std::string(b);
     }
 }

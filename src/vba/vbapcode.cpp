@@ -61,6 +61,8 @@ namespace vba
         // Parameters typed by the Variant label after their push, and labels no type name fits.
         volatile LONG64 g_labelTyped = 0;
         volatile LONG64 g_labelDeclined = 0;
+        // Parameters typed by what their caller pushed.
+        volatile LONG64 g_callerTyped = 0;
 
         // One untyped procedure's (opcode, operand) stream. Bounded, once per arm.
         constexpr int kDumpMax = 64;
@@ -341,6 +343,7 @@ namespace vba
         g_cleanWalks = 0;
         g_labelTyped = 0;
         g_labelDeclined = 0;
+        g_callerTyped = 0;
         InterlockedExchange(&g_dumpTaken, 0);
         InterlockedExchange(&g_dumpWriting, 0);
         g_dumpN = 0; g_dumpTrailer = 0; g_rawN = 0;
@@ -853,6 +856,185 @@ namespace vba
         if (types.labelDeclined) InterlockedExchangeAdd64(&g_labelDeclined, types.labelDeclined);
     }
 
+    void NoteCallerTyped(int typed)
+    {
+        if (typed > 0) InterlockedExchangeAdd64(&g_callerTyped, typed);
+    }
+
+    const char* PcodeLiteralTypeName(std::uint32_t op)
+    {
+        // Measured one literal at a time into a typed ByVal parameter. Shared handlers push the
+        // same bytes for several types, so the slot, not the handler, says which.
+        switch (op)
+        {
+        case 1517: return "Integer";     // LitI2; True and False too
+        case 1520: return "Long";        // LitI4
+        case 1521: return "Single";      // LitI4's twin, carrying a float
+        case 1523: return "Currency";    // LitCy
+        case 1524: return "Double";      // LitCy's twin; a Date literal too
+        case 1527: return "String";      // LitStr
+        case 1698: return "LongLong";    // LitI8
+        default:   return (op >= 1648 && op <= 1658) ? "Integer" : nullptr;   // LitI2_0..10
+        }
+    }
+
+    const char* ArgTypeName(const char* base, bool byRef)
+    {
+        struct Vn { const char* base; const char* byVal; const char* byRefName; };
+        // LongLong and an array by reference are Ref&, as 747 names both; a ByVal Variant is
+        // three slots, not one push.
+        static constexpr Vn kNames[] = {
+            { "Byte", "Byte", "Byte&" },           { "Integer", "Integer", "Integer&" },
+            { "Long", "Long", "Long&" },           { "Single", "Single", "Single&" },
+            { "Double", "Double", "Double&" },     { "Currency", "Currency", "Currency&" },
+            { "String", "String", "String&" },     { "Object", "Object", "Object&" },
+            { "LongLong", "LongLong", "Ref&" },    { "Variant", nullptr, "Variant&" },
+            { "Ref", nullptr, "Ref&" },
+        };
+        if (!base) return nullptr;
+        const size_t n = strlen(base) - ((base[0] && base[strlen(base) - 1] == '&') ? 1 : 0);
+        for (const Vn& v : kNames)
+            if (strlen(v.base) == n && strncmp(v.base, base, n) == 0) return byRef ? v.byRefName : v.byVal;
+        return nullptr;
+    }
+
+    namespace
+    {
+        // Every instruction in order, as the argument walk steps them, with no resynchronising:
+        // a step it cannot take ends it. `visit` returns false once it has what it needs.
+        template <class Visit>
+        bool WalkStraight(std::uint64_t trailer, Visit visit)
+        {
+            const PcodeLengths* L = ArmedLengths();
+            std::uint16_t procSize = 0;
+            if (!L || !trailer || !RdU16(trailer + kTrl_procSize, procSize) || procSize < 2) return false;
+            const std::uint64_t code = trailer - procSize;
+            std::uint32_t i = 0, stmtNext = 0;
+            for (int steps = 0; steps < 0x10000 && i + 2 <= procSize; ++steps)
+            {
+                std::uint16_t op = 0;
+                if (!RdU16(code + i, op) || op >= L->slots || (L->invalidCount && L->invalid[op])) return false;
+                std::int32_t operand = 0;
+                const bool haveOperand = RdI32(code + i + 2, operand);
+                if (IsProcTerminatorSlot(op))
+                {
+                    if (stmtNext <= i) return true;       // the real end
+                    i = stmtNext;                         // an Exit mid-body
+                    continue;
+                }
+                if (IsBosSlot(op))
+                    stmtNext = (haveOperand && operand > 0 && i + static_cast<std::uint32_t>(operand) <= procSize)
+                             ? i + static_cast<std::uint32_t>(operand) : 0;
+                if (!visit(code, i, op, operand, haveOperand)) return true;
+                std::uint32_t len = L->len[op];
+                if (len && L->varUnit[op])
+                {
+                    std::uint16_t count = 0;
+                    if (!RdU16(code + i + 2, count)) return false;
+                    len += static_cast<std::uint32_t>(L->varUnit[op]) * count;
+                }
+                if (!len) return false;
+                i += len;
+            }
+            return i == procSize;
+        }
+
+        // A typed load of one frame slot pushes one operand-stack slot: the ByVal loads and the
+        // loads through a ByRef parameter. Not the FP loads (668, 669, 748, 749), which feed the
+        // FPU, nor a Variant's, which is wider than one slot.
+        const char* ValuePushType(std::uint16_t op)
+        {
+            switch (op)
+            {
+            case 656: case 736: return "Byte";
+            case 657: case 737: return "Integer";
+            case 658: case 738: return "Long";
+            case 659: case 739: return "Single";
+            case 660: case 740: return "Double";
+            case 661: case 741: return "Currency";
+            case 663: case 743: return "String";
+            case 664: case 744: case 750: return "Object";
+            case 667: return "LongLong";
+            default:  return nullptr;
+            }
+        }
+
+        bool ClassifyPush(std::uint16_t op, std::int32_t operand, bool haveOperand, PcodePush& p)
+        {
+            p.op = op; p.operand = operand; p.type = nullptr;
+            if ((p.type = PcodeLiteralTypeName(op)) != nullptr) { p.kind = PushKind::Literal; return true; }
+            if (!haveOperand || operand == 0 || (operand % 8) != 0) return false;
+            if ((p.type = ValuePushType(op)) != nullptr) { p.kind = PushKind::Value; return true; }
+            if (PcodePassesSlotAddress(op)) { p.kind = PushKind::SlotAddress; return true; }
+            if (PcodePassesHeldPointer(op) && operand > 0) { p.kind = PushKind::HeldPointer; return true; }
+            return false;
+        }
+    }
+
+    bool ReadCallPushes(std::uint64_t trailer, std::uint32_t callOff, int n, PcodePush* out)
+    {
+        constexpr int kMax = 16;
+        if (n < 0 || n > kMax || !out) return false;
+        struct Seen { std::uint16_t op; std::int32_t operand; bool have; };
+        Seen ring[kMax] = {};
+        int seen = 0;
+        bool landed = false;
+        const bool walked = WalkStraight(trailer, [&](std::uint64_t, std::uint32_t i, std::uint16_t op,
+                                                      std::int32_t operand, bool have) {
+            if (i >= callOff) { landed = (i == callOff); return false; }
+            if (IsBosSlot(op)) { seen = 0; return true; }   // the call's own statement only
+            if (n) ring[seen % n] = { op, operand, have };
+            ++seen;
+            return true;
+        });
+        if (!walked || !landed || seen < n) return false;
+        for (int k = 0; k < n; ++k)
+        {
+            const Seen& s = ring[(seen - n + k) % n];
+            if (!ClassifyPush(s.op, s.operand, s.have, out[k])) return false;
+        }
+        return true;
+    }
+
+    const char* ReadLocalTypeName(std::uint64_t trailer, std::int32_t frameOffset)
+    {
+        const PcodeLengths* L = ArmedLengths();
+        if (!L || frameOffset >= 0) return nullptr;
+        const char* typed = nullptr;
+        const char* labelled = nullptr;
+        bool pushedLast = false;
+        WalkStraight(trailer, [&](std::uint64_t code, std::uint32_t i, std::uint16_t op,
+                                  std::int32_t operand, bool have) {
+            if (pushedLast && !labelled)
+            {
+                std::uint16_t vt = 0, word = 0;
+                if (op == kOpCVarRef && L->len[op] == 8 && RdU16(code + i + 6, word)) vt = word;
+                else if (op == kOpCDargRef && L->len[op] == 4 && RdU16(code + i + 2, word)) vt = word;
+                else if ((op == kOpRedim || op == kOpRedimPreserve) && L->len[op] == 10 &&
+                         RdU16(code + i + 4, word) && word && !(word & 0xF000))
+                    vt = static_cast<std::uint16_t>(kVtByRef | kVtArray | word);
+                if (vt) labelled = LabelTypeName(vt, true);
+            }
+            pushedLast = false;
+            if (!have || operand != frameOffset) return true;
+            if (L->framedCount != 0 && !L->framesR14[op]) return true;
+            const char* tn = PcodeTypeName(op);
+            if (!tn && !IsBosSlot(op) && !IsExitSlot(op)) tn = PcodeStoreTypeName(op);
+            // The stores that are not their load + 32: a String's copy, and a Variant's.
+            if (!tn && op == 708) tn = "String";
+            if (!tn && (op == 694 || op == 707 || op == 702 || op == 703)) tn = "Variant";
+            if (tn) { typed = tn; return false; }
+            pushedLast = PcodePassesSlotAddress(op);
+            return true;
+        });
+        const char* name = typed ? typed : labelled;
+        if (!name) return nullptr;
+        // As a base name: "Ref&" is an array or a LongLong, "Udt&" a record.
+        if (strcmp(name, "Ref&") == 0) return "Ref";
+        return ArgTypeName(name, false) ? ArgTypeName(name, false)
+             : (strncmp(name, "Variant", 7) == 0 ? "Variant" : nullptr);
+    }
+
     const char* PcodeStopLine()
     {
         static char b[1600];
@@ -1013,6 +1195,9 @@ namespace vba
             j += _snprintf_s(b + j, sizeof(b) - j, _TRUNCATE,
                              ", %lld parameter(s) typed by a Variant label (%lld label(s) fit no type)",
                              static_cast<long long>(g_labelTyped), static_cast<long long>(g_labelDeclined));
+        if (g_callerTyped)
+            j += _snprintf_s(b + j, sizeof(b) - j, _TRUNCATE, ", %lld parameter(s) typed by their caller",
+                             static_cast<long long>(g_callerTyped));
         for (int i = 0; i < static_cast<int>(PcDecline::Count_); ++i)
         {
             if (!g_declines[i]) continue;

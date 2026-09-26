@@ -973,6 +973,17 @@ callee reads it by; an array parameter's `ReDim` (1473, 1474) names its element 
 the same way. `ReadArgTypes` (`vba/vbapcode.cpp`) takes the label only from the
 instruction straight after the push, and only for a slot no typed instruction named.
 
+**What is still untyped takes the type its caller pushed.** A VBE7 call handler saves the
+caller's p-code position at `[rbp−0x50]`, so each frame keeps its `rbp`, and when one opens
+with a slot untyped the tracer reads its caller's call (`FillFromCaller`, `vba/vbatrace.cpp`).
+It must be an `ImpAdCallBasic`, the caller's `rsp` must be `0x160` above, and the constant-pool
+entry `[[rbp−0xA0] + 8·index]` must hold this trailer at `+8` with this procedure's argument
+bytes; otherwise the procedure was not called by the paused one. The call takes the top
+`argBytes/8` slots, so the last that many instructions must each be one push — a literal, a
+typed load, or a frame slot's address, the last push slot 1 (`ReadCallPushes`). An address
+takes its variable's type from the caller's code (`ReadLocalTypeName`), or from the caller's
+own parameter, one level further up. The exit re-read types the slots the same way.
+
 **A parameter the body only passes on to a typed `ByRef` parameter has no type of its
 own, so the row says where its storage is.** The procedure it was passed to reads it with a typed
 load, and the two slots are the same storage. So a `ByRef` slot, and a `?none`

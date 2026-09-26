@@ -141,4 +141,33 @@ namespace vba
     // Adds one walk's label counts to the disarm line. Entry walks only: the exit re-read walks
     // the same procedure again.
     void NoteLabels(const ArgTypes& types);
+
+    // ---- The caller's call site -------------------------------------------------------------
+
+    // One operand-stack slot pushed for a call's argument.
+    enum class PushKind : std::uint8_t { Literal, Value, SlotAddress, HeldPointer };
+    struct PcodePush
+    {
+        std::uint16_t op;
+        std::int32_t  operand;       // the frame offset, for the frame kinds
+        PushKind      kind;
+        const char*   type;          // Literal and Value: the type pushed, as the loads spell it
+    };
+
+    // The type a literal carries, by the slot the compiler chose; nullptr for anything else.
+    const char* PcodeLiteralTypeName(std::uint32_t op);
+
+    // The `n` instructions before the call at `callOff` in the procedure behind `trailer`, the
+    // first pushed first, each one push. False when any is not, or the walk misses the call.
+    bool ReadCallPushes(std::uint64_t trailer, std::uint32_t callOff, int n, PcodePush* out);
+
+    // A local's type from the first typed instruction on its frame slot, or else the Variant
+    // label or ReDim after its push: the name without `&`, "Ref" for an array. Null if none.
+    const char* ReadLocalTypeName(std::uint64_t trailer, std::int32_t frameOffset);
+
+    // The vocabulary name for `base` passed by value or by reference; null where none fits.
+    const char* ArgTypeName(const char* base, bool byRef);
+
+    // Adds parameters typed by their caller to the disarm line. Entry only, like NoteLabels.
+    void NoteCallerTyped(int typed);
 }

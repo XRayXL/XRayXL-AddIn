@@ -14,6 +14,8 @@
 
 namespace vba
 {
+    struct ArgTypes;
+
     // XRAYXL_DIAG only: append `#NNN` to each named type, for when a name is present but wrong.
     void SetArgTypeOpcodeDiagnostics(bool on);
 
@@ -48,6 +50,11 @@ namespace vba
 
         // From the p-code, e.g. "(Long,String)"; "?" where a type was not recoverable.
         char signature[256] = {};
+
+        // Names the argument slots the callee's own p-code left untyped, from what its caller
+        // pushed; null when there is no caller to ask. Runs after the walk, before rendering.
+        void (*typeFromCaller)(void* ctx, ArgTypes& types, int firstSlot, int slots) = nullptr;
+        void* typeFromCallerCtx = nullptr;
     };
 
     // Counted separately: "never looked" and "the frame did not check out" are different facts.

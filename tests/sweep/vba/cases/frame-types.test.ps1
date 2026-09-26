@@ -1,5 +1,5 @@
 # One parameter of every type. Types come from the typed load opcode, not the
-# slot bytes, so each body reads its parameter; T_TyUnused covers one never read.
+# slot bytes, so each body reads its parameter; T_TyUnused covers one never read, which its caller types.
 $case = @{ Name='frame-types'
      Setup=@'
 Public Sub T_TyI2(ByVal v As Integer)
@@ -104,9 +104,9 @@ End Sub
             if ($e[$fn].args -ne $wantArgs[$fn]) {
                 return "$fn args were [$($e[$fn].args)], expected [$($wantArgs[$fn])]" }
         }
-        # a parameter never read emits no load, so it has no recoverable type
-        if ($e['T_TyUnused'].typetext -ne '?unseen,?unseen') {
-            return "T_TyUnused should have no recoverable types, got [$($e['T_TyUnused'].typetext)]" }
+        # a parameter never read emits no load; its caller's literals type it instead
+        if ($e['T_TyUnused'].typetext -ne 'Long,Double' -or $e['T_TyUnused'].args -ne 'a1:Long=287454020 a2:Double=2748.5') {
+            return "T_TyUnused should read its caller's Long and Double, got [$($e['T_TyUnused'].typetext)] [$($e['T_TyUnused'].args)]" }
         if ($t.framesOpened -ne $t.framesClosed) {
             return "LEAK: opened $($t.framesOpened), closed $($t.framesClosed)" }
         $null }
