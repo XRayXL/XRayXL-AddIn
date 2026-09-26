@@ -55,6 +55,7 @@ namespace vba
         if (op == kSlot_GoSubReturn)  return Ending::No;
         if (op == kSlot_ZeroRetVal)    return Ending::No;
         if (op == kSlot_ZeroRetValVar) return Ending::No;
+        if (IsLoopExitSlot(op))        return Ending::No;
         return Ending::Yes;
     }
 

@@ -753,7 +753,7 @@ namespace vba
             if (IsProcTerminatorSlot(op))
             {
                 clean = true;
-                if (!out.exitOp)
+                if (!out.exitOp && !IsLoopExitSlot(op))
                 {
                     out.exitOp = op;
                     std::int32_t exOperand = 0;
