@@ -979,13 +979,18 @@ with a slot untyped the tracer reads its caller's call (`FillFromCaller`, `vba/v
 It must be an `ImpAdCallBasic`, the caller's `rsp` must be `0x160` above, and the constant-pool
 entry `[[rbp−0xA0] + 8·index]` must hold this trailer at `+8` with this procedure's argument
 bytes; otherwise the procedure was not called by the paused one. The call takes the top
-`argBytes/8` slots, so the last that many instructions must each be one push — a literal, a
-typed load, or a frame slot's address, the last push slot 1 (`ReadCallPushes`). An address
-takes its variable's type from the caller's code (`ReadLocalTypeName`), or from the caller's
-own parameter, one level further up.
+`argBytes/8` slots. Read back from the call, each instruction that is one push — a literal, a
+typed load, a frame slot's address, a `ByRef` parameter's pointer — is the next slot from
+slot 1, and the first that is not ends what the call says (`ReadCallPushes`): nothing between a
+push and the call can have consumed it. An address of the caller's own parameter takes that
+parameter's type, from further up if need be. A local's address names nothing: a record's first
+member is stored at the record's own offset, so the local's instructions cannot tell the two
+apart. Nor does a local's 8-byte load, which moves a compiler temporary's pointer as readily as
+a `LongLong`, nor an Integer literal, which is also how an omitted `Optional` Byte's default
+arrives.
 
-Then downward (`FillFromCallees`): a slot the body passes by address to an `ImpAdCallBasic`
-whose arguments are all single pushes (`ReadCallsPassing`) takes the callee's own type for it,
+Then downward (`FillFromCallees`): a slot the body passes by address to an `ImpAdCallBasic`,
+with only single pushes between it and the call (`ReadCallsPassing`), takes the callee's own type for it,
 the callee found through this frame's pool entry, checked by its argument bytes; every such call
 must agree. Until a procedure is compiled its pool entry names a compile-on-demand stub, which
 the argument-bytes check refuses. The entry records what it named from calls on the frame, and

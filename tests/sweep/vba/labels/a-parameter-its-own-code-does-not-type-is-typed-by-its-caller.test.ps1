@@ -1,7 +1,9 @@
 # A parameter its own body never types -- unused, or only passed on to a typed ByRef parameter --
-# takes the type its caller pushed: a literal's, a typed load's, or a local's, found at the call
-# the caller is paused on. An entry VBA did not make itself, or an argument that is an expression,
-# stays untyped. Diagnostics are on (suite.psd1), so a type the caller gave names the call, 1311.
+# takes the type its caller pushed: a literal's, a typed load's, or the caller's own parameter's,
+# found at the call the caller is paused on. A local passed by address stays untyped: a record's
+# first member is stored at the record's own offset. So does an entry VBA did not make itself, and
+# an argument that is an expression. Diagnostics are on (suite.psd1): a type the caller gave names
+# the call, 1311.
 . (Join-Path $PSScriptRoot '..\..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\..\_xray_common.ps1')
 
@@ -32,6 +34,12 @@ End Sub
 Public Sub Chain3(k As Long)
     gN = k
 End Sub
+' Its own code types both, and it hands them on.
+Public Sub Top(k As Long, y As Double)
+    gN = k + y
+    PassOn y
+    Chain1 k
+End Sub
 
 ' Declined: an expression, a macro Excel ran, a UDF a cell called.
 Public Sub Expr(ByVal a As Long)
@@ -48,8 +56,7 @@ Public Sub Drive()
     Lits 42, "hi", 2.5, 9.99@, 1.5!, 1000, True, 5^
     Locals n, d, s
     LocalV vv
-    PassOn d
-    Chain1 n
+    Top n, d
     Expr n + 1
     Application.Run "RunTarget", 5
 End Sub
@@ -82,7 +89,7 @@ try {
 
     $rows = @(Read-TraceRows $sx.ProcId)
     Write-Output ''
-    foreach ($f in 'Lits','Locals','LocalV','PassOn','Chain1','Chain2','Chain3','Expr','RunTarget','CellUnused') {
+    foreach ($f in 'Lits','Locals','LocalV','Top','PassOn','Chain1','Chain2','Chain3','Expr','RunTarget','CellUnused') {
         Write-Output ('  {0,-10} {1,-60} {2}' -f $f, (SigOf $rows $f), (ArgsOf $rows $f))
     }
 
@@ -110,25 +117,31 @@ try {
         Check $name ($bad.Count -eq 0) ("$fn [$(SigOf $rows $fn)] " + $(if ($bad) { $bad -join ' | ' } else { 'all as planted' }))
     }
 
-    # Literals, as the loads spell them: Boolean is Integer. A ByVal String is typed by its own
-    # code even unused (663), so the caller is never asked.
+    # Literals, as the loads spell them. A ByVal String is typed by its own code even unused (663),
+    # so the caller is never asked. An Integer literal also fills a Byte parameter unconverted, so
+    # the Integer and the Boolean stay untyped.
     Expect 'literals-type-unused-byval-parameters' 'Lits' @(
         @('Long', '42'), @('String', '"hi"', 663), @('Double', '2.5'), @('Currency', '9.9900'),
-        @('Single', '1.5'), @('Integer', '1000'), @('Integer', '-1'), @('LongLong', '5'))
-    Expect 'typed-locals-type-unused-byref-parameters' 'Locals' @(@('Long&', '7'), @('Double&', '2.5'), @('String&', '"abc"'))
-    Expect 'a-variant-local-types-an-unused-byref-variant' 'LocalV' @(,@('Variant&', 'Integer(5)'))
+        @('Single', '1.5'))
+    $lp = @(Params 'Lits')
+    Check 'an-integer-literal-names-nothing' ($lp.Count -eq 8 -and $lp[5].Type.StartsWith('?') -and $lp[6].Type.StartsWith('?') -and
+                                              $lp[7].Type -ceq 'LongLong' -and $lp[7].Op -eq 1311 -and $lp[7].Value -ceq '5') "Lits [$(SigOf $rows 'Lits')]"
+    foreach ($f in 'Locals', 'LocalV') {
+        $ps = @(Params $f)
+        Check "a-local-passed-by-address-names-nothing:$f" (@($ps | Where-Object { -not $_.Type.StartsWith('?') -or $_.Op -eq 1311 }).Count -eq 0 -and $ps.Count -gt 0) "$f [$(SigOf $rows $f)] $(ArgsOf $rows $f)"
+    }
     Expect 'a-parameter-only-passed-on-to-a-typed-byref-is-typed' 'PassOn' @(,@('Double&', '2.5'))
     Expect 'a-chain-is-typed-at-every-level' 'Chain1' @(,@('Long&', '7'))
     Expect '...and-its-middle-level-from-one-level-up' 'Chain2' @(,@('Long&', '7'))
 
     foreach ($f in 'Expr', 'RunTarget', 'CellUnused') {
         $p = @(Params $f)[0]
-        Check "not-typed-by-a-caller:$f" ($p -and $p.Op -ne 1311 -and $p.Type -like '?*') "$f [$(SigOf $rows $f)] $(ArgsOf $rows $f)"
+        Check "not-typed-by-a-caller:$f" ($p -and $p.Op -ne 1311 -and $p.Type.StartsWith('?')) "$f [$(SigOf $rows $f)] $(ArgsOf $rows $f)"
     }
 
     $logged = if ($disarm -match '(\d+) parameter\(s\) typed by their caller') { [int]$Matches[1] } else { 0 }
-    # Lits 7 (its String types itself), Locals 3, LocalV 1, PassOn 1, Chain1 1, Chain2 1
-    Check 'the-disarm-line-counts-them' ($logged -eq 14) "disarm line: $logged"
+    # Lits 5 (its String types itself; its Integer and Boolean stay untyped), PassOn 1, Chain1 1, Chain2 1
+    Check 'the-disarm-line-counts-them' ($logged -eq 8) "disarm line: $logged"
 
     $checkFails = Get-XRayCheckFailures
     if ($checkFails) { Complete-Test -Fail -Detail "$checkFails case(s) failed" }

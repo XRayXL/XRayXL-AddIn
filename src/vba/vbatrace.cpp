@@ -406,6 +406,8 @@ namespace vba
             std::int32_t  instrOperand[8];
             std::uint64_t poolQ[8];          // the pool entry's first qwords, raw
             char          poolHit[48];       // where under the pool entry the callee's trailer is
+            std::uint64_t pool;              // [rbp-0xA0]
+            int           poolInParent;      // its offset in the caller's trailer parent; -1 not found
         };
         constexpr int kCallSites = 256;
         CallSite g_callSites[kCallSites];
@@ -488,10 +490,20 @@ namespace vba
                 core::RdU16(at + 4, c.w2);
             }
             if (c.callOff < 0) return;
+            c.poolInParent = -1;
             if (IsPoolCall(c.callOp))
             {
-                std::uint64_t pool = 0;
+                std::uint64_t pool = 0, parent = 0;
                 if (core::RdU64(caller.rbp - 0xA0, pool)) core::RdU64(pool + 8ull * c.w1, c.poolEntry);
+                c.pool = pool;
+                // where the module keeps it, so a dump can find it with no frame
+                if (pool && core::RdU64(caller.trailer, parent))
+                    for (int q = 0; q < 64 && c.poolInParent < 0; ++q)
+                    {
+                        std::uint64_t v = 0;
+                        if (!core::RdU64(parent + 8ull * q, v)) break;
+                        if (v == pool) c.poolInParent = q * 8;
+                    }
                 // What the entry is: search it, and one pointer deeper, for the callee's trailer
                 // or its code start.
                 std::uint16_t calleeSize = 0;
@@ -571,9 +583,9 @@ namespace vba
             return PcodeIsBasicCall(op) && CallSaveAdvance(op) == 4;
         }
 
-        // The pushes for the call that opened stack[callee], the first pushed first; -1 when it
-        // is not provably that call.
-        int CallerPushes(const ThreadState* s, int callee, PcodePush* out, int cap, std::uint16_t& callOp)
+        // The pushes for the call that opened stack[callee], slot j in out[n - j]; returns n, with
+        // `read` the slots from 1 that are single pushes. -1 when it is not provably that call.
+        int CallerPushes(const ThreadState* s, int callee, PcodePush* out, int cap, std::uint16_t& callOp, int& read)
         {
             if (callee < 1 || callee >= s->depth) return -1;
             const Frame& f = s->stack[callee];
@@ -593,7 +605,9 @@ namespace vba
             if (!core::RdU64(c.rbp - 0xA0, pool) || !core::RdU64(pool + 8ull * index, entry) ||
                 !core::RdU64(entry + 8, named) || named != f.trailer) return -1;
             const int n = argBytes / 8;
-            if (n > cap || !ReadCallPushes(c.trailer, static_cast<std::uint32_t>(at - code), n, out)) return -1;
+            if (n > cap) return -1;
+            read = ReadCallPushes(c.trailer, static_cast<std::uint32_t>(at - code), n, out);
+            if (read < 0) return -1;
             callOp = op;
             return n;
         }
@@ -611,12 +625,14 @@ namespace vba
             if (hops >= kCallerHops) return nullptr;
             PcodePush push[16];
             std::uint16_t callOp = 0;
-            const int n = CallerPushes(s, frame, push, 16, callOp);
-            if (n <= 0 || slot < 1 || slot > n) return nullptr;
+            int read = 0;
+            const int n = CallerPushes(s, frame, push, 16, callOp, read);
+            if (n <= 0 || slot < 1 || slot > read) return nullptr;
             return TypeOfPush(s, frame - 1, push[n - slot], hops + 1);
         }
 
-        // The last push is slot 1. An address carries its variable's type, ByRef.
+        // The last push is slot 1. A parameter's address carries its type, ByRef. A local's does
+        // not: a record's first member is stored at the record's own offset.
         const char* TypeOfPush(const ThreadState* s, int caller, const PcodePush& p, int hops)
         {
             switch (p.kind)
@@ -625,7 +641,7 @@ namespace vba
             case PushKind::Value:
                 return ArgTypeName(p.type, false);
             case PushKind::SlotAddress:
-                if (p.operand < 0) return ArgTypeName(ReadLocalTypeName(s->stack[caller].trailer, p.operand), true);
+                if (p.operand < 0) return nullptr;
                 return ArgTypeName(OwnParamType(s, caller, p.operand / 8, hops), true);
             case PushKind::HeldPointer:
                 return ArgTypeName(OwnParamType(s, caller, p.operand / 8, hops), true);
@@ -720,9 +736,10 @@ namespace vba
 
             PcodePush push[16];
             std::uint16_t callOp = 0;
-            const int n = CallerPushes(ct.s, ct.callee, push, 16, callOp);
+            int read = 0;
+            const int n = CallerPushes(ct.s, ct.callee, push, 16, callOp, read);
             int typed = 0;
-            for (int k = firstSlot; n > 0 && k < end && k <= n; k += SlotStep(types, k))
+            for (int k = firstSlot; n > 0 && k < end && k <= read; k += SlotStep(types, k))
             {
                 if (types.name[k]) continue;
                 if (const char* tn = TypeOfPush(ct.s, ct.callee - 1, push[n - k], 0))
@@ -1790,7 +1807,8 @@ namespace vba
             j += _snprintf_s(b + j, sizeof(b) - j, _TRUNCATE, " | no call found before it");
         if (c.poolEntry && j > 0)
         {
-            j += _snprintf_s(b + j, sizeof(b) - j, _TRUNCATE, " | callee %s | entry",
+            j += _snprintf_s(b + j, sizeof(b) - j, _TRUNCATE, " | pool 0x%llX at parent+0x%X | callee %s | entry",
+                             static_cast<unsigned long long>(c.pool), static_cast<unsigned>(c.poolInParent),
                              c.poolHit[0] ? c.poolHit : "not found under the pool entry");
             for (int q = 0; q < 8 && j > 0; ++q)
                 j += _snprintf_s(b + j, sizeof(b) - j, _TRUNCATE, " %llX", static_cast<unsigned long long>(c.poolQ[q]));

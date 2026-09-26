@@ -178,6 +178,8 @@ namespace vba
         // ByRef Variant stores vary with the right-hand side: a number 774, `Set` 783, `Set` of
         // an IUnknown 784 or 785, a full copy 787. Only 774 mirrors a typed load.
         if (storeOp == 783 || storeOp == 784 || storeOp == 785 || storeOp == 787) return "Variant&";
+        // 750's store also sets a ByRef Variant to a named class, so it names neither.
+        if (storeOp == 750 + 32) return nullptr;
         return PcodeTypeName(storeOp - 32);
     }
 
@@ -884,18 +886,23 @@ namespace vba
     const char* PcodeLiteralTypeName(std::uint32_t op)
     {
         // Measured one literal at a time into a typed ByVal parameter. Shared handlers push the
-        // same bytes for several types, so the slot, not the handler, says which.
+        // same bytes for several types, so the slot, not the handler, says which. An Integer
+        // literal (1517, 1648-1658) also fills a Byte parameter unconverted, so it names neither.
         switch (op)
         {
-        case 1517: return "Integer";     // LitI2; True and False too
         case 1520: return "Long";        // LitI4
         case 1521: return "Single";      // LitI4's twin, carrying a float
         case 1523: return "Currency";    // LitCy
         case 1524: return "Double";      // LitCy's twin; a Date literal too
         case 1527: return "String";      // LitStr
         case 1698: return "LongLong";    // LitI8
-        default:   return (op >= 1648 && op <= 1658) ? "Integer" : nullptr;   // LitI2_0..10
+        default:   return nullptr;
         }
+    }
+
+    bool PcodeIsLiteral(std::uint32_t op)
+    {
+        return PcodeLiteralTypeName(op) || op == 1517 || (op >= 1648 && op <= 1658);   // LitI2, LitI2_0..10
     }
 
     const char* ArgTypeName(const char* base, bool byRef)
@@ -923,9 +930,8 @@ namespace vba
         // Every instruction in order, as the argument walk steps them, with no resynchronising:
         // a step it cannot take ends it. `visit` returns false once it has what it needs.
         template <class Visit>
-        bool WalkStraight(std::uint64_t trailer, Visit visit)
+        bool WalkStraightWith(const PcodeLengths* L, std::uint64_t trailer, Visit visit)
         {
-            const PcodeLengths* L = ArmedLengths();
             std::uint16_t procSize = 0;
             if (!L || !trailer || !RdU16(trailer + kTrl_procSize, procSize) || procSize < 2) return false;
             const std::uint64_t code = trailer - procSize;
@@ -959,6 +965,9 @@ namespace vba
             return i == procSize;
         }
 
+        template <class Visit>
+        bool WalkStraight(std::uint64_t trailer, Visit visit) { return WalkStraightWith(ArmedLengths(), trailer, visit); }
+
         // A typed load of one frame slot pushes one operand-stack slot: the ByVal loads and the
         // loads through a ByRef parameter. Not the FP loads (668, 669, 748, 749), which feed the
         // FPU, nor a Variant's, which is wider than one slot.
@@ -982,19 +991,25 @@ namespace vba
         bool ClassifyPush(std::uint16_t op, std::int32_t operand, bool haveOperand, PcodePush& p)
         {
             p.op = op; p.operand = operand; p.type = nullptr;
-            if ((p.type = PcodeLiteralTypeName(op)) != nullptr) { p.kind = PushKind::Literal; return true; }
+            if (PcodeIsLiteral(op)) { p.type = PcodeLiteralTypeName(op); p.kind = PushKind::Literal; return true; }
             if (!haveOperand || operand == 0 || (operand % 8) != 0) return false;
-            if ((p.type = ValuePushType(op)) != nullptr) { p.kind = PushKind::Value; return true; }
+            if ((p.type = ValuePushType(op)) != nullptr)
+            {
+                // A local's eight bytes can be a compiler temporary's pointer: one push, no type.
+                if (op == 667 && operand < 0) p.type = nullptr;
+                p.kind = PushKind::Value;
+                return true;
+            }
             if (PcodePassesSlotAddress(op)) { p.kind = PushKind::SlotAddress; return true; }
             if (PcodePassesHeldPointer(op) && operand > 0) { p.kind = PushKind::HeldPointer; return true; }
             return false;
         }
     }
 
-    bool ReadCallPushes(std::uint64_t trailer, std::uint32_t callOff, int n, PcodePush* out)
+    int ReadCallPushes(std::uint64_t trailer, std::uint32_t callOff, int n, PcodePush* out)
     {
         constexpr int kMax = 16;
-        if (n < 0 || n > kMax || !out) return false;
+        if (n < 0 || n > kMax || !out) return -1;
         struct Seen { std::uint16_t op; std::int32_t operand; bool have; };
         Seen ring[kMax] = {};
         int seen = 0;
@@ -1003,56 +1018,22 @@ namespace vba
                                                       std::int32_t operand, bool have) {
             if (i >= callOff) { landed = (i == callOff); return false; }
             if (IsBosSlot(op)) { seen = 0; return true; }   // the call's own statement only
-            if (n) ring[seen % n] = { op, operand, have };
+            ring[seen % kMax] = { op, operand, have };
             ++seen;
             return true;
         });
-        if (!walked || !landed || seen < n) return false;
-        for (int k = 0; k < n; ++k)
+        if (!walked || !landed) return -1;
+        // Back from the call, while each instruction is one push: nothing after a push can have
+        // consumed it, so the j-th is slot j. The first that is not ends what can be known.
+        int read = 0;
+        for (int j = 1; j <= n; ++j)
         {
-            const Seen& s = ring[(seen - n + k) % n];
-            if (!ClassifyPush(s.op, s.operand, s.have, out[k])) return false;
+            if (j > seen) return -1;                        // the statement ran out first: a misread
+            const Seen& s = ring[(seen - j) % kMax];
+            if (!ClassifyPush(s.op, s.operand, s.have, out[n - j])) break;
+            ++read;
         }
-        return true;
-    }
-
-    const char* ReadLocalTypeName(std::uint64_t trailer, std::int32_t frameOffset)
-    {
-        const PcodeLengths* L = ArmedLengths();
-        if (!L || frameOffset >= 0) return nullptr;
-        const char* typed = nullptr;
-        const char* labelled = nullptr;
-        bool pushedLast = false;
-        WalkStraight(trailer, [&](std::uint64_t code, std::uint32_t i, std::uint16_t op,
-                                  std::int32_t operand, bool have) {
-            if (pushedLast && !labelled)
-            {
-                std::uint16_t vt = 0, word = 0;
-                if (op == kOpCVarRef && L->len[op] == 8 && RdU16(code + i + 6, word)) vt = word;
-                else if (op == kOpCDargRef && L->len[op] == 4 && RdU16(code + i + 2, word)) vt = word;
-                else if ((op == kOpRedim || op == kOpRedimPreserve) && L->len[op] == 10 &&
-                         RdU16(code + i + 4, word) && word && !(word & 0xF000))
-                    vt = static_cast<std::uint16_t>(kVtByRef | kVtArray | word);
-                if (vt) labelled = LabelTypeName(vt, true);
-            }
-            pushedLast = false;
-            if (!have || operand != frameOffset) return true;
-            if (L->framedCount != 0 && !L->framesR14[op]) return true;
-            const char* tn = PcodeTypeName(op);
-            if (!tn && !IsBosSlot(op) && !IsExitSlot(op)) tn = PcodeStoreTypeName(op);
-            // The stores that are not their load + 32: a String's copy, and a Variant's.
-            if (!tn && op == 708) tn = "String";
-            if (!tn && (op == 694 || op == 707 || op == 702 || op == 703)) tn = "Variant";
-            if (tn) { typed = tn; return false; }
-            pushedLast = PcodePassesSlotAddress(op);
-            return true;
-        });
-        const char* name = typed ? typed : labelled;
-        if (!name) return nullptr;
-        // As a base name: "Ref&" is an array or a LongLong, "Udt&" a record.
-        if (strcmp(name, "Ref&") == 0) return "Ref";
-        return ArgTypeName(name, false) ? ArgTypeName(name, false)
-             : (strncmp(name, "Variant", 7) == 0 ? "Variant" : nullptr);
+        return read;
     }
 
     int ReadCallsPassing(std::uint64_t trailer, std::int32_t operand, CallPass* out, int cap)
@@ -1073,27 +1054,59 @@ namespace vba
             }
             std::uint16_t index = 0, argBytes = 0;
             const int args = (RdU16(code + i + 2, index) && RdU16(code + i + 4, argBytes)) ? argBytes / 8 : 0;
-            if (args >= 1 && args <= kRing && seen >= args)
+            // Back from the call while each instruction is one push; the last push is slot 1.
+            // A statement that runs out first is a misread, as in ReadCallPushes.
+            int hit = 0;
+            std::uint16_t hitOp = 0;
+            bool misread = false;
+            for (int k = 1; k <= args && k <= kRing; ++k)
             {
-                // The last push is the callee's slot 1; every argument must be one push.
-                int hit = 0;
-                std::uint16_t hitOp = 0;
-                bool single = true;
-                for (int k = 0; k < args && single; ++k)
-                {
-                    const Seen& s = ring[(seen - 1 - k) % kRing];
-                    PcodePush p{};
-                    single = ClassifyPush(s.op, s.operand, s.have, p);
-                    if (single && !hit && p.operand == operand &&
-                        (p.kind == PushKind::SlotAddress || p.kind == PushKind::HeldPointer))
-                    { hit = k + 1; hitOp = s.op; }
-                }
-                if (single && hit) out[n++] = { op, index, argBytes, hitOp, hit };
+                if (k > seen) { misread = true; break; }
+                const Seen& s = ring[(seen - k) % kRing];
+                PcodePush p{};
+                if (!ClassifyPush(s.op, s.operand, s.have, p)) break;
+                if (!hit && p.operand == operand && (p.kind == PushKind::SlotAddress || p.kind == PushKind::HeldPointer))
+                { hit = k; hitOp = s.op; }
             }
+            if (hit && !misread) out[n++] = { op, index, argBytes, hitOp, hit };
             seen = 0;   // what the call leaves is not tracked
             return n < cap;
         });
         return n;
+    }
+
+    namespace
+    {
+        // The module's constant pool, the one a running frame holds at [rbp-0xA0].
+        constexpr std::uint32_t kPar_pool = 0x60;
+
+        void WriteCorpusNames(FILE* f, std::uint64_t trailer, CorpusNamer name)
+        {
+            char nm[160] = "?";
+            std::uint16_t argSz = 0;
+            RdU16(trailer + kTrl_argSz, argSz);
+            if (!name(trailer, nm, sizeof nm)) strcpy_s(nm, "?");
+            fprintf(f, " argsz=%u name=%s", argSz, nm);
+            std::uint64_t parent = 0, pool = 0;
+            if (!core::RdU64(trailer, parent) || !core::RdU64(parent + kPar_pool, pool) || !pool) return;
+            bool first = true;
+            // written after disarm has cleared the armed table, so with the one it walked by
+            WalkStraightWith(g_armed.ok ? &g_armed : nullptr, trailer, [&](std::uint64_t code, std::uint32_t i, std::uint16_t op, std::int32_t, bool) {
+                if (!PcodeIsBasicCall(op)) return true;
+                std::uint16_t index = 0, argBytes = 0, calleeArgSz = 0;
+                std::uint64_t entry = 0, callee = 0;
+                char cn[160] = "?";
+                if (!RdU16(code + i + 2, index) || !RdU16(code + i + 4, argBytes)) return true;
+                if (core::RdU64(pool + 8ull * index, entry) && entry && core::RdU64(entry + 8, callee) && callee)
+                {
+                    RdU16(callee + kTrl_argSz, calleeArgSz);
+                    if (!name(callee, cn, sizeof cn)) strcpy_s(cn, "?");
+                }
+                fprintf(f, "%s%X:%u:%u:%u:%s", first ? " calls=" : ",", i, index, argBytes, calleeArgSz, cn);
+                first = false;
+                return true;
+            });
+        }
     }
 
     const char* PcodeStopLine()
@@ -1142,7 +1155,7 @@ namespace vba
 
     // Raw bytes only, since the file exists to check the lengths. The summary counts what was
     // dropped, so a corpus missing every large procedure does not flatter the table.
-    std::string WritePcodeCorpus(const std::wstring& path)
+    std::string WritePcodeCorpus(const std::wstring& path, CorpusNamer name)
     {
         char msg[400];
         const LONG n = InterlockedCompareExchange(&g_corpusN, 0, 0);
@@ -1208,6 +1221,7 @@ namespace vba
             fprintf(f, "proc %llX size=%u bytes=",
                     static_cast<unsigned long long>(c.trailer), c.procSize);
             for (int q = 0; q < c.n; ++q) fprintf(f, "%02X", static_cast<unsigned>(c.raw[q]));
+            if (name) WriteCorpusNames(f, c.trailer, name);
             fprintf(f, "\n");
             ++written;
         }

@@ -6,6 +6,7 @@
 #include "vbatrace.h"
 #include "vbaargs.h"
 #include "vbapcode.h"
+#include "vbaidentity.h"
 #include "emit/csv.h"
 #include "core/log.h"
 #include "core/tracemodes.h"
@@ -44,6 +45,17 @@ namespace vba
         constexpr std::size_t kStubSize = 0x20;
         constexpr std::size_t kOffOrig  = 0x10;
         constexpr std::size_t kOffThunk = 0x18;
+
+        // A corpus procedure's name. Only a member of its module's table is resolved, so a
+        // call's not-yet-compiled stand-in reads '?' and counts no identity decline.
+        bool CorpusName(std::uint64_t trailer, char* out, std::size_t cap)
+        {
+            static std::uint64_t members[4096];
+            Identity id;
+            if (!ModuleTrailers(trailer, members, 4096) || !Resolve(trailer, id)) return false;
+            _snprintf_s(out, cap, _TRUNCATE, "%s.%s", id.module, id.function);
+            return true;
+        }
 
         void EmitStub(std::uint8_t* p, const void* shared, std::uint64_t original)
         {
@@ -484,7 +496,7 @@ namespace vba
         {
             wchar_t leaf[64];
             _snwprintf_s(leaf, _TRUNCATE, L"\\XRayXL_pcode_%lu.txt", GetCurrentProcessId());
-            core::Log::Note(WritePcodeCorpus(core::EnsureAppSubdir(L"Logs") + leaf));
+            core::Log::Note(WritePcodeCorpus(core::EnsureAppSubdir(L"Logs") + leaf, CorpusName));
         }
 
         // Noise on a healthy build, unless a named load was refused: then the frame scan is wrong.

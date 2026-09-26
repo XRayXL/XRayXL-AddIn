@@ -107,7 +107,7 @@ try {
     Expect 'expression-arguments-are-typed-by-where-they-go' 'ExprPass' @(@('Double&', 751, '2.5'), @('String&', 751, '"abc"'))
     Expect 'one-level-down-types-the-passer' 'Passer' @(,@('Long&', 751, '3'))
     $p = @(Params 'PassToPasser')[0]
-    Check 'two-levels-down-is-not-read' ($p -and $p.Type -like '?*') "PassToPasser [$(SigOf $rows 'PassToPasser')]"
+    Check 'two-levels-down-is-not-read' ($p -and $p.Type.StartsWith('?')) "PassToPasser [$(SigOf $rows 'PassToPasser')]"
 
     $logged = if ($disarm -match '(\d+) parameter\(s\) typed by the procedure they are passed to') { [int]$Matches[1] } else { 0 }
     # CellPass 1, RunPass 1, ExprPass 2, Passer 1

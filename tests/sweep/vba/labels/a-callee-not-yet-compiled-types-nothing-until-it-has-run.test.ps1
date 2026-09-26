@@ -41,7 +41,7 @@ try {
 
     Check 'both-calls-ran' ($entries.Count -eq 2 -and $exits.Count -eq 2) "entries $($entries.Count), exits $($exits.Count)"
     if ($entries.Count -eq 2) {
-        Check 'the-first-call-is-untyped' ([string]$entries[0].typetext -like '?*') "first [$($entries[0].typetext)]"
+        Check 'the-first-call-is-untyped' (([string]$entries[0].typetext).StartsWith('?')) "first [$($entries[0].typetext)]"
         Check 'the-second-call-is-typed-by-its-now-compiled-callee' `
               (([string]$entries[1].typetext -replace '#.*$', '') -ceq 'Double&' -and (Remove-ArgAddress $entries[1].args) -ceq 'a1:Double&=2.5') `
               "second [$($entries[1].typetext)] $($entries[1].args)"

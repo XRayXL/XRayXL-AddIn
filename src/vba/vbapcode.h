@@ -122,8 +122,10 @@ namespace vba
     const char*   PcodeNotFramedWarning();
 
     // Write every distinct procedure walked this session as raw bytes, for the
-    // offline length solver. XRAYXL_DIAG only; call at disarm, never in a hook.
-    std::string   WritePcodeCorpus(const std::wstring& path);
+    // offline length solver. With `name`, each also gets its name, its argument size and what
+    // its calls name, for the offline type oracle. XRAYXL_DIAG only; call at disarm, never in a hook.
+    using CorpusNamer = bool (*)(std::uint64_t trailer, char* out, std::size_t cap);
+    std::string   WritePcodeCorpus(const std::wstring& path, CorpusNamer name = nullptr);
 
     // Stores to the result ([R14-8], or [R14-0x18] for a Variant), whose opcode carries the
     // return type. Scanned, not walked, so it does not depend on the length table. Distinct
@@ -154,16 +156,14 @@ namespace vba
         const char*   type;          // Literal and Value: the type pushed, as the loads spell it
     };
 
-    // The type a literal carries, by the slot the compiler chose; nullptr for anything else.
+    // The type a literal carries, by the slot the compiler chose; nullptr for an Integer literal,
+    // which may be a Byte, and for anything that is not a literal.
     const char* PcodeLiteralTypeName(std::uint32_t op);
+    bool        PcodeIsLiteral(std::uint32_t op);
 
-    // The `n` instructions before the call at `callOff` in the procedure behind `trailer`, the
-    // first pushed first, each one push. False when any is not, or the walk misses the call.
-    bool ReadCallPushes(std::uint64_t trailer, std::uint32_t callOff, int n, PcodePush* out);
-
-    // A local's type from the first typed instruction on its frame slot, or else the Variant
-    // label or ReDim after its push: the name without `&`, "Ref" for an array. Null if none.
-    const char* ReadLocalTypeName(std::uint64_t trailer, std::int32_t frameOffset);
+    // The pushes for the `n` slots of the call at `callOff`, slot j in out[n - j]. Returns how
+    // many slots from slot 1 are single pushes; -1 when the walk misses the call or misreads it.
+    int ReadCallPushes(std::uint64_t trailer, std::uint32_t callOff, int n, PcodePush* out);
 
     // The vocabulary name for `base` passed by value or by reference; null where none fits.
     const char* ArgTypeName(const char* base, bool byRef);
@@ -183,8 +183,8 @@ namespace vba
         int           argSlot;       // the callee's slot it lands in
     };
 
-    // The VBA calls in the procedure behind `trailer` whose arguments are all single pushes and
-    // one of which is the address at frame `operand`; up to `cap`, in body order.
+    // The VBA calls in the procedure behind `trailer` that pass the address at frame `operand`,
+    // with only single pushes between it and the call; up to `cap`, in body order.
     int ReadCallsPassing(std::uint64_t trailer, std::int32_t operand, CallPass* out, int cap);
 
     // Adds parameters typed by the procedure they are passed to. Entry only.

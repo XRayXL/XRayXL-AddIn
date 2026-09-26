@@ -283,15 +283,20 @@ as their loads spell them. A `ReDim` of an array parameter names it the same way
 from the element type the `ReDim` allocates. A typed instruction anywhere in the body still decides.
 
 **Or its caller says.** When VBA code called the procedure, its caller is paused on the call,
-and the instructions straight before it pushed the arguments: a literal, a typed load, or the
-address of one of the caller's own variables, whose type the caller's code states. A parameter
-still untyped takes that type, `ByRef` for an address — which covers one passed on to a typed
-`ByRef` parameter, and one never used at all. The tracer does this only when the call provably
-made this procedure, and only for an argument that is a single push. A procedure a cell,
-`Application.Run` or an event started, or an argument that is an expression, stays as it was.
+and the instructions straight before it pushed the arguments, the first argument last: a
+literal, a typed load, or the address of one of the caller's own parameters, whose type the
+caller's signature states. A parameter still untyped takes that type, `ByRef` for an address —
+which covers one passed on to a typed `ByRef` parameter, and one never used at all. The tracer
+does this only when the call provably made this procedure, and reads back from the call only
+until an argument that is not a single push: an expression, a call, a conversion. That argument
+and every one before it in the list stay as they were. So does a local variable passed by
+address, which may be a record whose first member is all its code mentions; a whole-number
+literal that fits an `Integer`, which may be filling a `Byte`; and a procedure a cell,
+`Application.Run` or an event started.
 
-**Or the procedure it goes to says.** A parameter the body passes on by address, as a single
-push, to another VBA procedure takes that procedure's type for the slot: a `ByRef` argument must
+**Or the procedure it goes to says.** A parameter the body passes on by address, with only single
+pushes between it and the call, to another VBA procedure takes that procedure's type for the
+slot: a `ByRef` argument must
 match its parameter exactly. It needs no caller, so it also types a procedure a cell or
 `Application.Run` started. It reads one level down, and only a procedure that is compiled: in a
 project compiled on demand, a procedure that has not yet run has no types to read, so the calls
