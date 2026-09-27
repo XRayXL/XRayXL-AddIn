@@ -609,7 +609,11 @@ namespace vba
         // ReDim of a typed dynamic array names its element type; a Variant's is RedimVar, 1475.
         constexpr std::uint16_t kOpRedim         = 1473;   // dimensions at +2, element VARTYPE at +4, 10 bytes
         constexpr std::uint16_t kOpRedimPreserve = 1474;   // the same
-        constexpr std::uint16_t kVtByRef = 0x4000, kVtArray = 0x2000;
+        constexpr std::uint16_t kVtByRef = 0x4000, kVtArray = 0x2000, kVtVariant = 12;
+
+        // What only a Variant takes: treated as an array (437, CRefVarAry) or indexed (1510-1512,
+        // 1605, the VarIndex family). Straight after a ByRef parameter's push, it is a Variant.
+        bool IsVariantUse(std::uint16_t op) { return op == 437 || (op >= 1510 && op <= 1512) || op == 1605; }
 
         // Spelt as the loads spell them, so Date reads Double and Boolean Integer; a ByRef array
         // or LongLong is Ref&, as opcode 747 names both. An array needs an element type named here.
@@ -800,6 +804,8 @@ namespace vba
                 else if ((op == kOpRedim || op == kOpRedimPreserve) && L->len[op] == 10 &&
                          RdU16(code + i + 4, word) && word && !(word & 0xF000))
                     vt = static_cast<std::uint16_t>(kVtByRef | kVtArray | word);   // the pushed array
+                else if (labelSlotRef && IsVariantUse(op))
+                    vt = static_cast<std::uint16_t>(kVtByRef | kVtVariant);
                 if (vt)
                 {
                     labelVt[labelSlot]  = vt;

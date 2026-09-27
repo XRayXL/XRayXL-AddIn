@@ -280,7 +280,9 @@ instruction that does so carries the Variant's `VARTYPE`: the callee reads the p
 so it is the declared type. The tracer reads that label from the instruction straight after the
 push, and the parameter is named like any other, `Date` as `Double` and `Boolean` as `Integer`,
 as their loads spell them. A `ReDim` of an array parameter names it the same way, as `Ref&`,
-from the element type the `ReDim` allocates. A typed instruction anywhere in the body still decides.
+from the element type the `ReDim` allocates, and a `Variant` parameter only bounded or indexed —
+`LBound(v)`, `v(i)` — as `Variant&`, since nothing else can be. A typed instruction anywhere in the
+body still decides.
 
 **Or its caller says.** When VBA code called the procedure, its caller is paused on the call,
 and the instructions straight before it pushed the arguments, the first argument last: a

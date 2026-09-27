@@ -22,6 +22,8 @@ namespace vba
             { 736,  "Byte&"    }, { 737,  "Integer&" },   // Integer and Boolean
             { 738,  "Long&"    },
             { 741,  "Currency&"}, { 742,  "Variant&" },
+            // A ByRef Variant's value pushed whole, three slots, as to a ByVal Variant; 784 is its store.
+            { 752,  "Variant&" },
             { 743,  "String&"  },
             { 744,  "Object&"  }, { 748,  "Single&"  },
             // A named class (VBA or imported COM), where 744 is the generic `As Object`.

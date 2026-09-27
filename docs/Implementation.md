@@ -970,8 +970,11 @@ renders the declared type as `?opNNN` rather than guessing, and is counted.
 **A parameter passed on into a Variant is typed by the Variant's label.** Its push
 (751, 671) is followed by `CVarRef` (951) or `CDargRef` (950), whose `VARTYPE` the
 callee reads it by; an array parameter's `ReDim` (1473, 1474) names its element type
-the same way. `ReadArgTypes` (`vba/vbapcode.cpp`) takes the label only from the
-instruction straight after the push, and only for a slot no typed instruction named.
+the same way, and a `ByRef` parameter pushed into what only a `Variant` takes — bounded or
+indexed (437, 1510–1512, 1605) — is `Variant&` (`IsVariantUse`). `ReadArgTypes`
+(`vba/vbapcode.cpp`) takes the label only from the instruction straight after the push, and
+only for a slot no typed instruction named. 752, which pushes a `ByRef Variant`'s value whole
+for an object method's argument, is a typed load of `Variant&`.
 
 **What is still untyped takes the type its caller pushed.** A VBE7 call handler saves the
 caller's p-code position at `[rbp−0x50]`, so each frame keeps its `rbp`, and when one opens

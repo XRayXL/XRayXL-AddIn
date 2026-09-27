@@ -1,6 +1,7 @@
 // Unit test for the Variant label in vba::ReadArgTypes (vba/vbapcode.cpp): a parameter the body
 // only passes on is typed by the CVarRef or CDargRef right after its push, whose VARTYPE is what
-// the callee reads it by. A typed instruction anywhere in the body still decides.
+// the callee reads it by, and a ByRef one by an operation only a Variant takes right after it. A
+// typed instruction anywhere in the body still decides.
 //
 // Each case is one procedure in memory: a last statement, the instructions, exit 635, the trailer.
 //
@@ -27,6 +28,9 @@ namespace
     constexpr std::uint16_t kBos = 615, kExit = 635, kFiller = 1100;
     constexpr std::uint16_t kFLdRf = 671, kFLdAd = 751, kLoadLong = 658;
     constexpr std::uint16_t kCDargRef = 950, kCVarRef = 951, kRedim = 1473, kRedimPreserve = 1474;
+    // What only a Variant takes, and a ByRef Variant's value pushed whole
+    constexpr std::uint16_t kCRefVarAry = 437, kVarIndexLdVar = 1510, kVarIndexSt = 1512, kVarIndexLock = 1605;
+    constexpr std::uint16_t kFLdVarWhole = 752;
 
     struct Code
     {
@@ -79,6 +83,8 @@ int main()
     for (std::uint16_t op : { kBos, kFLdRf, kFLdAd, kLoadLong }) L.len[op] = 6;
     L.len[kCVarRef] = 8; L.len[kCDargRef] = 4; L.len[kFiller] = 2;
     L.len[kRedim] = 10; L.len[kRedimPreserve] = 10;
+    L.len[kCRefVarAry] = 2; L.len[kVarIndexLdVar] = 6; L.len[kVarIndexSt] = 4; L.len[kVarIndexLock] = 12;
+    L.len[kFLdVarWhole] = 6;
     vba::SetArmedLengths(L);
     vba::ResetPcodeCounts();
 
@@ -98,6 +104,17 @@ int main()
     Typed("a ByRef LongLong reads Ref&, as 747 names it", Code().Push(kFLdAd, 1).VarRef(0x4014), 1, "Ref&");
     Typed("a ReDim of an array parameter reads Ref&", Code().Push(kFLdAd, 2).Redim(kRedim, 5), 2, "Ref&");
     Typed("...and so does a ReDim Preserve", Code().Push(kFLdAd, 1).Redim(kRedimPreserve, 8), 1, "Ref&");
+    Typed("a ByRef parameter treated as an array (`LBound(v)`) reads Variant&",
+          Code().Push(kFLdAd, 1).W(kCRefVarAry), 1, "Variant&");
+    Typed("...indexed (`x = v(i)`) reads Variant&", Code().Push(kFLdAd, 2).W(kVarIndexLdVar).D(0), 2, "Variant&");
+    Typed("...stored into (`v(i) = x`) reads Variant&", Code().Push(kFLdAd, 1).W(kVarIndexSt).W(1), 1, "Variant&");
+    Typed("...and locked (`F v(i)`) reads Variant&",
+          Code().Push(kFLdAd, 1).W(kVarIndexLock).D(0).D(0).W(0), 1, "Variant&");
+    Typed("a ByVal slot's address into one types nothing", Code().Push(kFLdRf, 1).W(kCRefVarAry), 1, nullptr);
+    Typed("one instruction late types nothing", Code().Push(kFLdAd, 1).Filler().W(kCRefVarAry), 1, nullptr);
+    Typed("a typed load elsewhere still decides",
+          Code().LoadLong(1).Push(kFLdAd, 1).W(kVarIndexLdVar).D(0), 1, "Long");
+    Typed("a ByRef Variant's value pushed whole (752) reads Variant&", Code().Push(kFLdVarWhole, 1), 1, "Variant&");
     Typed("a ReDim one instruction late types nothing",
           Code().Push(kFLdAd, 1).Filler().Redim(kRedim, 5), 1, nullptr);
 
