@@ -1,7 +1,9 @@
 # A parameter the body only passes on by address, to a VBA procedure its own pool names, takes
-# that procedure's type for the slot: a ByRef argument must match its parameter exactly. It needs
-# no caller, so it types a UDF a cell called, a macro Application.Run ran, and a procedure called
-# with expressions. Diagnostics are on (suite.psd1): such a type names the push, 751 or 671.
+# that procedure's type for the slot: a ByRef argument must match its parameter exactly. If that
+# procedure only passes it on too, the next one down says, to four levels, across modules through
+# each one's own pool. It needs no caller, so it types a UDF a cell called, a macro
+# Application.Run ran, and a procedure called with expressions. Diagnostics are on (suite.psd1):
+# such a type names the push, 751 or 671.
 . (Join-Path $PSScriptRoot '..\..\..\..\StretchXL\TestKit.ps1')
 . (Join-Path $PSScriptRoot '..\..\_xray_common.ps1')
 
@@ -31,9 +33,29 @@ Public Sub ExprPass(x As Double, s As String)
     gN = Helper(x)
     TakeS s
 End Sub
-' Passed to a procedure that only passes it on in turn: one level is read, so it stays untyped.
+' Passed to a procedure that only passes it on in turn: two levels.
 Public Sub PassToPasser(x As Long)
     Passer x
+End Sub
+' Three levels, the last two in another module, so its pool is reached through its parent.
+Public Sub Hop1(x As Long)
+    M2.Hop2 x
+End Sub
+' Five deep: Deep2 reaches TakeL in four levels, Deep1 would need five.
+Public Sub Deep1(x As Long)
+    Deep2 x
+End Sub
+Public Sub Deep2(x As Long)
+    Deep3 x
+End Sub
+Public Sub Deep3(x As Long)
+    Deep4 x
+End Sub
+Public Sub Deep4(x As Long)
+    Deep5 x
+End Sub
+Public Sub Deep5(x As Long)
+    TakeL x
 End Sub
 Public Sub Passer(y As Long)
     TakeL y
@@ -45,6 +67,17 @@ Public Sub Drive()
     ExprPass d + 0, s & ""
     Application.Run "RunPass", 5
     PassToPasser n + 0
+    Hop1 n + 1
+    Deep1 n + 2
+End Sub
+'@
+
+$module2 = @'
+Public Sub Hop2(x As Long)
+    Hop3 x
+End Sub
+Public Sub Hop3(x As Long)
+    M.TakeL x
 End Sub
 '@
 
@@ -54,7 +87,7 @@ try {
     Set-XRaySessionDefaults $sx
     $paths = Get-XRayPaths $sx.ProcId
 
-    New-XRayMacroBook $sx 'ByCallee' @(@{ Kind=1; Name='M'; Code=$moduleCode })
+    New-XRayMacroBook $sx 'ByCallee' @(@{ Kind=1; Name='M'; Code=$moduleCode }, @{ Kind=1; Name='M2'; Code=$module2 })
     $leaf = (Get-XRayMacroBook).Leaf
     $ws = $app.Workbooks.Item($leaf).Worksheets.Item(1)
     $ws.Range("B1").Value2 = 4
@@ -79,7 +112,7 @@ try {
 
     $rows = @(Read-TraceRows $sx.ProcId)
     Write-Output ''
-    foreach ($f in 'CellPass','RunPass','ExprPass','PassToPasser','Passer') {
+    foreach ($f in 'CellPass','RunPass','ExprPass','PassToPasser','Passer','Hop1','Hop2','Hop3','Deep1','Deep2','Deep5') {
         Write-Output ('  {0,-12} {1,-40} {2}' -f $f, (SigOf $rows $f), (Remove-ArgAddress (ArgsOf $rows $f)))
     }
 
@@ -106,12 +139,16 @@ try {
     Expect 'a-macro-application-run-ran-is-typed-by-what-it-calls' 'RunPass' @(,@('Long', 671, '5'))
     Expect 'expression-arguments-are-typed-by-where-they-go' 'ExprPass' @(@('Double&', 751, '2.5'), @('String&', 751, '"abc"'))
     Expect 'one-level-down-types-the-passer' 'Passer' @(,@('Long&', 751, '3'))
-    $p = @(Params 'PassToPasser')[0]
-    Check 'two-levels-down-is-not-read' ($p -and $p.Type.StartsWith('?')) "PassToPasser [$(SigOf $rows 'PassToPasser')]"
+    Expect 'two-levels-down' 'PassToPasser' @(,@('Long&', 751, '3'))
+    Expect 'three-levels-down-across-modules' 'Hop1' @(,@('Long&', 751, '4'))
+    Expect '...its-middle' 'Hop2' @(,@('Long&', 751, '4'))
+    Expect 'four-levels-down' 'Deep2' @(,@('Long&', 751, '5'))
+    $p = @(Params 'Deep1')[0]
+    Check 'five-levels-down-is-not-read' ($p -and $p.Type.StartsWith('?')) "Deep1 [$(SigOf $rows 'Deep1')]"
 
     $logged = if ($disarm -match '(\d+) parameter\(s\) typed by the procedure they are passed to') { [int]$Matches[1] } else { 0 }
-    # CellPass 1, RunPass 1, ExprPass 2, Passer 1
-    Check 'the-disarm-line-counts-them' ($logged -eq 5) "disarm line: $logged"
+    # CellPass 1, RunPass 1, ExprPass 2, Passer 1, PassToPasser 1, Hop1-3 3, Deep2-5 4
+    Check 'the-disarm-line-counts-them' ($logged -eq 13) "disarm line: $logged"
 
     $checkFails = Get-XRayCheckFailures
     if ($checkFails) { Complete-Test -Fail -Detail "$checkFails case(s) failed" }

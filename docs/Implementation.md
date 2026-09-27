@@ -992,10 +992,12 @@ apart. Nor does a local's 8-byte load, which moves a compiler temporary's pointe
 a `LongLong`, nor an Integer literal, which is also how an omitted `Optional` Byte's default
 arrives.
 
-Then downward (`FillFromCallees`): a slot the body passes by address to an `ImpAdCallBasic`,
-with only single pushes between it and the call (`ReadCallsPassing`), takes the callee's own type for it,
-the callee found through this frame's pool entry, checked by its argument bytes; every such call
-must agree. Until a procedure is compiled its pool entry names a compile-on-demand stub, which
+Then downward (`FillFromCallees`, `ReadPassedOnType`): a slot the body passes by address to an
+`ImpAdCallBasic`, with only single pushes between it and the call (`ReadCallsPassing`), takes the
+callee's own type for it, the callee found through this frame's pool entry, checked by its
+argument bytes; every such call must agree. Where the callee only passes the slot on too, its own
+callees say, to four levels, each through its module's pool, which its parent holds at +0x60;
+a budget of procedure walks bounds the descent, and running out declines. Until a procedure is compiled its pool entry names a compile-on-demand stub, which
 the argument-bytes check refuses. The entry records what it named from calls on the frame, and
 the exit re-read reuses exactly that.
 

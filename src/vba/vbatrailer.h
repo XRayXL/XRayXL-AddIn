@@ -16,4 +16,10 @@ namespace vba
 
     constexpr std::uint32_t kTrl_procSizeMax = 0xFFFF;
 
+    // The trailer's +0 is its module's parent structure, which holds the module's constant pool at
+    // +0x60: the pointer a running frame holds at [rbp-0xA0]. A call's pool entry names its callee
+    // at +8.
+    constexpr std::uint32_t kPar_pool        = 0x60;
+    constexpr std::uint32_t kPoolEntryCallee = 0x08;
+
 }

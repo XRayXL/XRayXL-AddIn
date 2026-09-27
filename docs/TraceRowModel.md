@@ -300,7 +300,8 @@ literal that fits an `Integer`, which may be filling a `Byte`; and a procedure a
 pushes between it and the call, to another VBA procedure takes that procedure's type for the
 slot: a `ByRef` argument must
 match its parameter exactly. It needs no caller, so it also types a procedure a cell or
-`Application.Run` started. It reads one level down, and only a procedure that is compiled: in a
+`Application.Run` started. If that procedure only passes it on too, the next one down says, to
+four levels. It reads only a procedure that is compiled: in a
 project compiled on demand, a procedure that has not yet run has no types to read, so the calls
 before its first run leave the parameter untyped.
 

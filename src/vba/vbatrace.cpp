@@ -673,7 +673,9 @@ namespace vba
         }
 
         // Downward: a slot this frame passes on by address, to a VBA procedure its own pool names,
-        // has that procedure's type for it. ByRef must match exactly; every such call must agree.
+        // has that procedure's type for it, or where that procedure passes it on, a few levels down.
+        constexpr int kCalleeLevels = 4;
+
         void FillFromCallees(const CallerTyping& ct, ArgTypes& types, int firstSlot, int slots)
         {
             const Frame& f = ct.s->stack[ct.callee];
@@ -683,32 +685,11 @@ namespace vba
             for (int k = firstSlot; k < firstSlot + slots && k < ArgTypes::kMax; k += SlotStep(types, k))
             {
                 if (types.name[k]) continue;
-                CallPass pass[8];
-                const int n = ReadCallsPassing(f.trailer, 8 * k, pass, 8);
-                const char* agreed = nullptr;
-                std::uint16_t agreedOp = 0;
-                bool conflict = false;
-                for (int q = 0; q < n && !conflict; ++q)
+                std::uint16_t pushOp = 0;
+                if (const char* tn = ReadPassedOnType(f.trailer, pool, k, kCalleeLevels, pushOp))
                 {
-                    std::uint64_t entry = 0, callee = 0;
-                    std::uint16_t argSz = 0;
-                    ArgTypes t;
-                    if (!core::RdU64(pool + 8ull * pass[q].index, entry) || !core::RdU64(entry + 8, callee) ||
-                        !core::RdU16(callee + kTrl_argSz, argSz) || argSz != pass[q].argBytes + 8 ||
-                        pass[q].argSlot >= ArgTypes::kMax || !ReadArgTypes(callee, t, argSz / 8 - 1)) continue;
-                    const char* theirs = t.name[pass[q].argSlot];
-                    const size_t len = theirs ? std::strlen(theirs) : 0;
-                    if (!len || theirs[len - 1] != '&') continue;   // an address lands in a ByRef slot
-                    // Our ByRef pointer passed on is the same ByRef; our ByVal slot's address, the value.
-                    const char* mine = ArgTypeName(theirs, PcodePassesHeldPointer(pass[q].pushOp));
-                    if (!mine) continue;
-                    if (agreed && std::strcmp(agreed, mine) != 0) conflict = true;
-                    else { agreed = mine; agreedOp = pass[q].pushOp; }
-                }
-                if (agreed && !conflict)
-                {
-                    types.name[k] = agreed;
-                    types.op[k]   = agreedOp;
+                    types.name[k] = tn;
+                    types.op[k]   = pushOp;
                     ++typed;
                 }
             }

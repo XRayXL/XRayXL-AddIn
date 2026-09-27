@@ -187,6 +187,13 @@ namespace vba
     // with only single pushes between it and the call; up to `cap`, in body order.
     int ReadCallsPassing(std::uint64_t trailer, std::int32_t operand, CallPass* out, int cap);
 
+    // A slot's type from the procedures it is passed on to by address: each callee's own type for
+    // it, or, `levels` deep, where the callee passes it on in turn through its module's pool.
+    // `pool` is this procedure's. Every call must agree, and an address must land in a ByRef slot.
+    // Null when nothing says; `pushOp` is the push that passed it.
+    const char* ReadPassedOnType(std::uint64_t trailer, std::uint64_t pool, int slot, int levels,
+                                 std::uint16_t& pushOp);
+
     // Adds parameters typed by the procedure they are passed to. Entry only.
     void NoteCalleeTyped(int typed);
 }

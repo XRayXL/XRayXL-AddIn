@@ -1083,9 +1083,69 @@ namespace vba
 
     namespace
     {
-        // The module's constant pool, the one a running frame holds at [rbp-0xA0].
-        constexpr std::uint32_t kPar_pool = 0x60;
+        // A walk per callee, so the whole descent is bounded; running out declines rather than
+        // answering from the calls it reached.
+        constexpr int kPassedOnBudget = 32;
 
+        const char* PassedOnType(std::uint64_t trailer, std::uint64_t pool, int slot, int levels,
+                                 int& budget, std::uint16_t* pushOp);
+
+        // A callee's type for one of its slots: its own walk and labels, else, levels permitting,
+        // where it passes that slot on in turn, through its own module's pool.
+        const char* CalleeSlotType(std::uint64_t callee, int slot, int levels, int& budget)
+        {
+            if (--budget < 0) return nullptr;
+            std::uint16_t argSz = 0;
+            ArgTypes t;
+            if (slot >= ArgTypes::kMax || !RdU16(callee + kTrl_argSz, argSz) ||
+                !ReadArgTypes(callee, t, argSz / 8 - 1)) return nullptr;
+            if (t.name[slot] || levels <= 1) return t.name[slot];
+            std::uint64_t parent = 0, pool = 0;
+            if (!core::RdU64(callee, parent) || !core::RdU64(parent + kPar_pool, pool) || !pool) return nullptr;
+            return PassedOnType(callee, pool, slot, levels - 1, budget, nullptr);
+        }
+
+        const char* PassedOnType(std::uint64_t trailer, std::uint64_t pool, int slot, int levels,
+                                 int& budget, std::uint16_t* pushOp)
+        {
+            CallPass pass[8];
+            const int n = ReadCallsPassing(trailer, 8 * slot, pass, 8);
+            const char* agreed = nullptr;
+            std::uint16_t agreedOp = 0;
+            for (int q = 0; q < n; ++q)
+            {
+                std::uint64_t entry = 0, callee = 0;
+                std::uint16_t argSz = 0;
+                // a stand-in's argSz is the call's bytes, not 8 more
+                if (!core::RdU64(pool + 8ull * pass[q].index, entry) ||
+                    !core::RdU64(entry + kPoolEntryCallee, callee) ||
+                    !RdU16(callee + kTrl_argSz, argSz) || argSz != pass[q].argBytes + 8) continue;
+                const char* theirs = CalleeSlotType(callee, pass[q].argSlot, levels, budget);
+                if (budget < 0) return nullptr;
+                const size_t len = theirs ? std::strlen(theirs) : 0;
+                if (!len || theirs[len - 1] != '&') continue;   // an address lands in a ByRef slot
+                // Our ByRef pointer passed on is the same ByRef; our ByVal slot's address, the value.
+                const char* mine = ArgTypeName(theirs, PcodePassesHeldPointer(pass[q].pushOp));
+                if (!mine) continue;
+                if (agreed && std::strcmp(agreed, mine) != 0) return nullptr;   // every call must agree
+                agreed = mine;
+                agreedOp = pass[q].pushOp;
+            }
+            if (agreed && pushOp) *pushOp = agreedOp;
+            return agreed;
+        }
+    }
+
+    const char* ReadPassedOnType(std::uint64_t trailer, std::uint64_t pool, int slot, int levels,
+                                 std::uint16_t& pushOp)
+    {
+        if (!trailer || !pool || slot < 1 || levels < 1) return nullptr;
+        int budget = kPassedOnBudget;
+        return PassedOnType(trailer, pool, slot, levels, budget, &pushOp);
+    }
+
+    namespace
+    {
         void WriteCorpusNames(FILE* f, std::uint64_t trailer, CorpusNamer name)
         {
             char nm[160] = "?";
@@ -1103,7 +1163,7 @@ namespace vba
                 std::uint64_t entry = 0, callee = 0;
                 char cn[160] = "?";
                 if (!RdU16(code + i + 2, index) || !RdU16(code + i + 4, argBytes)) return true;
-                if (core::RdU64(pool + 8ull * index, entry) && entry && core::RdU64(entry + 8, callee) && callee)
+                if (core::RdU64(pool + 8ull * index, entry) && entry && core::RdU64(entry + kPoolEntryCallee, callee) && callee)
                 {
                     RdU16(callee + kTrl_argSz, calleeArgSz);
                     if (!name(callee, cn, sizeof cn)) strcpy_s(cn, "?");

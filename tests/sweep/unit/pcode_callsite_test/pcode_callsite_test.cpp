@@ -1,6 +1,7 @@
 // Unit test for reading a caller's call site (vba/vbapcode.cpp): the pushes straight before a
 // call, each one operand-stack slot, read back from the call to the first that is not one; the
-// calls a parameter is passed on to; and the type each literal slot carries.
+// calls a parameter is passed on to, and the type they give it, level after level; and the type
+// each literal slot carries.
 //
 // Each case is one procedure in memory: a last statement, the instructions, exit 635, the trailer.
 //
@@ -62,6 +63,40 @@ namespace
     }
 
     bool Is(const char* got, const char* want) { return got && want ? strcmp(got, want) == 0 : got == want; }
+
+    // A module in memory: its parent, whose +0x60 is the constant pool, and procedures whose
+    // trailers point back at it. Pool entry i names procedure `callee[i]` at +8.
+    struct Module
+    {
+        alignas(16) std::uint8_t mem[4096] = {};
+        std::size_t used = 0x200;                           // parent 0..0x80, pool 0x80.., entries 0x100..
+        std::uint64_t Base() const { return reinterpret_cast<std::uint64_t>(mem); }
+        std::uint64_t Pool() const { return Base() + 0x80; }
+        std::uint64_t Add(const Code& body, std::uint16_t argSz)
+        {
+            Code c;
+            c.Op(kBos, 0);
+            c.b.insert(c.b.end(), body.b.begin(), body.b.end());
+            c.W(kExit);
+            used = (used + 15) & ~static_cast<std::size_t>(15);
+            std::memcpy(mem + used, c.b.data(), c.b.size());
+            const std::uint64_t trailer = Base() + used + c.b.size();
+            const std::uint16_t procSize = static_cast<std::uint16_t>(c.b.size());
+            const std::uint64_t parent = Base();
+            std::memcpy(reinterpret_cast<void*>(trailer), &parent, 8);
+            std::memcpy(reinterpret_cast<void*>(trailer + vba::kTrl_argSz), &argSz, 2);
+            std::memcpy(reinterpret_cast<void*>(trailer + vba::kTrl_procSize), &procSize, 2);
+            used += c.b.size() + 0x20;
+            return trailer;
+        }
+        void Name(int index, std::uint64_t trailer)
+        {
+            const std::uint64_t entry = Base() + 0x100 + 16 * index, pool = Pool();
+            std::memcpy(mem + 0x80 + 8 * index, &entry, 8);
+            std::memcpy(mem + 0x100 + 16 * index + 8, &trailer, 8);
+            std::memcpy(mem + vba::kPar_pool, &pool, 8);
+        }
+    };
 }
 
 int main()
@@ -182,6 +217,63 @@ int main()
         Check(vba::ReadCallsPassing(t, 8, c, 4) == 2 && c[0].index == 1 && c[1].index == 2,
               "every call it is passed to, in body order");
         Check(vba::ReadCallsPassing(t, 16, c, 4) == 0, "a slot not passed on is in no call");
+    }
+
+    // Passed on, level after level: A passes x to B, which passes it to C, which reads it as a Long.
+    {
+        constexpr std::uint16_t kLoadLongRef = 738;
+        L.len[kLoadLongRef] = 6;
+        vba::SetArmedLengths(L);
+        static Module m;
+        const std::uint64_t c  = m.Add(Code().Op(kLoadLongRef, 8), 0x10);
+        const std::uint64_t b  = m.Add(Code().Op(kFLdAd, 8).Call(0x08, 1), 0x10);
+        const std::uint64_t a  = m.Add(Code().Op(kFLdAd, 8).Call(0x08, 0), 0x10);
+        const std::uint64_t av = m.Add(Code().Op(kFLdRf, 8).Call(0x08, 0), 0x10);
+        m.Name(0, b); m.Name(1, c);
+        std::uint16_t op = 0;
+        Check(Is(vba::ReadPassedOnType(b, m.Pool(), 1, 1, op), "Long&") && op == kFLdAd,
+              "one level: B passes y to C, which reads a Long&");
+        Check(Is(vba::ReadPassedOnType(a, m.Pool(), 1, 1, op), nullptr),
+              "one level from A reaches only B, which types nothing itself");
+        Check(Is(vba::ReadPassedOnType(a, m.Pool(), 1, 2, op), "Long&"), "two levels: A to B to C");
+        Check(Is(vba::ReadPassedOnType(av, m.Pool(), 1, 4, op), "Long") && op == kFLdRf,
+              "a ByVal slot's address passed down takes the value's type");
+
+        // a callee that disagrees with another: nothing
+        static Module n;
+        const std::uint64_t nc = n.Add(Code().Op(kLoadLongRef, 8), 0x10);
+        const std::uint64_t nd = n.Add(Code().Op(740, 8), 0x10);            // Double&
+        L.len[740] = 6; vba::SetArmedLengths(L);
+        const std::uint64_t na = n.Add(Code().Op(kFLdAd, 8).Call(0x08, 0).Op(kBos, 0).Op(kFLdAd, 8).Call(0x08, 1), 0x10);
+        n.Name(0, nc); n.Name(1, nd);
+        Check(Is(vba::ReadPassedOnType(na, n.Pool(), 1, 4, op), nullptr), "two callees that disagree type nothing");
+
+        // a stand-in, whose argSz is the call's bytes, is refused at any level
+        static Module s2;
+        const std::uint64_t stub = s2.Add(Code().Op(kLoadLongRef, 8), 0x08);
+        const std::uint64_t sb = s2.Add(Code().Op(kFLdAd, 8).Call(0x08, 1), 0x10);
+        const std::uint64_t sa = s2.Add(Code().Op(kFLdAd, 8).Call(0x08, 0), 0x10);
+        s2.Name(0, sb); s2.Name(1, stub);
+        Check(Is(vba::ReadPassedOnType(sa, s2.Pool(), 1, 4, op), nullptr), "a stand-in two levels down types nothing");
+
+        // passed to itself and to C: the recursion says nothing, C decides
+        static Module r;
+        const std::uint64_t rc = r.Add(Code().Op(kLoadLongRef, 8), 0x10);
+        const std::uint64_t ra = r.Add(Code().Op(kFLdAd, 8).Call(0x08, 0).Op(kBos, 0).Op(kFLdAd, 8).Call(0x08, 1), 0x10);
+        r.Name(0, ra); r.Name(1, rc);
+        Check(Is(vba::ReadPassedOnType(ra, r.Pool(), 1, 4, op), "Long&"), "a procedure passing to itself is typed by its other callee");
+
+        // a chain five long: past the limit of four
+        static Module d;
+        const std::uint64_t d5 = d.Add(Code().Op(kLoadLongRef, 8), 0x10);
+        const std::uint64_t d4 = d.Add(Code().Op(kFLdAd, 8).Call(0x08, 4), 0x10);
+        const std::uint64_t d3 = d.Add(Code().Op(kFLdAd, 8).Call(0x08, 3), 0x10);
+        const std::uint64_t d2 = d.Add(Code().Op(kFLdAd, 8).Call(0x08, 2), 0x10);
+        const std::uint64_t d1 = d.Add(Code().Op(kFLdAd, 8).Call(0x08, 1), 0x10);
+        const std::uint64_t d0 = d.Add(Code().Op(kFLdAd, 8).Call(0x08, 0), 0x10);
+        d.Name(0, d1); d.Name(1, d2); d.Name(2, d3); d.Name(3, d4); d.Name(4, d5);
+        Check(Is(vba::ReadPassedOnType(d1, d.Pool(), 1, 4, op), "Long&"), "four levels are read: d1 to d5");
+        Check(Is(vba::ReadPassedOnType(d0, d.Pool(), 1, 4, op), nullptr), "a fifth is not: d0");
     }
 
     // The literal table and the names.
