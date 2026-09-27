@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>XRayXL &middot; XRayXL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  /* xrayxl.com's palette and type, light only, as XRayXL-Perfetto.html */
+  :root{
+    --ground:#EFF1F3; --surface:#FFFFFF; --surface-2:#E5E9ED;
+    --ink:#14181D; --ink-2:#4A535E; --ink-3:#78828E;
+    --rule:#D3D8DE; --rule-strong:#B2BAC3;
+    --signal:#C43C08; --steel:#1B5A78;
+    --grid-line:rgba(20,24,29,.055);
+    --display:"Archivo",system-ui,sans-serif;
+    --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,"Cascadia Mono","Consolas",monospace;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:var(--body); font-size:16px; line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  :focus-visible{outline:2px solid var(--signal); outline-offset:3px; border-radius:2px}
+  .wrap{max-width:900px; margin-inline:auto; padding-inline:clamp(16px,5vw,48px)}
+
+  /* ---------- heading and navigation, on the site's grid paper ---------- */
+  .masthead{
+    border-bottom:1px solid var(--rule);
+    background:
+      repeating-linear-gradient(to right, var(--grid-line) 0 1px, transparent 1px 88px),
+      repeating-linear-gradient(to bottom, var(--grid-line) 0 1px, transparent 1px 30px);
+  }
+  .masthead .wrap{padding-block:22px 18px}
+  .brandline{display:flex; align-items:center; gap:14px; margin-bottom:14px}
+  .brand{font-family:var(--display); font-weight:800; font-size:24px; letter-spacing:-.035em; line-height:1}
+  .brand span{color:var(--signal)}
+  .tag{
+    font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--signal); border:1px solid var(--signal); border-radius:2px; padding:3px 10px; line-height:1.3;
+  }
+  nav{display:flex; flex-wrap:wrap; gap:4px 22px; font-size:14.5px}
+  nav a{color:var(--ink-2); text-decoration:none; padding-bottom:3px; border-bottom:2px solid transparent}
+  nav a:hover{color:var(--signal)}
+  nav a[aria-current]{color:var(--ink); font-weight:600; border-bottom-color:var(--signal)}
+
+  /* ---------- the page ---------- */
+  .doc{padding-block:34px 20px}
+  .doc h1{font-family:var(--display); font-weight:800; font-size:clamp(30px,5vw,42px); letter-spacing:-.035em; line-height:1.1; margin:0 0 18px}
+  .doc h2{font-family:var(--display); font-weight:700; font-size:26px; letter-spacing:-.02em; line-height:1.15;
+          margin:44px 0 14px; padding-top:22px; border-top:1px solid var(--rule)}
+  .doc hr + h2{margin-top:0; padding-top:0; border-top:none}
+  .doc h3{font-family:var(--display); font-weight:700; font-size:19px; letter-spacing:-.01em; line-height:1.2; margin:30px 0 10px}
+  .doc h4{font-size:16px; font-weight:600; margin:24px 0 8px}
+  .doc p{margin:0 0 14px}
+  .doc ul,.doc ol{margin:0 0 16px; padding-left:24px}
+  .doc li{margin:4px 0}
+  .doc li > p{margin-bottom:6px}
+  .doc a{color:var(--steel); text-decoration-thickness:1px; text-underline-offset:2px}
+  .doc a:hover{color:var(--signal)}
+  .doc code{font-family:var(--mono); font-size:.88em; background:var(--surface-2); padding:1px 5px; border-radius:3px}
+  .doc pre{background:var(--surface); border:1px solid var(--rule); border-radius:3px; padding:14px 16px;
+           overflow-x:auto; margin:0 0 18px; line-height:1.5}
+  .doc pre code{background:none; padding:0; font-size:12.5px}
+  .doc .table{overflow-x:auto; margin:0 0 18px; background:var(--surface); border:1px solid var(--rule); border-radius:3px}
+  .doc table{width:100%; border-collapse:collapse; font-size:14.5px}
+  .doc th{background:var(--surface-2); color:var(--ink-3); font-family:var(--mono); font-weight:500; font-size:10.5px;
+          letter-spacing:.1em; text-transform:uppercase; text-align:left; padding:9px 12px; border-bottom:1px solid var(--rule-strong)}
+  .doc td{padding:8px 12px; border-bottom:1px solid var(--rule); vertical-align:top}
+  .doc tr:last-child td{border-bottom:none}
+  .doc blockquote{margin:0 0 18px; padding:14px 18px; background:var(--surface); border:1px solid var(--rule);
+                  border-left:3px solid var(--signal); border-radius:3px; color:var(--ink-2)}
+  .doc blockquote p:last-child{margin:0}
+  .doc img{display:block; max-width:100%; height:auto; margin:6px 0 20px; border:1px solid var(--rule); border-radius:3px}
+  .doc hr{border:0; border-top:1px solid var(--rule); margin:40px 0 30px}
+  .doc details{margin:0 0 18px; padding:10px 16px; background:var(--surface); border:1px solid var(--rule); border-radius:3px}
+  .doc summary{cursor:pointer; font-weight:600}
+
+  footer{padding-block:18px 44px; border-top:1px solid var(--rule); font-size:13px; color:var(--ink-3)}
+  footer a{color:var(--ink-3)}
+</style>
+</head>
+<body>
+<header class="masthead">
+  <div class="wrap">
+    <div class="brandline"><span class="brand">XRay<span>XL</span></span><span class="tag">Docs &middot; 0.4.0</span></div>
+    <nav>
+      <a href="README.html" aria-current="page">Start</a>
+      <a href="DemoWalkthrough.html">Walkthrough</a>
+      <a href="TraceOptions.html">Trace options</a>
+      <a href="TraceRowModel.html">Trace rows</a>
+      <a href="ErrorsInTheTrace.html">Errors</a>
+      <a href="VBATracing.html">VBA tracing</a>
+    </nav>
+  </div>
+</header>
+<main class="wrap doc">
+<h1 id="xrayxl">XRayXL</h1>
+<p><strong>A flight recorder for the code running inside Excel.</strong></p>
+<p>When a spreadsheet is slow, freezes, or crashes, XRayXL tells you which XLL
+add-in and VBA functions actually ran — in what order, on which thread,
+triggered by which cell or button, with what arguments, returning what, how
+long each took, which functions threw errors and which handled them. It is a
+window into internals Excel has never opened, and it takes the guesswork out
+of diagnosing spreadsheet speed and stability problems.</p>
+<p>XRayXL changes nothing about your workbook: no cells touched, no macros added,
+no VBA source read. You arm it, recalculate or run your macros, then read the
+trace file to see what really happened.</p>
+<blockquote>
+<p><strong>Warning.</strong> XRayXL hooks into the internals of the Excel process —
+undocumented details Microsoft can change in any update. It does
+its best to adapt to different versions of Excel, but it is not fool-proof.
+Read <a href="#before-you-run-it">Before you run it</a>, especially if the machine is
+managed by someone else.</p>
+</blockquote>
+<h2 id="how-it-works">How it works</h2>
+<p>Two tracers, one output.</p>
+<ul>
+<li><strong>XLL functions.</strong> Excel's registration table names every registered add-in
+function and its address — a documented API — so XRayXL wraps each one with
+an inline detour that records the entry, calls the original, and records the
+exit. Functions registered after arming are picked up by watching Excel's
+registration callback. Nothing is derived; nothing is guessed.</li>
+<li><strong>VBA procedures.</strong> The VBA interpreter reaches every opcode handler through
+one table of function pointers inside <code>VBE7.DLL</code>. XRayXL finds that table by
+its <em>shape</em> — not by a byte signature — and swaps a handful of entries for its
+own, so it sees each procedure start and stop without touching a byte of
+code. A per-thread shadow stack supplies depth and nesting; the calling cell
+comes from asking Excel.</li>
+</ul>
+<p><strong>What it does not trace.</strong> Excel's own built-in functions — <code>SUM</code>, <code>XLOOKUP</code>
+and the rest — are deliberately out: XRayXL follows add-in and VBA code, not
+the calculation engine's internals. COM and RTD add-ins are not traced either,
+nor are JavaScript custom functions from Office Add-ins, which run in their own
+runtime rather than as XLL exports or VBA p-code.
+Everything else a calculation runs through is: XLL functions from any add-in,
+VBA procedures, nested and recursive calls, and VBA outside the calculation
+engine entirely — macros, buttons and event handlers — because the interpreter
+hook is global.</p>
+<h2 id="example-trace-file">Example trace file</h2>
+<p>Here is a real trace of one recalculation, with VBA functions and an add-in's XLL
+function called from four cells, in the order Excel calculated them:
+<code>A3</code> calls <code>VbaOuter</code>, <code>A4</code> calls <code>TxE</code>, <code>A2</code> calls <code>VbaPlain</code>, <code>A1</code> calls <code>TxE</code>.
+<code>VbaOuter</code> also calls the XLL function itself, through <code>Application.Run</code>.</p>
+<pre><code class="language-text">seq  input  kind   source  span  parent  depth  thread  qpc            module                        function  proc           typetext  caller  callerref                         argcount  args         ret  rettype  outcome   ticks  tracerticks  trust
+1    1      entry  VBA     1     0       1      35720   8328812397734  [OneTimeline_8276.xlsm]Probe  VbaOuter  0x1B043D88988  Double    cell    [OneTimeline_8276.xlsm]Sheet1!A3  1         a1:Double=3
+2    2      entry  XLL     2     0       1      35720   8328812401312  TracedAddin64.xll             TxE       TxE            E         cell    [OneTimeline_8276.xlsm]Sheet1!A3  1         a1:E=3
+3    3      exit   XLL     2     0       1      35720   8328812401584  TracedAddin64.xll             TxE       TxE                                                                                       3    Q        returned  272    267          exit
+4    4      exit   VBA     1     0       1      35720   8328812401830  [OneTimeline_8276.xlsm]Probe  VbaOuter  0x1B043D88988                                                                             4    Double   returned  4096   1151         exit
+5    5      entry  XLL     3     0       1      35720   8328812402445  TracedAddin64.xll             TxE       TxE            E         cell    [OneTimeline_8276.xlsm]Sheet1!A4  1         a1:E=4.5
+6    6      exit   XLL     3     0       1      35720   8328812402661  TracedAddin64.xll             TxE       TxE                                                                                       4.5  Q        returned  216    213          exit
+7    7      entry  VBA     4     0       1      35720   8328812403216  [OneTimeline_8276.xlsm]Probe  VbaPlain  0x1B043D4F208  Double    cell    [OneTimeline_8276.xlsm]Sheet1!A2  1         a1:Double=2
+8    8      exit   VBA     4     0       1      35720   8328812403626  [OneTimeline_8276.xlsm]Probe  VbaPlain  0x1B043D4F208                                                                             6    Double   returned  410    399          exit
+9    9      entry  XLL     5     0       1      35720   8328812403977  TracedAddin64.xll             TxE       TxE            E         cell    [OneTimeline_8276.xlsm]Sheet1!A1  1         a1:E=1.5
+10   10     exit   XLL     5     0       1      35720   8328812404144  TracedAddin64.xll             TxE       TxE                                                                                       1.5  Q        returned  167    165          exit
+</code></pre>
+<details>
+<summary>Show the raw file</summary>
+<pre><code class="language-csv">seq,input,kind,source,span,parent,depth,thread,qpc,module,function,proc,typetext,caller,callerref,argcount,args,ret,rettype,outcome,ticks,tracerticks,trust
+1,1,entry,VBA,1,0,1,35720,8328812397734,[OneTimeline_8276.xlsm]Probe,VbaOuter,0x1B043D88988,Double,cell,[OneTimeline_8276.xlsm]Sheet1!A3,1,a1:Double=3,,,,,,
+2,2,entry,XLL,2,0,1,35720,8328812401312,TracedAddin64.xll,TxE,TxE,E,cell,[OneTimeline_8276.xlsm]Sheet1!A3,1,a1:E=3,,,,,,
+3,3,exit,XLL,2,0,1,35720,8328812401584,TracedAddin64.xll,TxE,TxE,,,,,,3,Q,returned,272,267,exit
+4,4,exit,VBA,1,0,1,35720,8328812401830,[OneTimeline_8276.xlsm]Probe,VbaOuter,0x1B043D88988,,,,,,4,Double,returned,4096,1151,exit
+5,5,entry,XLL,3,0,1,35720,8328812402445,TracedAddin64.xll,TxE,TxE,E,cell,[OneTimeline_8276.xlsm]Sheet1!A4,1,a1:E=4.5,,,,,,
+6,6,exit,XLL,3,0,1,35720,8328812402661,TracedAddin64.xll,TxE,TxE,,,,,,4.5,Q,returned,216,213,exit
+7,7,entry,VBA,4,0,1,35720,8328812403216,[OneTimeline_8276.xlsm]Probe,VbaPlain,0x1B043D4F208,Double,cell,[OneTimeline_8276.xlsm]Sheet1!A2,1,a1:Double=2,,,,,,
+8,8,exit,VBA,4,0,1,35720,8328812403626,[OneTimeline_8276.xlsm]Probe,VbaPlain,0x1B043D4F208,,,,,,6,Double,returned,410,399,exit
+9,9,entry,XLL,5,0,1,35720,8328812403977,TracedAddin64.xll,TxE,TxE,E,cell,[OneTimeline_8276.xlsm]Sheet1!A1,1,a1:E=1.5,,,,,,
+10,10,exit,XLL,5,0,1,35720,8328812404144,TracedAddin64.xll,TxE,TxE,,,,,,1.5,Q,returned,167,165,exit
+</code></pre>
+</details>
+<p>Read row 1 as: <em>the VBA function <code>VbaOuter</code>, in module <code>Probe</code> of <code>OneTimeline_8276.xlsm</code>,
+called from <code>[OneTimeline_8276.xlsm]Sheet1!A3</code>, declared <code>Double</code>, given
+<code>3</code>.</em> The <code>caller</code> column says what <strong>kind</strong> of thing called it and
+<code>callerref</code> describes which one — the same address Excel's own
+<code>Range.Address(,,,True)</code> gives, so you can paste it straight back into a formula.</p>
+<p>Rows 2 and 3 are the add-in call <code>VbaOuter</code> made: <em><code>TxE</code>, exported by
+<code>TracedAddin64.xll</code>, registered with argument code <code>E</code>, given <code>3</code>,
+returned <code>3</code> in 272 ticks.</em> It still names <code>A3</code> as its caller, because
+Excel reports the cell that started the chain. Each source counts its own
+<code>depth</code>, so the add-in call reads <code>depth</code> 1 and <code>parent</code> 0; its place inside
+<code>VbaOuter</code> shows in the order of the rows, between that function's entry and exit.
+Row 4 closes <code>VbaOuter</code>: <em>returned <code>4</code>, a <code>Double</code>, after 4096 ticks, 1151 of them the
+tracer's own</em> (<code>tracerticks</code>), so the function itself took 2945.</p>
+<p>The other rows are the same shapes on their own: <code>VbaPlain</code> from <code>A2</code>
+returning <code>6</code>, and <code>TxE</code> called directly from <code>A4</code> and <code>A1</code>.</p>
+<h3 id="errors-say-where-they-were-thrown-and-who-caught-them">Errors say where they were thrown, and who caught them</h3>
+<pre><code>VBA entry  E_Outer               depth=1 parent=0
+VBA entry  E_Middle              depth=2 parent=1
+VBA entry  E_Thrower             depth=3 parent=2
+VBA exit   E_Thrower   threw     depth=3 parent=2  ticks=4657   trust=exit
+VBA exit   E_Middle    unwound   depth=2 parent=1  ticks=6585   trust=exit
+VBA exit   E_Outer     handled   depth=1 parent=0  ticks=10111  trust=exit
+</code></pre>
+<p>Every exit row carries an <code>outcome</code> (always <code>returned</code> for an XLL), and a VBA
+chain reads outwards from the throw. <code>threw</code> is the procedure that raised. <code>unwound</code> is one the error passed
+<em>through</em> — it ran nothing after the raise, so it did not handle it. <code>handled</code>
+is the one that caught it. Everything else reads <code>returned</code>.</p>
+<p><strong>Not supported:</strong> asynchronous XLL functions (registered with a leading <code>&gt;</code>
+or an <code>X</code> handle argument) are marked in the trace but carry no duration — they
+return before their answer exists, so there is nothing to measure. Real-time
+data (<code>=RTD(...)</code>) is a COM mechanism rather than the XLL C API, and is not
+traced at all.</p>
+<h3 id="see-it-on-a-timeline">See it on a timeline</h3>
+<p>After <strong>Disarm</strong>, the <strong>Perfetto</strong> button opens the trace in
+<a href="https://ui.perfetto.dev">Perfetto UI</a>, an open-source trace viewer, in your
+browser. Each thread is a track, each call a slice nested under the call that
+made it, and Excel's events are markers. Click a slice for its arguments, its
+result, how long it took and how much of that was XRayXL's own. The trace is
+converted on your machine by <code>XRayXL-Perfetto.html</code>, which sits beside the
+add-in, and nothing is uploaded. Perfetto asks whether to trust &quot;An unknown
+origin&quot;: that is the page, so answer Yes. The same page takes any trace file,
+CSV or JSON Lines: open it, and press <strong>Input XRayXL Trace</strong> or drop the file on it.</p>
+<p><img src="images/Perfetto.png" alt="A trace in Perfetto UI: one thread's calls on a timeline, each nested under the call
+that made it, with a stretch selected and its calls summed by name below" /></p>
+<p>Details of the Trace File in <a href="TraceRowModel.html">docs/TraceRowModel.md</a>.</p>
+<h2 id="getting-started">Getting started</h2>
+<p><strong>No build required.</strong> The <a href="https://github.com/XRayXL/XRayXL-AddIn/releases/latest">latest release</a>, or a plain clone
+of this repository, has a working tool in <code>dist/</code>:</p>
+<pre><code>dist/
+  demo/                     - Two demo add-ins and ten macro-enabled workbooks.
+  docs/                     - These guides, to open in a browser: start with README.html.
+  LICENSE                   - The licence: GPL-3.0.
+  MANIFEST.txt              - The version, tag, commit and SHA256 of every file here.
+  THIRD-PARTY-NOTICES.txt   - The licences of the third-party code in XRayXL.
+  XRayXL-Perfetto.html      - Send your trace file to Perfetto.
+  XRayXL64.xll              - The add-in.
+</code></pre>
+<p>Point Excel at <code>dist\XRayXL64.xll</code>: either add it permanently through
+File → Options → Add-ins → Manage: Excel Add-ins, or drag the <code>.xll</code> onto an
+open Excel window to load it for that session only. An <strong>XRayXL</strong> group then
+appears at the far right of the <strong>Developer</strong> tab:</p>
+<p><img src="images/ribbon.png" alt="The XRayXL group at the far right of Excel's Developer tab, with Arm, Disarm,
+Tail, Perfetto, Options and Diag buttons" /></p>
+<p>It has six buttons: <strong>Arm</strong>, <strong>Disarm</strong>, <strong>Tail</strong> — which follows the trace file in PowerShell
+as rows arrive — <strong>Perfetto</strong>, which shows the finished trace on a timeline,
+<strong>Options</strong>, which opens a dialog holding the capture settings,
+and <strong>Diag</strong>, which opens Diagnostics: what is loaded into the Excel process. Two things to know: Excel hides the Developer tab by default
+(File → Options → Customize Ribbon, tick <em>Developer</em>), and the buttons appear once
+a workbook is open, not on Excel's start screen. Each is also a
+registered command, so a macro — or an Excel that refuses the ribbon — can drive
+it without the buttons; see <a href="#trace-something">Trace something</a>. If the buttons cannot be loaded, XRayXL says so
+and carries on working; <a href="#before-you-run-it">Before you run it</a> explains when
+that happens.</p>
+<p><a href="DemoWalkthrough.html"><strong><code>dist/demo/</code></strong></a> is a guided tour in ten workbooks: a first
+trace, argument values, callers, errors, a real VBA yield-curve model, classes and
+objects, the call tree, threads, an option book built from XLL functions, and a plasma
+painted two ways to read in Perfetto. Load the
+two demo add-ins with File → Open, open a workbook, press <strong>Arm</strong> on the ribbon, do
+what the sheet says, press <strong>Disarm</strong>, and read the trace.
+<a href="DemoWalkthrough.html">The walkthrough</a> takes you through them; in the download it is
+<code>docs\DemoWalkthrough.html</code>.</p>
+<ul>
+<li>Traces land in <code>%TEMP%\XRayXL\TraceFiles\</code>, one file per arm, named <code>XRayXL_Trace_&lt;id&gt;_&lt;pid&gt;.csv</code>.</li>
+<li>The log lands in <code>%TEMP%\XRayXL\Logs\XRayXL_&lt;pid&gt;.log</code>.</li>
+</ul>
+<h2 id="trace-something">Trace something</h2>
+<p>Press <strong>Arm</strong> in the XRayXL group on the Developer tab, recalculate or run your
+macros, then press <strong>Disarm</strong>. That is the whole of it, and it is how you will
+normally use XRayXL.</p>
+<p>Reach past the buttons when the code you care about is buried inside a longer
+run and a button press cannot catch it. Every button is also a registered
+command, so a macro can arm around that part and nothing else — no window, no
+focus:</p>
+<pre><code class="language-vba">Application.Run &quot;XRayXL_Arm&quot;
+RepriceTheBook                        ' the only thing in the trace
+Application.Run &quot;XRayXL_Disarm&quot;
+</code></pre>
+<p>The buttons and the commands are the same thing underneath: arm from a macro and
+the ribbon follows it; change a setting in <strong>Options</strong> and
+<code>XRayXL_GetTraceParam</code> reports it. While armed the capture settings are greyed —
+they are read once, at arm, so they are refused until you disarm.</p>
+<h2 id="choosing-what-to-capture">Choosing what to capture</h2>
+<p>Registered functions, called through <code>Application.Run</code>, decide what is recorded
+and report on the session: <code>XRayXL_SetTraceParam</code>, <code>XRayXL_GetTraceParam</code>,
+<code>XRayXL_GetTraceSummary</code> and <code>XRayXL_IsArmed</code>. You can turn each source off,
+limit a source to the top-level call, drop argument, return-value or object
+capture for tighter timings, and size the ring buffer that keeps file I/O
+off the calculation thread.</p>
+<p>Everything is on by default and the defaults suit most sessions.
+<strong><a href="TraceOptions.html">docs/TraceOptions.md</a></strong> is the reference — every
+setting, what it costs, when it can be changed, and how to read the log.</p>
+<h2 id="diagnostics-what-is-actually-loaded">Diagnostics: what is actually loaded</h2>
+<p>When a workbook behaves on one machine and not on another, the difference is
+usually not in the workbook. <strong>Diag</strong> on the ribbon opens Diagnostics, a read-only
+window onto the Excel process itself, in three pages:</p>
+<ul>
+<li><strong>Modules</strong> — every module mapped into the process, with its version,
+date modified, size and full path. This is the list to diff between a machine
+where the sheet works and one where it does not.</li>
+<li><strong>Environment</strong> — the environment block the process was started with.</li>
+<li><strong>Process</strong> — working set, private bytes, handles, GDI and USER objects and
+their peaks, threads, CPU time, and what the machine and Windows build are.</li>
+</ul>
+<p>Every page has a search box that filters on any column, and columns that sort
+when you click a heading and resize when you drag between two. Rows are picked
+one at a time, with Ctrl to add one, Shift to take a range, or Ctrl+A for all of
+them, and <strong>right-clicking the list</strong> offers:</p>
+<div class="table"><table>
+<thead>
+<tr>
+<th>On the menu</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Select All</strong></td>
+<td>every row the search has left</td>
+</tr>
+<tr>
+<td><strong>Reveal in File Explorer</strong></td>
+<td>opens the folder with that module's file selected; needs exactly one row</td>
+</tr>
+<tr>
+<td><strong>Copy</strong></td>
+<td>the selected rows to the clipboard, tab separated, ready to paste into a sheet</td>
+</tr>
+<tr>
+<td><strong>Export to CSV</strong></td>
+<td>the selected rows as a file in <code>%TEMP%\XRayXL\Diagnostics\</code>, revealed in Explorer</td>
+</tr>
+</tbody>
+</table></div>
+<p>The window is resizable, and everything but the search box and the list is out
+of the way: the list runs to the bottom of the dialog.</p>
+<p>It reads and changes nothing, so it opens whether or not tracing is armed. It is a window, so
+the ribbon button is the way to it -- unlike Arm and Disarm, there is no command behind it.</p>
+<h2 id="before-you-run-it">Before you run it</h2>
+<p>Honest caveats, in roughly the order they will matter to you.</p>
+<ul>
+<li><strong>This hooks Excel's internals.</strong> It patches function entry points in a live
+Excel process. Every hook is fault-guarded, the VBA hooks stand down after
+repeated faults, and the test suite exists to keep it that way — but the blast radius of a bug is
+somebody's Excel, so treat it accordingly.</li>
+<li><strong>Antivirus and EDR will plausibly notice.</strong> Inline hooking of <code>excel.exe</code> is
+malware-shaped behaviour. On a managed or corporate machine, expect a
+conversation with whoever owns security before it runs at all.</li>
+<li><strong>Check it against your licence terms.</strong> Instrumenting Office internals may
+sit in tension with the Office licence. See <a href="#legal">Legal</a>, and if in doubt
+ask legal or compliance before running it.</li>
+<li><strong>The trace file contains your data.</strong> Argument values, return values, cell
+references and function names all land in it — so whatever your workbook
+computes is in there, in the clear. It is a plain file in <code>%TEMP%</code>; treat it
+as sensitive as the spreadsheet itself.</li>
+<li><strong>The ribbon buttons make XRayXL briefly a COM add-in.</strong> Ribbon controls cannot
+be served any other way. To load it, XRayXL writes a CLSID, a ProgId and an Excel
+add-ins entry under <code>HKEY_CURRENT_USER</code>, connects itself, and <strong>deletes all
+three immediately</strong> — they are not left behind for the session, and the
+add-ins entry is written <code>LoadBehavior=0</code>, so nothing of it can autoload into
+your next Excel. If any of that is refused — a locked-down profile, an
+elevated Excel, or Excel itself declining — you get a message box saying so,
+no buttons, and an add-in that otherwise works normally. <code>XRAYXL_RIBBON=0</code> skips
+the whole thing, and is the switch to reach for if you suspect the ribbon of
+anything.</li>
+<li><strong>Crash dumps are off by default.</strong> A crash always writes a small text report
+(registers and module names, no workbook content). A full minidump — which
+<em>would</em> contain workbook memory, and whose writer is an EDR signature — is
+opt-in via <code>XRAYXL_CRASHDUMP=1</code>, and every session logs which mode it is in.</li>
+<li><strong>64-bit Excel only.</strong> Not for a deep reason — the two hooking thunks are
+hand-written x64 assembly, and the argument and return-value decoders read
+the x64 calling convention directly. 32-bit is possible in principle, but it
+is a port and a re-measurement, not a build flag.</li>
+<li><strong>Durability across Excel updates is unproven.</strong> Nothing is hardcoded: every
+address is derived at runtime, which is <em>designed</em> to survive an Excel
+update — but only the VBA dispatch-slot indices have been checked across
+many builds (41 VBE7 builds, 2012 to 2026); the tracer as a whole is tested
+only against the Excel its tests run on. If an
+update breaks a derivation, the add-in refuses to arm and says so, rather
+than producing a wrong trace.</li>
+</ul>
+<h2 id="where-to-go-next">Where to go next</h2>
+<div class="table"><table>
+<thead>
+<tr>
+<th>Document</th>
+<th>What it covers</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="DemoWalkthrough.html">docs/DemoWalkthrough.md</a></td>
+<td>A guided tour — demo add-ins and ten workbooks, each showing one part of the trace</td>
+</tr>
+<tr>
+<td><a href="TraceOptions.html">docs/TraceOptions.md</a></td>
+<td>Every capture setting, what it costs, and the add-in's log</td>
+</tr>
+<tr>
+<td><a href="VBATracing.html">docs/VBATracing.md</a></td>
+<td>A layered walkthrough of VBA tracing — what is patched, the shadow stack, return values and error outcomes, for a general programmer</td>
+</tr>
+<tr>
+<td><a href="TraceRowModel.html">docs/TraceRowModel.md</a></td>
+<td>The trace file's contract, in full</td>
+</tr>
+<tr>
+<td><a href="ErrorsInTheTrace.html">docs/ErrorsInTheTrace.md</a></td>
+<td>How errors read in a trace — each outcome in a real chain, VBA's error dialog, and the edge cases</td>
+</tr>
+</tbody>
+</table></div>
+<p>Building XRayXL yourself, running its tests, rebuilding the demo and how it works inside:
+<a href="https://github.com/XRayXL/XRayXL-AddIn/blob/v0.4.0/docs/Developers.md">docs/Developers.md</a>.</p>
+<h2 id="acknowledgements">Acknowledgements</h2>
+<p>The VBA-tracing approach is inspired by
+<strong><a href="https://github.com/desva/VBA">Dr. D. Azzopardi's <code>desva/VBA</code> project</a></strong> and a
+conversation in a Canary Wharf bar on a warm London evening in 2016 — a working
+proof that Excel's VBA execution can be traced by locating the p-code
+interpreter's opcode dispatch table and patching it to emit timed, attributed
+records, without reading any VBA source. That project demonstrated the single
+hardest mechanism this one depends on. <strong>XRayXL adopts the <em>approach</em> and
+builds an independent implementation; it reuses none of that code.</strong></p>
+<h2 id="legal">Legal</h2>
+<p>XRayXL is an independent project. It is not affiliated with, endorsed by or
+supported by Microsoft. Microsoft, Excel, Office and VBA are trademarks of
+Microsoft Corporation, used here only to say what XRayXL works with.</p>
+<p>Its purpose is interoperability: letting you observe the add-in and VBA code
+running in a copy of Excel you are licensed to use. It works in memory, inside
+the Excel process it is loaded into. It does not modify Office files on disk,
+bypass licensing or activation, or read VBA source, and it redistributes no
+Microsoft code other than the Excel SDK header listed under
+<a href="#third-party-code">Third-party code</a>.</p>
+<p>You are responsible for making sure your use complies with your Office licence
+and the law where you are, and for using XRayXL only on workbooks and add-ins
+you are entitled to inspect. If in doubt, ask your legal or compliance team
+before running it.</p>
+<h2 id="licence">Licence</h2>
+<p>Copyright © 2026 Andrew Lockhart.</p>
+<p>XRayXL is free software: you may redistribute it and modify it under the terms
+of the <strong>GNU General Public License, version 3</strong>, as published by the Free
+Software Foundation. It is distributed in the hope that it will be useful, but
+<strong>without any warranty</strong> — without even the implied warranty of merchantability
+or fitness for a particular purpose. See the <a href="../LICENSE">LICENSE</a> file for the
+full terms.</p>
+<p>Contributions are accepted under the same licence.</p>
+<p>You may use, modify and run XRayXL freely, including inside a company. If you
+distribute a modified version, or anything built on it, that work must be
+released under the GPL too — so it cannot be taken closed-source. The full
+terms are in the licence; that sentence is not a substitute for them.</p>
+<h3 id="third-party-code">Third-party code</h3>
+<p>XRayXL includes two components under their own terms, both reproduced in the
+files named:</p>
+<div class="table"><table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Licence</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>MinHook</strong> — the inline hooking library, © 2009-2017 Tsuda Kageyu</td>
+<td>BSD 2-Clause, <code>src/third_party/minhook/LICENSE.txt</code></td>
+</tr>
+<tr>
+<td><strong><code>xlcall.h</code></strong> — the Excel C API header, from Microsoft's Excel XLL SDK</td>
+<td>Microsoft's Excel 2013 XLL SDK terms; provenance in <code>src/third_party/xlcall.h</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>MinHook's licence requires its copyright notice to travel with <strong>binary</strong>
+redistributions as well as source, so any release of <code>XRayXL64.xll</code> carries it
+alongside.</p>
+</main>
+<footer class="wrap">XRayXL 0.4.0 &middot; this page on GitHub: <a href="https://github.com/XRayXL/XRayXL-AddIn/blob/v0.4.0/README.md">README.md</a></footer>
+</body>
+</html>

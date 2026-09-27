@@ -1,0 +1,1116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>XRayXL → Perfetto</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  /* xrayxl.com's palette and type, light only */
+  :root{
+    --ground:#EFF1F3; --surface:#FFFFFF; --surface-2:#E5E9ED;
+    --ink:#14181D; --ink-2:#4A535E; --ink-3:#78828E;
+    --rule:#D3D8DE; --rule-strong:#B2BAC3;
+    --signal:#C43C08; --signal-bright:#E8551C; --on-signal:#FFFFFF;
+    --steel:#1B5A78; --ok:#17693F; --warn:#8A5600; --bad:#A81E26;
+    --grid-line:rgba(20,24,29,.055);
+    --display:"Archivo",system-ui,sans-serif;
+    --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,"Cascadia Mono","Consolas",monospace;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:var(--body); font-size:16px; line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  [hidden]{display:none!important}
+  :focus-visible{outline:2px solid var(--signal); outline-offset:3px; border-radius:2px}
+  code{font-family:var(--mono); font-size:.92em; color:var(--ink-2)}
+
+  .wrap{max-width:780px; margin-inline:auto; padding-inline:clamp(16px,5vw,48px)}
+
+  /* ---------- heading, on the site's grid paper ---------- */
+  .masthead{
+    border-bottom:1px solid var(--rule);
+    background:
+      repeating-linear-gradient(to right, var(--grid-line) 0 1px, transparent 1px 88px),
+      repeating-linear-gradient(to bottom, var(--grid-line) 0 1px, transparent 1px 30px);
+  }
+  .masthead .wrap{padding-block:30px 34px}
+  .brandline{display:flex; align-items:center; gap:14px; margin-bottom:22px}
+  .brand{font-family:var(--display); font-weight:800; font-size:26px; letter-spacing:-.035em; line-height:1}
+  .brand span{color:var(--signal)}
+  .tag{
+    font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--signal); border:1px solid var(--signal); border-radius:2px; padding:3px 10px; line-height:1.3;
+  }
+  h1{font-family:var(--display); font-weight:800; font-size:clamp(30px,5vw,44px); letter-spacing:-.035em; line-height:1.1; margin:0}
+  .lede{margin:12px 0 0; color:var(--ink-2); font-size:17px; max-width:60ch}
+
+  /* ---------- the three steps ---------- */
+  .step{padding-block:28px; border-bottom:1px solid var(--rule)}
+  .eyebrow{
+    font-family:var(--mono); font-size:11px; font-weight:500; letter-spacing:.16em;
+    text-transform:uppercase; color:var(--ink-3);
+    display:flex; align-items:center; gap:10px; margin-bottom:16px;
+  }
+  .eyebrow::after{content:""; flex:1; height:1px; background:var(--rule)}
+  .buttons{display:flex; flex-wrap:wrap; gap:12px}
+  .btn{
+    font-family:var(--body); font-weight:600; font-size:15px; line-height:1.4;
+    padding:11px 20px; border-radius:3px; border:1px solid transparent; cursor:pointer;
+    transition:background-color .15s, border-color .15s, color .15s;
+  }
+  .btn-primary{background:var(--signal); color:var(--on-signal)}
+  .btn-primary:hover{background:var(--signal-bright)}
+  .btn-ghost{background:var(--surface); border-color:var(--rule-strong); color:var(--ink)}
+  .btn-ghost:hover{border-color:var(--signal); color:var(--signal)}
+  .hint{font-size:13.5px; color:var(--ink-3); margin:12px 0 0; max-width:70ch}
+
+  .file{margin-top:18px; padding:14px 18px; background:var(--surface); border:1px solid var(--rule); border-radius:3px}
+  .file-name{font-family:var(--mono); font-size:13.5px; font-weight:500; color:var(--ink); overflow-wrap:anywhere}
+  .file-details{font-family:var(--mono); font-size:12.5px; color:var(--ink-3)}
+  .bar{height:3px; margin-top:10px; background:var(--surface-2); overflow:hidden}
+  .bar i{display:block; height:100%; width:0; background:var(--signal)}
+
+  .stats{
+    display:grid; grid-template-columns:max-content 1fr; gap:1px; margin:0;
+    background:var(--rule); border:1px solid var(--rule); border-radius:3px; overflow:hidden;
+  }
+  .stats dt,.stats dd{margin:0; background:var(--surface); padding:9px 16px}
+  .stats dt{
+    font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--ink-3); display:flex; align-items:center;
+  }
+  .stats dd{font-family:var(--mono); font-size:13px; color:var(--ink); font-variant-numeric:tabular-nums}
+
+  .notes{display:flex; flex-direction:column; gap:10px}
+  .notes:not(:empty){margin-top:16px}
+  .note{
+    padding:12px 16px; background:var(--surface); border:1px solid var(--rule);
+    border-left:3px solid var(--steel); border-radius:3px; font-size:14.5px; color:var(--ink-2);
+  }
+  .note.ok{border-left-color:var(--ok)}
+  .note.warn{border-left-color:var(--warn)}
+  .note.bad{border-left-color:var(--bad); color:var(--ink); white-space:pre-wrap}
+  .note b{font-family:var(--mono); font-size:.92em; font-weight:500; color:var(--ink)}
+
+  footer{padding-block:22px 44px; font-size:13px; color:var(--ink-3)}
+
+  body.filedrag::after{
+    content:"Drop the trace file to open it"; position:fixed; inset:12px; z-index:9;
+    display:grid; place-items:center; border:2px dashed var(--signal); border-radius:6px;
+    background:rgba(239,241,243,.9); color:var(--signal);
+    font-family:var(--display); font-weight:700; font-size:28px;
+  }
+</style>
+</head>
+<body>
+<header class="masthead">
+  <div class="wrap">
+    <div class="brandline"><span class="brand">XRay<span>XL</span></span><span class="tag">Perfetto</span></div>
+    <h1>Open a trace in Perfetto</h1>
+    <p class="lede">Converts an XRayXL trace for Perfetto UI, the trace viewer, inside this page.</p>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="step">
+    <div class="eyebrow">Trace</div>
+    <div class="buttons"><button class="btn btn-primary" id="pick-button">Input XRayXL Trace</button></div>
+    <input type="file" id="file-input" accept=".csv,.jsonl,text/csv" hidden>
+    <p class="hint">An <code>XRayXL_Trace_&lt;id&gt;_&lt;pid&gt;.csv</code> or <code>.jsonl</code> file from
+      <code>%TEMP%\XRayXL\TraceFiles</code>, or drop one anywhere on this page.</p>
+    <div class="file" id="file" hidden>
+      <div class="file-name" id="file-name"></div>
+      <div class="file-details" id="file-details"></div>
+      <div class="bar" id="progress" hidden><i id="progress-fill"></i></div>
+    </div>
+  </section>
+
+  <section class="step" id="summary" hidden>
+    <div class="eyebrow">What's in it</div>
+    <dl class="stats" id="stats"></dl>
+    <div class="notes" id="notes"></div>
+  </section>
+
+  <section class="step" id="actions" hidden>
+    <div class="eyebrow">Open it</div>
+    <div class="buttons">
+      <button class="btn btn-primary" id="perfetto-button">Open Trace in Perfetto</button>
+      <button class="btn btn-ghost" id="download-button">Download .pftrace</button>
+    </div>
+    <p class="hint">Perfetto opens in a new tab and asks whether to trust “An unknown origin”: that is this page,
+      so answer Yes. A downloaded .pftrace opens later in any Perfetto UI.</p>
+    <div class="notes" id="launch-status"></div>
+  </section>
+
+  <footer>Converted inside this page, so nothing is uploaded. Perfetto UI keeps the trace in this browser, with sharing turned off.</footer>
+</main>
+
+<script id="converter">
+// XRayXL trace, CSV or JSON Lines, to Perfetto protobuf (docs/TraceRowModel.md). No DOM, so Node can run it too.
+(function (root) {
+  'use strict';
+
+  const HEADER = 'seq,input,kind,source,span,parent,depth,thread,qpc,module,function,proc,typetext,' +
+    'caller,callerref,argcount,args,ret,rettype,outcome,ticks,tracerticks,trust';
+  const COLS = HEADER.split(',');
+  const C = {};
+  COLS.forEach((name, i) => { C[name] = i; });
+
+  // The clock's rate when a trace does not say: a trace older than its arm row.
+  const DEFAULT_QPC_FREQUENCY = 10000000n;
+  // These exits were stamped late, so their durations are ceilings.
+  const UPPER_BOUND = new Set(['backstop', 'flush']);
+  const DIGITS = /^\d+$/;
+  const SAFE_INT = /^\d{1,15}$/;
+
+  // Field numbers from protos/perfetto/trace in google/perfetto.
+  const TRACE_PACKET = 1;
+  const PKT = { timestamp: 8, seqId: 10, trackEvent: 11, interned: 12, seqFlags: 13, trackDescriptor: 60 };
+  const EV = { categoryIids: 3, annotations: 4, type: 9, nameIid: 10, trackUuid: 11 };
+  const ANN = { nameIid: 1, int: 4, string: 6 };
+  const INTERNED = { categories: 1, eventNames: 2, annotationNames: 3 };
+  const TD = { uuid: 1, name: 2, process: 3, thread: 4, parent: 5, description: 14 };
+  const SLICE_BEGIN = 1, SLICE_END = 2, INSTANT = 3;
+  const SEQ_CLEARED = 1, SEQ_NEEDS_STATE = 2, SEQ_ID = 1;
+
+  const CATEGORIES = ['XLL', 'VBA', 'XRayXL', 'Excel'];
+  const ANNOTATIONS = [
+    'module', 'function', 'proc', 'typetext', 'argcount', 'args', 'caller', 'callerref',
+    'ret', 'rettype', 'outcome', 'ticks', 'tracerticks', 'XRayXL time', 'own time', 'trust', 'breaks', 'args at exit',
+    'span', 'parent', 'depth', 'entry seq', 'exit seq', 'seq',
+    'rows dropped', 'first dropped input', 'last dropped input', 'note',
+  ];
+  const ANN_IID = {};
+  ANNOTATIONS.forEach((name, i) => { ANN_IID[name] = i + 1; });
+
+  const utf8 = new TextEncoder();
+
+  class Writer {
+    constructor(capacity) { this.buf = new Uint8Array(capacity); this.len = 0; }
+    reset() { this.len = 0; return this; }
+    ensure(n) {
+      if (this.len + n <= this.buf.length) return;
+      let cap = this.buf.length * 2;
+      while (cap < this.len + n) cap *= 2;
+      const b = new Uint8Array(cap);
+      b.set(this.buf.subarray(0, this.len));
+      this.buf = b;
+    }
+    varint(v) {
+      this.ensure(10);
+      if (typeof v === 'bigint') {
+        while (v >= 0x80n) { this.buf[this.len++] = Number(v & 0x7fn) | 0x80; v >>= 7n; }
+        this.buf[this.len++] = Number(v);
+        return;
+      }
+      // Arithmetic, not bitwise: bitwise operators truncate to 32 bits.
+      while (v >= 0x80) { this.buf[this.len++] = (v % 0x80) | 0x80; v = Math.floor(v / 0x80); }
+      this.buf[this.len++] = v;
+    }
+    uint(field, v) { this.varint(field * 8); this.varint(v); }
+    raw(field, bytes, n) {
+      this.varint(field * 8 + 2);
+      this.varint(n);
+      this.ensure(n);
+      this.buf.set(bytes.subarray(0, n), this.len);
+      this.len += n;
+    }
+    string(field, s) { const b = utf8.encode(s); this.raw(field, b, b.length); }
+    message(field, w) { this.raw(field, w.buf, w.len); }
+  }
+
+  function cmp(a, b) { return a < b ? -1 : a > b ? 1 : 0; }
+
+  // A JSON Lines value in the CSV's spelling, so a trace reads the same in either format. A string
+  // keeps its quotes, so 1 and "1" differ. `declared` is the slot's type: a value of another type
+  // names its own, as a Variant's does in CSV.
+  function valueText(v, declared) {
+    if (v === null || typeof v !== 'object') return String(v);
+    switch (v.t) {
+      case 'String': return quoteText(String(v.v)) + (v.cut ? '...' : '');
+      case 'Double': case 'Error': case 'Unknown': return String(v.v);
+      case 'Boolean': return v.v ? 'TRUE' : 'FALSE';
+      case 'Udt': return 'udt@' + v.ptr;
+      case 'SRef': case 'Ref':
+        return `${v.t}(${(v.areas || []).map((a) => `R${a[0]}C${a[1]}:R${a[2]}C${a[3]}`).join(',')})`;
+      case 'Object':
+        return `${v.class || 'object'}@${v.ptr}` + (v.where ? `(${v.where})` : '') +
+          ('value' in v ? '=' + valueText(v.value, 'Variant') : '');
+      case 'Array': return arrayText(v);
+      default:
+        if (!('v' in v)) return v.t;          // Empty, Null, Missing, Nothing, AsyncHandle
+        return !declared || declared === v.t ? String(v.v) : `${v.t}(${v.v})`;
+    }
+  }
+
+  // A string as the CSV writes it: quoted, and escaped to plain ASCII.
+  function quoteText(text) {
+    const hex = (c, n) => c.toString(16).toUpperCase().padStart(n, '0');
+    let out = '"';
+    for (let i = 0; i < text.length; i++) {
+      const c = text.charCodeAt(i);
+      if (c === 34) out += '\\"';
+      else if (c === 92) out += '\\\\';
+      else if (c === 9) out += '\\t';
+      else if (c === 13) out += '\\r';
+      else if (c === 10) out += '\\n';
+      else if (c < 32 || c === 127) out += '\\x' + hex(c, 2);
+      else if (c > 126) out += '\\u' + hex(c, 4);
+      else out += text[i];
+    }
+    return out + '"';
+  }
+
+  // In a typed array the elements are bare, since the header names their type.
+  function arrayText(v) {
+    const elem = v.elem || '?';
+    if (!v.bounds || !v.bounds.length) return elem + '()';
+    const head = `${elem}[${v.bounds.map((b) => b[0] + '..' + b[1]).join(',')}]`;
+    if (!('v' in v)) return head;             // over the value limit: the shape alone
+    const typed = v.elem && v.elem !== 'Variant';
+    const element = (x) => {
+      if (!typed || (x !== null && typeof x === 'object')) return valueText(x, typed ? v.elem : 'Variant');
+      if (v.elem === 'String') return quoteText(String(x));
+      return typeof x === 'boolean' ? (x ? 'TRUE' : 'FALSE') : String(x);
+    };
+    const level = (x) => (Array.isArray(x) ? '{' + x.map(level).join(',') + '}' : element(x));
+    return head + level(v.v);
+  }
+
+  function argsText(list) {
+    if (!Array.isArray(list)) return String(list);
+    return list.map((a) => {
+      if ('described' in a) return `...(${a.described} of ${a.slots} slots described)`;
+      const head = 'slot' in a
+        ? `a${a.slot}:${a.type}${a.address ? '@' + a.address : ''}=`
+        : `${a.name}${a.type ? ':' + a.type : ''}=`;
+      const declared = a.type ? String(a.type).replace(/[&#].*$/, '') : '';
+      return head + (a.unreadable ? '<unreadable>' : valueText(a.value, declared));
+    }).join(' ');
+  }
+
+  // Minimal RFC 4180: the writer turns CR and LF into spaces, so a field never spans lines.
+  function splitQuoted(line, lineNo) {
+    const out = [];
+    const n = line.length;
+    let i = 0;
+    for (;;) {
+      if (line.charCodeAt(i) === 34) {
+        let v = '';
+        i++;
+        for (;;) {
+          const q = line.indexOf('"', i);
+          if (q === -1) throw new Error(`Line ${lineNo}: a quoted field is not closed.`);
+          v += line.slice(i, q);
+          if (line.charCodeAt(q + 1) === 34) { v += '"'; i = q + 2; } else { i = q + 1; break; }
+        }
+        out.push(v);
+        if (i === n) return out;
+        if (line.charCodeAt(i) !== 44) throw new Error(`Line ${lineNo}: text follows a closing quote.`);
+        i++;
+      } else {
+        const c = line.indexOf(',', i);
+        if (c === -1) { out.push(line.slice(i)); return out; }
+        out.push(line.slice(i, c));
+        i = c + 1;
+      }
+      if (i === n) { out.push(''); return out; }
+    }
+  }
+
+  // The file name carries the arm time (a FILETIME) and the Excel process id.
+  function parseFileName(name) {
+    const m = /XRayXL_Trace_(\d+)_(\d+)\.(?:csv|jsonl)$/i.exec(name || '');
+    if (!m) return { pid: 0, armedUtc: '' };
+    const ms = Number(BigInt(m[1]) / 10000n) - 11644473600000;
+    const d = new Date(ms);
+    return { pid: Number(m[2]), armedUtc: isNaN(d.getTime()) ? '' : d.toISOString() };
+  }
+
+  // What a pause in the VBA editor did to a call's duration, or '' when nothing.
+  function pausedNote(x, beneath) {
+    const n = x.length > COLS.length ? x[COLS.length] : '';
+    if (DIGITS.test(n) && n !== '0') {
+      return `Paused in the VBA editor ${n === '1' ? 'once' : n + ' times'}, so this duration includes time in the debugger.`;
+    }
+    return beneath ? 'A call beneath this one paused in the VBA editor, so this duration includes time in the debugger.' : '';
+  }
+
+  // Places each slice on the first lane where it nests; a lane is a track.
+  function assignLanes(slices) {
+    const lanes = [];
+    for (const s of slices) {
+      let lane = null;
+      for (const l of lanes) {
+        const st = l.stack;
+        while (st.length && st[st.length - 1].e <= s.b) st.pop();
+        if (!st.length || st[st.length - 1].e >= s.e) { lane = l; break; }
+      }
+      if (!lane) { lane = { stack: [], items: [] }; lanes.push(lane); }
+      lane.stack.push(s);
+      lane.items.push(s);
+    }
+    return lanes.map((l) => l.items);
+  }
+
+  class Converter {
+    constructor(fileName) {
+      this.fileName = fileName || '';
+      this.rest = '';
+      this.lineNo = 0;
+      this.base = null;             // the first row's qpc; rows are held relative to it
+      this.frequency = DEFAULT_QPC_FREQUENCY;   // qpc ticks a second, from the arm row
+      this.breaks = false;          // the optional last column, with BREAKPOINTS on
+      this.jsonl = false;           // JSON Lines: no header, one object a line
+      this.threads = new Map();     // thread id -> { tid, slices: [nesting, upper bound], instants }
+      this.open = new Map();        // span -> entry awaiting its exit
+      this.inputs = [];             // flat [input, qpc] pairs, for finding dropped rows
+      this.stats = {
+        rows: 0, entries: 0, exits: 0, calls: 0, xll: 0, vba: 0, open: 0, orphanExits: 0,
+        async: 0, depthCapped: 0, upperBound: 0, overlapTracks: 0, dropped: 0, dropGaps: 0,
+        backwards: 0, threads: 0, outcomes: {}, events: 0,
+        rootTicks: 0, tracerTicks: 0, paused: 0,
+      };
+    }
+
+    push(text) {
+      const s = this.rest + text;
+      let start = 0;
+      let i;
+      while ((i = s.indexOf('\n', start)) !== -1) {
+        this.onLine(s.charCodeAt(i - 1) === 13 && i > start ? s.slice(start, i - 1) : s.slice(start, i));
+        start = i + 1;
+      }
+      this.rest = s.slice(start);
+    }
+
+    onLine(line) {
+      this.lineNo++;
+      if (this.lineNo === 1) {
+        if (line.charCodeAt(0) === 0xfeff) line = line.slice(1);
+        this.jsonl = this.breaks = line.charCodeAt(0) === 123;
+        if (!this.jsonl) {
+          this.breaks = line === HEADER + ',breaks';
+          if (line !== HEADER && !this.breaks) {
+            throw new Error('This is not an XRayXL trace file this page can read. The first line should be:\n' +
+              HEADER + '\nor a JSON object, but it is:\n' + line.slice(0, 300));
+          }
+          return;
+        }
+      }
+      if (this.jsonl && !line) return;
+      const f = this.jsonl ? this.fromJson(line)
+        : line.indexOf('"') === -1 ? line.split(',') : splitQuoted(line, this.lineNo);
+      const width = COLS.length + (this.breaks ? 1 : 0);
+      if (f.length !== width) {
+        throw new Error(`Line ${this.lineNo} has ${f.length} fields, but the header has ${width}.`);
+      }
+      this.stats.rows++;
+      const q = this.qpc(f[C.qpc]);
+      if (DIGITS.test(f[C.input])) this.inputs.push(Number(f[C.input]), q);
+      switch (f[C.kind]) {
+        case 'entry': this.onEntry(f, q); break;
+        case 'exit': this.onExit(f, q); break;
+        // Excel's events, and the session's arm and disarm rows, as markers. The arm row says how
+        // fast the clock ticks.
+        case 'event': {
+          this.stats.events++;
+          const hz = f[C.function] === 'arm' && /(?:^| )qpcFrequency=(\d+)/.exec(f[C.args]);
+          if (hz && BigInt(hz[1]) > 0n) this.frequency = BigInt(hz[1]);
+          this.thread(f[C.thread]).instants.push({ t: q, row: f, order: this.lineNo, name: f[C.function] || 'event' });
+          break;
+        }
+        case 'depth-capped':
+          this.stats.depthCapped++;
+          this.thread(f[C.thread]).instants.push({ t: q, row: f, order: this.lineNo, name: 'depth-capped',
+            note: 'The VBA shadow stack reached its cap: calls below this point have no rows.' });
+          break;
+        default:
+          throw new Error(`Line ${this.lineNo}: unknown kind "${f[C.kind]}".`);
+      }
+    }
+
+    // A JSON Lines row as the CSV's fields, the optional breaks column last.
+    fromJson(line) {
+      let o;
+      try { o = JSON.parse(line); } catch (err) { throw new Error(`Line ${this.lineNo} is not JSON: ${err.message}`); }
+      if (!o || typeof o !== 'object' || typeof o.kind !== 'string') {
+        throw new Error(`Line ${this.lineNo} is not an XRayXL trace row.`);
+      }
+      const f = COLS.map((name) => {
+        const v = o[name];
+        if (v === undefined || v === null) return '';
+        if (name === 'args') return argsText(v);
+        if (name === 'ret' && typeof v === 'object') return valueText(v, String(o.rettype || '').replace(/[^A-Za-z].*$/, ''));
+        return String(v);
+      });
+      f.push(o.breaks === undefined ? '' : String(o.breaks));
+      return f;
+    }
+
+    qpc(text) {
+      if (!DIGITS.test(text)) throw new Error(`Line ${this.lineNo}: qpc "${text}" is not a number.`);
+      const v = BigInt(text);
+      if (this.base === null) this.base = v;
+      return Number(v - this.base);
+    }
+
+    thread(tid) {
+      let th = this.threads.get(tid);
+      if (!th) {
+        th = { tid, slices: [[], []], instants: [] };
+        this.threads.set(tid, th);
+      }
+      return th;
+    }
+
+    onEntry(f, q) {
+      const span = f[C.span];
+      if (this.open.has(span)) throw new Error(`Line ${this.lineNo}: span ${span} is opened a second time.`);
+      this.open.set(span, { f, q, order: this.lineNo });
+      this.stats.entries++;
+      if (f[C.source] === 'XLL') this.stats.xll++;
+      else if (f[C.source] === 'VBA') this.stats.vba++;
+    }
+
+    onExit(x, q) {
+      this.stats.exits++;
+      // A call's tracerticks include the calls it made, so only top-level calls are summed.
+      if (x[C.parent] === '0' && DIGITS.test(x[C.ticks]) && DIGITS.test(x[C.tracerticks])) {
+        this.stats.rootTicks += Number(x[C.ticks]);
+        this.stats.tracerTicks += Number(x[C.tracerticks]);
+      }
+      const outcome = x[C.outcome];
+      if (outcome) this.stats.outcomes[outcome] = (this.stats.outcomes[outcome] || 0) + 1;
+      const e = this.open.get(x[C.span]);
+      // Paused in the VBA editor: its callers, still open, include that time too.
+      const breaks = this.breaks ? x[COLS.length] : '';
+      if (DIGITS.test(breaks) && breaks !== '0') {
+        this.stats.paused++;
+        for (let p = x[C.parent], a; p && p !== '0' && (a = this.open.get(p)); p = a.f[C.parent]) a.pausedBeneath = true;
+      }
+      if (e) {
+        this.open.delete(x[C.span]);
+        this.close(e, x, q);
+      } else {
+        this.orphan(x, q);
+      }
+    }
+
+    close(e, x, q) {
+      const th = this.thread(e.f[C.thread]);
+      if (x[C.trust] === 'async') {
+        this.stats.async++;
+        th.instants.push({ t: e.q, entry: e.f, exit: x, order: e.order,
+          note: 'Asynchronous: the call returned before its answer existed, so it has no duration.' });
+        return;
+      }
+      let end = q;
+      let note = pausedNote(x, e.pausedBeneath);
+      if (end < e.q) {
+        end = e.q;
+        note = 'The exit was stamped before the entry, so it is shown with no duration.';
+        this.stats.backwards++;
+      }
+      const group = UPPER_BOUND.has(x[C.trust]) ? 1 : 0;
+      if (group) this.stats.upperBound++;
+      th.slices[group].push({ b: e.q, e: end, entry: e.f, exit: x, order: e.order, note });
+    }
+
+    orphan(x, q) {
+      this.stats.orphanExits++;
+      if (x[C.source] === 'XLL') this.stats.xll++;
+      else if (x[C.source] === 'VBA') this.stats.vba++;
+      const th = this.thread(x[C.thread]);
+      const note = 'The entry row is not in this file.' + (pausedNote(x, false) ? ' ' + pausedNote(x, false) : '');
+      if (DIGITS.test(x[C.ticks])) {
+        const group = UPPER_BOUND.has(x[C.trust]) ? 1 : 0;
+        if (group) this.stats.upperBound++;
+        th.slices[group].push({ b: q - Number(x[C.ticks]), e: q, entry: null, exit: x, order: this.lineNo,
+          note: note + ' Its start is the exit time minus ticks.' });
+      } else {
+        th.instants.push({ t: q, entry: null, exit: x, order: this.lineNo, note });
+      }
+    }
+
+    finish() {
+      if (this.rest) {
+        const last = this.rest.endsWith('\r') ? this.rest.slice(0, -1) : this.rest;
+        this.rest = '';
+        if (last) this.onLine(last);
+      }
+      if (this.lineNo === 0) throw new Error('The file is empty.');
+      if (this.stats.rows === 0) throw new Error('The trace has a header but no rows.');
+      this.stats.calls = this.stats.entries + this.stats.orphanExits;
+      for (const e of this.open.values()) {
+        this.stats.open++;
+        this.thread(e.f[C.thread]).slices[0].push({ b: e.q, e: Infinity, entry: e.f, exit: null, order: e.order,
+          note: 'No exit row in this file: the call had not returned when tracing stopped, or its exit row was dropped.' });
+      }
+      this.open.clear();
+      return this.encode(this.findDrops());
+    }
+
+    // Inputs are numbered from 1 at arm; a missing number is a row the full ring dropped.
+    findDrops() {
+      const ins = this.inputs;
+      const n = ins.length / 2;
+      const order = new Uint32Array(n);
+      for (let i = 0; i < n; i++) order[i] = i;
+      order.sort((a, b) => ins[2 * a] - ins[2 * b]);
+      const drops = [];
+      let prev = 0;
+      for (const i of order) {
+        const input = ins[2 * i];
+        if (input === prev) throw new Error(`Input ${input} appears on two rows.`);
+        if (input > prev + 1) drops.push({ t: ins[2 * i + 1], from: prev + 1, to: input - 1 });
+        prev = input;
+      }
+      this.inputs = [];
+      return drops;
+    }
+
+    encode(drops) {
+      const stats = this.stats;
+      const file = parseFileName(this.fileName);
+      const names = new Map();
+      const nameIid = (s) => {
+        let id = names.get(s);
+        if (id === undefined) { id = names.size + 1; names.set(s, id); }
+        return id;
+      };
+      const label = (item) => {
+        const row = item.entry || item.exit || item.row;
+        const name = item.name || (row ? (row[C.function] || row[C.proc] || '(unnamed)') : '(unnamed)');
+        const source = row ? row[C.source] : '';
+        return { nameIid: nameIid(name), cat: source === 'XLL' ? 1 : source === 'VBA' ? 2 : source === 'Excel' ? 4 : 3 };
+      };
+
+      let nextUuid = 1;
+      const processUuid = nextUuid++;
+      const tracks = [{ uuid: processUuid, process: true }];
+      const events = [];
+      let listId = 0;
+
+      const laneEvents = (items, uuid) => {
+        const list = listId++;
+        const st = [];
+        let k = 0;
+        const end = (s) => events.push({ t: s.e, type: SLICE_END, uuid, list, k: k++ });
+        for (const s of items) {
+          while (st.length && st[st.length - 1].e <= s.b) end(st.pop());
+          st.push(s);
+          const l = label(s);
+          events.push({ t: s.b, type: SLICE_BEGIN, uuid, list, k: k++, item: s, nameIid: l.nameIid, cat: l.cat });
+        }
+        while (st.length) {
+          const s = st.pop();
+          if (s.e !== Infinity) end(s);
+        }
+      };
+
+      for (const th of this.threads.values()) {
+        stats.threads++;
+        th.uuid = nextUuid++;
+        tracks.push({ uuid: th.uuid, tid: th.tid });
+        for (let group = 0; group < 2; group++) {
+          const slices = th.slices[group];
+          slices.sort((a, c) => cmp(a.b, c.b) || cmp(c.e, a.e) || a.order - c.order);
+          assignLanes(slices).forEach((items, k) => {
+            let uuid = th.uuid;
+            if (group === 1) {
+              uuid = nextUuid++;
+              tracks.push({ uuid, parent: th.uuid,
+                name: `Thread ${th.tid} upper-bound durations` + (k ? ` ${k + 1}` : ''),
+                description: 'Calls whose exit was stamped late, by the backstop or at the disarm flush. ' +
+                  'Each duration is a ceiling, not a measurement.' });
+            } else if (k > 0) {
+              uuid = nextUuid++;
+              stats.overlapTracks++;
+              tracks.push({ uuid, parent: th.uuid, name: `Thread ${th.tid} overlapping ${k}`,
+                description: 'Calls on this thread whose times do not nest inside the calls on the thread track.' });
+            }
+            laneEvents(items, uuid);
+          });
+        }
+        th.instants.sort((a, c) => cmp(a.t, c.t) || a.order - c.order);
+        const list = listId++;
+        th.instants.forEach((item, k) => {
+          const l = label(item);
+          events.push({ t: item.t, type: INSTANT, uuid: th.uuid, list, k, item, nameIid: l.nameIid, cat: l.cat });
+        });
+      }
+
+      if (drops.length) {
+        const uuid = nextUuid++;
+        tracks.push({ uuid, parent: processUuid, name: 'Dropped rows',
+          description: 'Rows the full ring buffer dropped. Each marker sits at the next row that was written.' });
+        const list = listId++;
+        drops.forEach((d, k) => {
+          const count = d.to - d.from + 1;
+          stats.dropped += count;
+          stats.dropGaps++;
+          const item = { t: d.t, drop: d, name: `${count} row${count === 1 ? '' : 's'} dropped` };
+          const l = label(item);
+          events.push({ t: d.t, type: INSTANT, uuid, list, k, item, nameIid: l.nameIid, cat: l.cat });
+        });
+      }
+
+      events.sort((a, c) => a.t - c.t || a.list - c.list || a.k - c.k);
+      const minT = events.length ? events[0].t : 0;
+      const maxT = events.length ? events[events.length - 1].t : 0;
+
+      const parts = [];
+      let bytes = 0;
+      const out = new Writer(1 << 20);
+      const flush = () => {
+        if (!out.len) return;
+        parts.push(out.buf.slice(0, out.len));
+        bytes += out.len;
+        out.reset();
+      };
+      const packet = (p) => {
+        out.varint(TRACE_PACKET * 8 + 2);
+        out.varint(p.len);
+        out.ensure(p.len);
+        out.buf.set(p.buf.subarray(0, p.len), out.len);
+        out.len += p.len;
+        if (out.len >= 1 << 20) flush();
+      };
+      const base = this.base === null ? 0n : this.base;
+      const ts = (t) => {
+        const v = base + BigInt(t);
+        return (v < 0n ? 0n : v) * 1000000000n / this.frequency;
+      };
+
+      const p = new Writer(4096), m = new Writer(4096), a = new Writer(1024), n = new Writer(256);
+      const hz = Number(this.frequency);
+      const duration = (t) => {
+        const us = (t * 1e6) / hz;
+        return us < 1000 ? `${us.toFixed(us < 10 ? 2 : 1)} µs` : us < 1e6 ? `${(us / 1000).toFixed(2)} ms` : `${(us / 1e6).toFixed(3)} s`;
+      };
+
+      // Interned names first: every event on the sequence refers to them.
+      p.reset();
+      p.uint(PKT.timestamp, ts(minT));
+      p.uint(PKT.seqId, SEQ_ID);
+      p.uint(PKT.seqFlags, SEQ_CLEARED);
+      m.reset();
+      const intern = (field, iid, text) => {
+        n.reset();
+        n.uint(1, iid);
+        n.string(2, text);
+        m.message(field, n);
+      };
+      CATEGORIES.forEach((text, i) => intern(INTERNED.categories, i + 1, text));
+      for (const [text, iid] of names) intern(INTERNED.eventNames, iid, text);
+      ANNOTATIONS.forEach((text, i) => intern(INTERNED.annotationNames, i + 1, text));
+      p.message(PKT.interned, m);
+      packet(p);
+
+      for (const tr of tracks) {
+        p.reset();
+        p.uint(PKT.timestamp, ts(minT));
+        p.uint(PKT.seqId, SEQ_ID);
+        m.reset();
+        m.uint(TD.uuid, tr.uuid);
+        if (tr.process) {
+          n.reset();
+          n.uint(1, file.pid);
+          n.string(6, 'EXCEL.EXE');
+          m.message(TD.process, n);
+        }
+        if (tr.tid !== undefined) {
+          n.reset();
+          n.uint(1, file.pid);
+          if (DIGITS.test(tr.tid)) n.uint(2, Number(tr.tid));
+          n.string(5, 'Excel thread');
+          m.message(TD.thread, n);
+        }
+        if (tr.name) m.string(TD.name, tr.name);
+        if (tr.parent) m.uint(TD.parent, tr.parent);
+        if (tr.description) m.string(TD.description, tr.description);
+        p.message(PKT.trackDescriptor, m);
+        packet(p);
+      }
+
+      const annotate = (name, value) => {
+        if (value === '' || value === undefined || value === null) return;
+        a.reset();
+        a.uint(ANN.nameIid, ANN_IID[name]);
+        if (typeof value === 'number') a.uint(ANN.int, value);
+        else if (SAFE_INT.test(value)) a.uint(ANN.int, Number(value));
+        else a.string(ANN.string, value);
+        m.message(EV.annotations, a);
+      };
+      const annotations = (item) => {
+        const e = item.entry, x = item.exit, row = e || x || item.row;
+        if (row) {
+          annotate('module', row[C.module]);
+          if (row[C.proc] !== row[C.function]) annotate('proc', row[C.proc]);
+          annotate('span', row[C.span]);
+          annotate('parent', row[C.parent]);
+          annotate('depth', row[C.depth]);
+        }
+        if (e) {
+          annotate('caller', e[C.caller]);
+          annotate('callerref', e[C.callerref]);
+          annotate('typetext', e[C.typetext]);
+          annotate('argcount', e[C.argcount]);
+          annotate('args', e[C.args]);
+        }
+        if (x) {
+          annotate('ret', x[C.ret]);
+          annotate('rettype', x[C.rettype]);
+          annotate('outcome', x[C.outcome]);
+          annotate('ticks', x[C.ticks]);
+          annotate('tracerticks', x[C.tracerticks]);
+          if (DIGITS.test(x[C.ticks]) && DIGITS.test(x[C.tracerticks])) {
+            const all = Number(x[C.ticks]), tracer = Number(x[C.tracerticks]);
+            annotate('XRayXL time', duration(tracer) + (all ? ` (${Math.round((100 * tracer) / all)}% of the call)` : ''));
+            annotate('own time', duration(Math.max(all - tracer, 0)));
+          }
+          annotate('trust', x[C.trust]);
+          if (this.breaks) annotate('breaks', x[COLS.length]);
+          annotate('args at exit', x[C.args]);
+        }
+        if (e) annotate('entry seq', e[C.seq]);
+        if (x) annotate('exit seq', x[C.seq]);
+        if (item.row) {
+          annotate('callerref', item.row[C.callerref]);
+          annotate('args', item.row[C.args]);
+          annotate('seq', item.row[C.seq]);
+        }
+        if (item.drop) {
+          annotate('rows dropped', item.drop.to - item.drop.from + 1);
+          annotate('first dropped input', item.drop.from);
+          annotate('last dropped input', item.drop.to);
+        }
+        annotate('note', item.note);
+      };
+
+      for (const r of events) {
+        p.reset();
+        p.uint(PKT.timestamp, ts(r.t));
+        p.uint(PKT.seqId, SEQ_ID);
+        p.uint(PKT.seqFlags, SEQ_NEEDS_STATE);
+        m.reset();
+        m.uint(EV.type, r.type);
+        m.uint(EV.trackUuid, r.uuid);
+        if (r.type !== SLICE_END) {
+          m.uint(EV.nameIid, r.nameIid);
+          m.uint(EV.categoryIids, r.cat);
+          annotations(r.item);
+        }
+        p.message(PKT.trackEvent, m);
+        packet(p);
+      }
+      flush();
+
+      this.threads.clear();
+      return {
+        parts,
+        bytes,
+        stats: Object.assign(stats, {
+          rootSeconds: stats.rootTicks / hz,
+          tracerSeconds: stats.tracerTicks / hz,
+          packets: events.length + tracks.length + 1,
+          seconds: (maxT - minT) / 1e7,
+          pid: file.pid,
+          armedUtc: file.armedUtc,
+        }),
+      };
+    }
+  }
+
+  root.XRayXLPerfetto = { HEADER, Converter, DEFAULT_QPC_FREQUENCY };
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+</script>
+
+<script>
+(function () {
+  'use strict';
+
+  const PERFETTO = 'https://ui.perfetto.dev';
+  const $ = (id) => document.getElementById(id);
+  let current = null;   // { name, blob }
+  let busy = false;
+
+  // ---- helpers ----
+  function el(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+  // A note with a coloured edge: 'ok', 'warn' or 'bad', or '' for information.
+  function note(kind, content) {
+    const box = el('div', kind ? 'note ' + kind : 'note');
+    if (typeof content === 'string') box.textContent = content;
+    else box.appendChild(content);
+    return box;
+  }
+  // Alternating plain and bold text.
+  function rich(parts) {
+    const span = el('span');
+    parts.forEach((p, i) => span.appendChild(i % 2 ? el('b', '', p) : document.createTextNode(p)));
+    return span;
+  }
+  function formatBytes(n) {
+    if (n < 1000) return n + ' B';
+    const units = ['kB', 'MB', 'GB'];
+    let v = n, u = -1;
+    do { v /= 1000; u++; } while (v >= 1000 && u < units.length - 1);
+    return (v >= 100 ? v.toFixed(0) : v.toFixed(1)) + ' ' + units[u];
+  }
+  function formatSeconds(s) {
+    if (s < 1e-3) return (s * 1e6).toFixed(0) + ' µs';
+    if (s < 1) return (s * 1e3).toFixed(1) + ' ms';
+    if (s < 120) return s.toFixed(3) + ' s';
+    return (s / 60).toFixed(1) + ' min';
+  }
+  const plural = (n, word) => `${n.toLocaleString()} ${word}${n === 1 ? '' : 's'}`;
+  function baseName(name) { return name.replace(/\.(?:csv|jsonl)$/i, ''); }
+  function progress(fraction) {
+    $('progress').hidden = fraction === null;
+    if (fraction !== null) $('progress-fill').style.width = (100 * fraction).toFixed(1) + '%';
+  }
+  function showError(text) {
+    $('summary').hidden = false;
+    $('stats').hidden = true;
+    $('notes').replaceChildren(note('bad', text));
+  }
+
+  // ---- load and convert ----
+  async function openFile(file) {
+    if (!file || busy) return;
+    busy = true;
+    current = null;
+    $('actions').hidden = true;
+    $('summary').hidden = true;
+    $('launch-status').replaceChildren();
+    $('file').hidden = false;
+    $('file-name').textContent = file.name;
+    const details = $('file-details');
+    details.textContent = `${formatBytes(file.size)} · reading`;
+    progress(0);
+    const started = performance.now();
+
+    try {
+      const converter = new XRayXLPerfetto.Converter(file.name);
+      const decoder = new TextDecoder('windows-1252');
+      const reader = file.stream().getReader();
+      let read = 0, lastPaint = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        converter.push(decoder.decode(value, { stream: true }));
+        read += value.length;
+        const now = performance.now();
+        if (now - lastPaint > 100) {
+          lastPaint = now;
+          progress(read / Math.max(file.size, 1));
+        }
+      }
+      converter.push(decoder.decode());
+      details.textContent = `${formatBytes(file.size)} · building the Perfetto trace`;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const result = converter.finish();
+      current = { name: file.name, blob: new Blob(result.parts, { type: 'application/octet-stream' }) };
+      const seconds = (performance.now() - started) / 1000;
+      details.textContent = `${formatBytes(file.size)} · converted in ${formatSeconds(seconds)} to a ` +
+        `${formatBytes(result.bytes)} Perfetto trace`;
+      renderSummary(result.stats);
+      $('actions').hidden = false;
+      $('pick-button').className = 'btn btn-ghost';
+    } catch (err) {
+      details.textContent = `${formatBytes(file.size)} · not converted`;
+      showError(String(err && err.message ? err.message : err));
+    } finally {
+      progress(null);
+      busy = false;
+    }
+  }
+
+  function renderSummary(s) {
+    const stats = $('stats');
+    stats.replaceChildren();
+    stats.hidden = false;
+    const add = (label, value) => { stats.appendChild(el('dt', '', label)); stats.appendChild(el('dd', '', value)); };
+    add('Calls', `${s.calls.toLocaleString()}  (XLL ${s.xll.toLocaleString()} · VBA ${s.vba.toLocaleString()})`);
+    add('Threads', s.threads.toLocaleString());
+    add('Time covered', formatSeconds(s.seconds));
+    if (s.rootTicks) {
+      add('XRayXL\'s own time', `${formatSeconds(s.tracerSeconds)} of ${formatSeconds(s.rootSeconds)} in top-level calls ` +
+        `(${((100 * s.tracerTicks) / s.rootTicks).toFixed(1)}%)`);
+    }
+    const outcomes = Object.keys(s.outcomes).filter((k) => k !== 'returned')
+      .map((k) => `${k} ${s.outcomes[k].toLocaleString()}`).join(' · ');
+    if (outcomes) add('Errors', outcomes);
+    if (s.events) add('Excel events', s.events.toLocaleString());
+    add('Excel process', s.pid ? String(s.pid) : 'unknown');
+    if (s.armedUtc) add('Armed', s.armedUtc.replace('T', ' ').replace(/\.\d+Z$/, ' UTC'));
+    add('Rows', s.rows.toLocaleString());
+
+    const notes = $('notes');
+    notes.replaceChildren();
+    if (s.dropped) {
+      notes.appendChild(note('warn', rich([
+        '', plural(s.dropped, 'row'), ` were dropped in ${plural(s.dropGaps, 'place')} because the ring buffer was full. Each place is marked on the `, 'Dropped rows', ' track.'])));
+    }
+    if (s.open) {
+      notes.appendChild(note('warn', rich([
+        '', plural(s.open, 'call'), ' have no exit row. Perfetto shows each as a slice that did not end: the call had not returned when tracing stopped, or its exit row was dropped.'])));
+    }
+    if (s.orphanExits) {
+      notes.appendChild(note('warn', rich([
+        '', plural(s.orphanExits, 'exit row'), ' have no entry row in this file. Their start is the exit time minus ', 'ticks', '.'])));
+    }
+    if (s.backwards) {
+      notes.appendChild(note('warn', rich([
+        '', plural(s.backwards, 'call'), ' have an exit stamped before the entry, and are shown with no duration.'])));
+    }
+    if (s.paused) {
+      notes.appendChild(note('warn', rich([
+        '', plural(s.paused, 'call'), ' paused in the VBA editor, at a breakpoint or a ', 'Stop',
+        ', so their durations and their callers\' include time in the debugger. Each says so in its ', 'note', '.'])));
+    }
+    if (s.upperBound) {
+      notes.appendChild(note('', rich([
+        '', plural(s.upperBound, 'call'), ' ended by the backstop or the disarm flush are on each thread\'s ', 'upper-bound durations', ' track: their durations are ceilings.'])));
+    }
+    if (s.overlapTracks) {
+      notes.appendChild(note('', rich([
+        'Some calls do not nest inside the calls around them, so ', plural(s.overlapTracks, 'extra track'), ' named ', 'overlapping', ' hold them.'])));
+    }
+    if (s.async) {
+      notes.appendChild(note('', rich([
+        '', plural(s.async, 'asynchronous call'), ' are shown as instant markers: an async XLL call has no duration.'])));
+    }
+    if (s.depthCapped) {
+      notes.appendChild(note('', rich([
+        'The VBA call stack reached its cap ', plural(s.depthCapped, 'time'), '. Look for ', 'depth-capped', ' markers.'])));
+    }
+    if (!notes.children.length) {
+      notes.appendChild(note('ok', 'Every call has its entry and exit, and no rows were dropped.'));
+    }
+    $('summary').hidden = false;
+  }
+
+  // ---- actions ----
+  function download() {
+    if (!current) return;
+    const url = URL.createObjectURL(current.blob);
+    const a = el('a');
+    a.href = url;
+    a.download = baseName(current.name) + '.pftrace';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+
+  function launchStatus(kind, text) {
+    $('launch-status').replaceChildren(note(kind, text));
+  }
+
+  // Perfetto's documented handshake: PING until it answers PONG, then post the trace.
+  function openInPerfetto() {
+    if (!current) return;
+    const trace = current;
+    const win = window.open(PERFETTO + '/#!/');
+    if (!win) {
+      launchStatus('bad', 'The browser blocked the new tab. Allow pop-ups for this page, then try again.');
+      return;
+    }
+    launchStatus('', 'Waiting for Perfetto UI to load…');
+    const buffer = trace.blob.arrayBuffer();
+    const ping = setInterval(() => { try { win.postMessage('PING', PERFETTO); } catch (e) { /* not loaded yet */ } }, 50);
+    const giveUp = setTimeout(() => {
+      stop();
+      launchStatus('bad', 'Perfetto UI did not answer within 60 seconds. Check the connection, or download the .pftrace and open it there.');
+    }, 60000);
+    function stop() {
+      clearInterval(ping);
+      clearTimeout(giveUp);
+      window.removeEventListener('message', onMessage);
+    }
+    async function onMessage(ev) {
+      if (ev.source !== win || ev.origin !== PERFETTO || ev.data !== 'PONG') return;
+      stop();
+      win.postMessage({
+        perfetto: {
+          buffer: await buffer,
+          title: trace.name,
+          fileName: baseName(trace.name) + '.pftrace',
+          shareable: false,
+          downloadable: true,
+        },
+      }, PERFETTO);
+      launchStatus('ok', 'Sent to Perfetto UI. In that tab, answer Yes when it asks whether to open a trace from “An unknown origin”.');
+    }
+    window.addEventListener('message', onMessage);
+  }
+
+  // ---- wiring ----
+  const input = $('file-input');
+  $('pick-button').addEventListener('click', () => { if (!busy) input.click(); });
+  input.addEventListener('change', () => { openFile(input.files[0]); input.value = ''; });
+  $('perfetto-button').addEventListener('click', openInPerfetto);
+  $('download-button').addEventListener('click', download);
+
+  let dragDepth = 0;
+  const hasFiles = (e) => e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+  window.addEventListener('dragenter', (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    dragDepth++;
+    document.body.classList.add('filedrag');
+  });
+  window.addEventListener('dragover', (e) => { if (hasFiles(e)) e.preventDefault(); });
+  window.addEventListener('dragleave', (e) => {
+    if (!hasFiles(e)) return;
+    if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove('filedrag'); }
+  });
+  window.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dragDepth = 0;
+    document.body.classList.remove('filedrag');
+    if (e.dataTransfer && e.dataTransfer.files.length) openFile(e.dataTransfer.files[0]);
+  });
+
+  // ---- a trace from Excel ----
+  // The Perfetto button opens this page with, after the #, a script it wrote beside the trace.
+  // A page cannot read a file from disk, but it can load a script, and the script hands the
+  // trace over by calling XRayXLTrace(name, base64).
+  window.XRayXLTrace = function (name, base64) {
+    const step = 1 << 22;     // a multiple of 4, so each slice decodes on its own
+    const parts = [];
+    for (let i = 0; i < base64.length; i += step) {
+      const bin = atob(base64.slice(i, i + step));
+      const bytes = new Uint8Array(bin.length);
+      for (let j = 0; j < bin.length; j++) bytes[j] = bin.charCodeAt(j);
+      parts.push(bytes);
+    }
+    openFile(new File(parts, name));
+  };
+  let handed = '';
+  try { handed = decodeURIComponent(location.hash.slice(1)); } catch (e) { /* not ours */ }
+  // only a local .trace.js, so a link cannot make this page run someone else's script
+  if (/^file:\/\/\/[^?#]+\.trace\.js$/i.test(handed)) {
+    const script = document.createElement('script');
+    script.src = handed;
+    script.onerror = () => showError('The trace from Excel could not be read: ' + handed);
+    document.body.appendChild(script);
+  }
+})();
+</script>
+</body>
+</html>

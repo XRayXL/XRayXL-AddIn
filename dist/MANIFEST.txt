@@ -1,11 +1,11 @@
-XRayXL 0.3.0
+XRayXL 0.4.0
 
-tag        : v0.3.0  (on the commit that adds this folder)
-commit     : d79603bbd6d32b4f11f14deed6e92077503b0e98
+tag        : v0.4.0  (on the commit that adds this folder)
+commit     : c9c20f0176e1344ecb2b05c318650b49d31ca218
              the SOURCE commit this was built and swept from. The commit that
              ADDS this folder is its child, and the tag is on that child.
-built      : 2026-09-24 10:53:24 +01:00
-sweep      : PASS (XRayXL-release-0.3.0-20260924-104359)
+built      : 2026-09-27 22:03:11 +01:00
+sweep      : PASS (XRayXL-release-0.4.0-20260927-215212)
 verified   : the sweep's recorded SHA256 for XRayXL64.xll matches the file shipped here
 
 This folder is assembled only by tools\release.ps1. A normal build does
@@ -21,11 +21,21 @@ SHA256:
   6a2098171d633060ede445638bde7e5f2a4f139c30c34a3a12e698b80579e7ed  demo\07_CallTree.xlsm
   66ac159eb489d9547c4cd78dd7593ffa01236c2a43704d6f988af3883dcaa976  demo\08_Threads.xlsm
   0089ae2a1e1c8beefe6c4188ecb60c06571d47a7c659a6f01c0ceccbd0bebb0e  demo\09_XLLPricing.xlsm
-  bf429a9b53b29ec5475b689d6ed8d73649591ee0414ff03f596e3ddd3302fc52  demo\DemoBehaviors64.xll
-  b2e6347558e0125e4fbb2d6d196b554892c1d0c86e3230be673c1848804fbb97  demo\DemoFinance64.xll
-  cd75b4880ff565ba08ae300e15dc844f7f73168c1b4fdf7686bc19a051fe09b5  demo\images\options-capture.png
-  9a829f8fb2e92c164e40f582530fd461f20c45ff35481ae6126e5b2b1bc01a24  demo\images\ribbon.png
-  0a330d6d82e57cd20a5eb9da118a4675a9ba4b382ca886f4276f7fdfab0fc2b8  demo\README.md
+  8d7b096fb10501aefdb08fb8f42f7ee92eb0c2a012e3350155d984fd34e09970  demo\10_Plasma.xlsm
+  aa3ec1585fb9e7a96d44f91b2cce23588b4afe792a66fe29fda0729697def36e  demo\DemoBehaviors64.xll
+  e95e69a028145e7aef28758fec14817691b3191733bf33d38f2d112fe9e52b6c  demo\DemoFinance64.xll
+  5edb541530461e42d0e636ba0173a6928e21b73e1dc1c1c92af21076f851d59f  docs\DemoWalkthrough.html
+  70164e963f4476cf718e005edf684b77cd740e8d8fc020bd922a9aa8a6ae97df  docs\ErrorsInTheTrace.html
+  4bdf736e56571f8822d542dfca434e5f8484ce4a213f095af61bc2fd50339544  docs\images\options-capture.png
+  ad924acad59fde746896e72d10670a3c1029143063f5bad867c3e40b6ab037c5  docs\images\Perfetto.png
+  1e08d12ac70a183652c7540f59b1e7c878982d02d0c30d5248790280be42db60  docs\images\Plasma.png
+  c068b62509e496a1cdf040896ae12c19b2b640d4113b208d6f04f26aca94d625  docs\images\ribbon.png
+  5122788d5558409017c66970f7a0bb06795343703da2c6d68d96f60572770ef1  docs\images\SendToPerfetto.png
+  3eef9abab40fc1798bf6c265e46e68f29d22772bd6763b6d3811207390d58451  docs\README.html
+  4743e4b259e62cb49987ff7edf58364788bd4f373f2690909a52e803767d7894  docs\TraceOptions.html
+  5a1b658e8d4213d93ac1bf13c45268cfe8b1cee0f0945687ebb2512fc63f4999  docs\TraceRowModel.html
+  4acb3a80b09c3d1320df96fb76ce688af424ad98259b957e29ec18c4d90db53d  docs\VBATracing.html
   3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986  LICENSE
   fba1df046e7c9cfc437af363c41f7fe563023bee2346cec5a0a8b8d05b4cc7ef  THIRD-PARTY-NOTICES.txt
-  6b4c7bcc42144ad4234844967f7a25e1e1ab8aa3ce39bca02b4f17c023a7a18c  XRayXL64.xll
+  ed0757af55ef599e87e5fce0d89943251dfcbccc02ca5c6b82a9ac1ebe2cf9d7  XRayXL64.xll
+  7ffffd01446900e89887151962f2c84eb051e4fd5530e22309b1a6404fa4ade5  XRayXL-Perfetto.html

@@ -1,0 +1,891 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>XRayXL — Demo &middot; XRayXL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  /* xrayxl.com's palette and type, light only, as XRayXL-Perfetto.html */
+  :root{
+    --ground:#EFF1F3; --surface:#FFFFFF; --surface-2:#E5E9ED;
+    --ink:#14181D; --ink-2:#4A535E; --ink-3:#78828E;
+    --rule:#D3D8DE; --rule-strong:#B2BAC3;
+    --signal:#C43C08; --steel:#1B5A78;
+    --grid-line:rgba(20,24,29,.055);
+    --display:"Archivo",system-ui,sans-serif;
+    --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,"Cascadia Mono","Consolas",monospace;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:var(--body); font-size:16px; line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  :focus-visible{outline:2px solid var(--signal); outline-offset:3px; border-radius:2px}
+  .wrap{max-width:900px; margin-inline:auto; padding-inline:clamp(16px,5vw,48px)}
+
+  /* ---------- heading and navigation, on the site's grid paper ---------- */
+  .masthead{
+    border-bottom:1px solid var(--rule);
+    background:
+      repeating-linear-gradient(to right, var(--grid-line) 0 1px, transparent 1px 88px),
+      repeating-linear-gradient(to bottom, var(--grid-line) 0 1px, transparent 1px 30px);
+  }
+  .masthead .wrap{padding-block:22px 18px}
+  .brandline{display:flex; align-items:center; gap:14px; margin-bottom:14px}
+  .brand{font-family:var(--display); font-weight:800; font-size:24px; letter-spacing:-.035em; line-height:1}
+  .brand span{color:var(--signal)}
+  .tag{
+    font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--signal); border:1px solid var(--signal); border-radius:2px; padding:3px 10px; line-height:1.3;
+  }
+  nav{display:flex; flex-wrap:wrap; gap:4px 22px; font-size:14.5px}
+  nav a{color:var(--ink-2); text-decoration:none; padding-bottom:3px; border-bottom:2px solid transparent}
+  nav a:hover{color:var(--signal)}
+  nav a[aria-current]{color:var(--ink); font-weight:600; border-bottom-color:var(--signal)}
+
+  /* ---------- the page ---------- */
+  .doc{padding-block:34px 20px}
+  .doc h1{font-family:var(--display); font-weight:800; font-size:clamp(30px,5vw,42px); letter-spacing:-.035em; line-height:1.1; margin:0 0 18px}
+  .doc h2{font-family:var(--display); font-weight:700; font-size:26px; letter-spacing:-.02em; line-height:1.15;
+          margin:44px 0 14px; padding-top:22px; border-top:1px solid var(--rule)}
+  .doc hr + h2{margin-top:0; padding-top:0; border-top:none}
+  .doc h3{font-family:var(--display); font-weight:700; font-size:19px; letter-spacing:-.01em; line-height:1.2; margin:30px 0 10px}
+  .doc h4{font-size:16px; font-weight:600; margin:24px 0 8px}
+  .doc p{margin:0 0 14px}
+  .doc ul,.doc ol{margin:0 0 16px; padding-left:24px}
+  .doc li{margin:4px 0}
+  .doc li > p{margin-bottom:6px}
+  .doc a{color:var(--steel); text-decoration-thickness:1px; text-underline-offset:2px}
+  .doc a:hover{color:var(--signal)}
+  .doc code{font-family:var(--mono); font-size:.88em; background:var(--surface-2); padding:1px 5px; border-radius:3px}
+  .doc pre{background:var(--surface); border:1px solid var(--rule); border-radius:3px; padding:14px 16px;
+           overflow-x:auto; margin:0 0 18px; line-height:1.5}
+  .doc pre code{background:none; padding:0; font-size:12.5px}
+  .doc .table{overflow-x:auto; margin:0 0 18px; background:var(--surface); border:1px solid var(--rule); border-radius:3px}
+  .doc table{width:100%; border-collapse:collapse; font-size:14.5px}
+  .doc th{background:var(--surface-2); color:var(--ink-3); font-family:var(--mono); font-weight:500; font-size:10.5px;
+          letter-spacing:.1em; text-transform:uppercase; text-align:left; padding:9px 12px; border-bottom:1px solid var(--rule-strong)}
+  .doc td{padding:8px 12px; border-bottom:1px solid var(--rule); vertical-align:top}
+  .doc tr:last-child td{border-bottom:none}
+  .doc blockquote{margin:0 0 18px; padding:14px 18px; background:var(--surface); border:1px solid var(--rule);
+                  border-left:3px solid var(--signal); border-radius:3px; color:var(--ink-2)}
+  .doc blockquote p:last-child{margin:0}
+  .doc img{display:block; max-width:100%; height:auto; margin:6px 0 20px; border:1px solid var(--rule); border-radius:3px}
+  .doc hr{border:0; border-top:1px solid var(--rule); margin:40px 0 30px}
+  .doc details{margin:0 0 18px; padding:10px 16px; background:var(--surface); border:1px solid var(--rule); border-radius:3px}
+  .doc summary{cursor:pointer; font-weight:600}
+
+  footer{padding-block:18px 44px; border-top:1px solid var(--rule); font-size:13px; color:var(--ink-3)}
+  footer a{color:var(--ink-3)}
+</style>
+</head>
+<body>
+<header class="masthead">
+  <div class="wrap">
+    <div class="brandline"><span class="brand">XRay<span>XL</span></span><span class="tag">Docs &middot; 0.4.0</span></div>
+    <nav>
+      <a href="README.html">Start</a>
+      <a href="DemoWalkthrough.html" aria-current="page">Walkthrough</a>
+      <a href="TraceOptions.html">Trace options</a>
+      <a href="TraceRowModel.html">Trace rows</a>
+      <a href="ErrorsInTheTrace.html">Errors</a>
+      <a href="VBATracing.html">VBA tracing</a>
+    </nav>
+  </div>
+</header>
+<main class="wrap doc">
+<h1 id="xrayxl--demo">XRayXL — Demo</h1>
+<p>Ten workbooks that tour XRayXL a feature at a time. Each one tells you, on the sheet,
+what to press and what to look for in the trace. This page walks through the same
+tour with real rows from a real run.</p>
+<blockquote>
+<p>64-bit Excel required. XRayXL traces 64-bit Excel only.</p>
+</blockquote>
+<h2 id="whats-in-here">What's in here</h2>
+<pre><code>dist/
+  demo/
+    01_FirstTrace.xlsm      - VBA and XLL functions in one recalculation, and how to read a row.
+    02_Values.xlsm          - Ranges, arrays, Variants and their types.
+    03_Callers.xlsm         - What started each call: a cell, an array formula, an event, a button, a timer.
+    04_Errors.xlsm          - How calls end: threw, unwound, handled and unhandled, and error values.
+    05_VBACurves.xlsm       - A real VBA model, a yield-curve bootstrap, traced end to end.
+    06_Objects.xlsm         - A class module's members, and a Range, Worksheet and Workbook as arguments.
+    07_CallTree.xlsm        - Recursion, a ByRef argument changing, and End.
+    08_Threads.xlsm         - A thread-safe XLL on several calculation threads, and VBA on one.
+    09_XLLPricing.xlsm      - An option book built from XLL functions: text, ranges, arrays and references.
+    10_Plasma.xlsm          - A plasma painted two ways, cell by cell and in one call, to read in Perfetto.
+    DemoBehaviors64.xll     - A demo add-in: ReverseText, MakeSeries, MightDivide, SafeDivide, ThreadSafeSquare,
+                              CallCounter.
+    DemoFinance64.xll       - A demo add-in: BlackScholes, PresentValue, CompoundReturn, SlowSum, Fibonacci,
+                              NetPresentValue, DiscountCurve, WeightedAverage, RangeSize, QuoteLookup.
+  docs/                     - This walkthrough and the other guides, to open in a browser.
+  LICENSE                   - The licence: GPL-3.0.
+  MANIFEST.txt              - The version, tag, commit and SHA256 of every file here.
+  THIRD-PARTY-NOTICES.txt   - The licences of the third-party code in XRayXL.
+  XRayXL-Perfetto.html      - Send your trace file to Perfetto.
+  XRayXL64.xll              - The add-in.
+</code></pre>
+<p>The two demo add-ins are ordinary XLLs that know nothing of XRayXL. They are what you
+point the tracer at.</p>
+<h2 id="setting-up">Setting up</h2>
+<ol>
+<li><strong>Load the add-ins.</strong> Use <strong>File ▸ Open</strong> on <code>XRayXL64.xll</code> in <code>dist\</code>, then on
+<code>DemoFinance64.xll</code> and <code>DemoBehaviors64.xll</code> in <code>dist\demo\</code>. Opening an <code>.xll</code>
+loads it for this Excel session. To load them every time Excel starts, add them
+through <strong>File ▸ Options ▸ Add-ins ▸ Manage: Excel Add-ins ▸ Go ▸ Browse</strong> instead.</li>
+<li><strong>Show the Developer tab</strong> if it is hidden: <strong>File ▸ Options ▸ Customize Ribbon</strong>,
+and tick <em>Developer</em>. XRayXL's group is on that tab.</li>
+<li><strong>Open a workbook</strong> and enable macros.</li>
+</ol>
+<p>The <strong>XRayXL</strong> group on the Developer tab has six buttons:</p>
+<p><img src="images/ribbon.png" alt="The XRayXL group at the far right of Excel's Developer tab, with Arm, Disarm,
+Tail, Perfetto, Options and Diag buttons" /></p>
+<p><em><code>Disarm</code> is greyed until a recording is running, and <code>Perfetto</code> until one has finished.</em></p>
+<div class="table"><table>
+<thead>
+<tr>
+<th>Button</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Arm</strong></td>
+<td>Starts a recording. Every XLL function and VBA procedure that runs from now on writes rows to a new trace file</td>
+</tr>
+<tr>
+<td><strong>Disarm</strong></td>
+<td>Stops the recording and closes the file</td>
+</tr>
+<tr>
+<td><strong>Tail</strong></td>
+<td>Opens PowerShell on the trace file and shows each row as it is written. Live from the first arm</td>
+</tr>
+<tr>
+<td><strong>Perfetto</strong></td>
+<td>Shows the last trace on a timeline, in Perfetto UI in your browser. Live after Disarm. See <a href="#on-a-timeline">On a timeline</a></td>
+</tr>
+<tr>
+<td><strong>Options</strong></td>
+<td>The settings: what to capture, where the trace goes and in what format, the buffer and the log</td>
+</tr>
+<tr>
+<td><strong>Diag</strong></td>
+<td>Diagnostics: what is loaded into this Excel: its modules and their versions, the environment and the process. Read-only</td>
+</tr>
+</tbody>
+</table></div>
+<p>The buttons appear once a workbook is open. Expect your antivirus to take an interest in
+<code>XRayXL64.xll</code>: it hooks Excel's internals, which is what it is for.</p>
+<h3 id="the-loop">The loop</h3>
+<p>Every demo is the same four steps:</p>
+<ol>
+<li><strong>Arm</strong>.</li>
+<li>Do the thing the sheet says: recalculate, edit a cell, or press a button.</li>
+<li><strong>Disarm</strong>.</li>
+<li>Read the trace. Open <strong>Options ▸ Output</strong>, right-click <strong>Trace file</strong> and choose
+<strong>Reveal in File Explorer</strong>. It is a CSV, so Excel opens it. Or press <strong>Perfetto</strong>
+to see it on a timeline.</li>
+</ol>
+<p>To watch rows arrive while you work, press <strong>Tail</strong> on the ribbon after step 1.</p>
+<p>Traces are written to <code>%TEMP%\XRayXL\TraceFiles\</code>, one file per arm, named
+<code>XRayXL_Trace_&lt;id&gt;_&lt;pid&gt;.csv</code>. XRayXL writes nothing to your workbook: no cells, no
+VBA, no names.</p>
+<hr />
+<h2 id="01--your-first-trace">01 — Your first trace</h2>
+<p><strong>Try it:</strong> Arm, press <strong>Ctrl+Alt+F9</strong> to recalculate everything, then Disarm.</p>
+<p>Five cells: two VBA functions and three XLL functions from DemoFinance.</p>
+<div class="table"><table>
+<thead>
+<tr>
+<th>Cell</th>
+<th>Formula</th>
+<th>What it is</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>B11</td>
+<td><code>=RiskWeighted(1000000,3)</code></td>
+<td>VBA, calling a VBA helper <code>WeightFor</code></td>
+</tr>
+<tr>
+<td>B12</td>
+<td><code>=OptionBook(100)</code></td>
+<td>VBA, calling the XLL <code>BlackScholes</code> through <code>Application.Run</code></td>
+</tr>
+<tr>
+<td>B13</td>
+<td><code>=BlackScholes(100,100,1,0.05,0.2)</code></td>
+<td>XLL</td>
+</tr>
+<tr>
+<td>B14</td>
+<td><code>=SlowSum(2,3)</code></td>
+<td>a deliberately slow XLL</td>
+</tr>
+<tr>
+<td>B15</td>
+<td><code>=Fibonacci(30)</code></td>
+<td>a busy XLL</td>
+</tr>
+</tbody>
+</table></div>
+<p>The trace has fourteen rows. Here they are with the most useful columns:</p>
+<pre><code>seq kind  source span parent depth function      callerref  args                                         ret               ticks
+1   entry XLL    1    0      1     BlackScholes  ...!B13    a1:B=100 a2:B=100 a3:B=1 a4:B=0.05 a5:B=0.2
+2   exit  XLL    1    0      1     BlackScholes                                                         10.4505835721856    477
+3   entry XLL    2    0      1     Fibonacci     ...!B15    a1:B=30
+4   exit  XLL    2    0      1     Fibonacci                                                            832040            34952
+5   entry VBA    3    0      1     OptionBook    ...!B12    a1:Double=100
+6   entry XLL    4    0      1     BlackScholes  ...!B12    a1:B=100 a2:B=100 a3:B=1 a4:B=0.05 a5:B=0.2
+7   exit  XLL    4    0      1     BlackScholes                                                         10.4505835721856    162
+8   exit  VBA    3    0      1     OptionBook                                                           1045.05835721856   2815
+9   entry XLL    5    0      1     SlowSum       ...!B14    a1:B=2 a2:B=3
+10  exit  XLL    5    0      1     SlowSum                                                              5                432132
+11  entry VBA    6    0      1     RiskWeighted  ...!B11    a1:Double=1000000 a2:Long=3
+12  entry VBA    7    6      2     WeightFor     ...!B11    a1:Long=3
+13  exit  VBA    7    6      2     WeightFor                                                            1                   243
+14  exit  VBA    6    0      1     RiskWeighted                                                         1000000             742
+</code></pre>
+<p><code>...</code> stands for <code>'[01_FirstTrace.xlsm]First trace'</code>. Your <code>ticks</code> will differ.</p>
+<h3 id="reading-a-row">Reading a row</h3>
+<p>Every call writes two rows: an <strong>entry</strong> when it starts and an <strong>exit</strong> when it ends.
+The two share a <strong>span</strong> number, which is how you pair them.</p>
+<div class="table"><table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Says</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>kind</code></td>
+<td><code>entry</code> or <code>exit</code></td>
+</tr>
+<tr>
+<td><code>source</code></td>
+<td><code>XLL</code> for an add-in function, <code>VBA</code> for a VBA procedure</td>
+</tr>
+<tr>
+<td><code>span</code></td>
+<td>this call's number. Its entry and exit rows share it</td>
+</tr>
+<tr>
+<td><code>parent</code>, <code>depth</code></td>
+<td>where the call sits: <code>parent</code> is the span of the call that made it, <code>0</code> at the top</td>
+</tr>
+<tr>
+<td><code>module</code>, <code>function</code></td>
+<td>the add-in file or VBA module, and the function's name</td>
+</tr>
+<tr>
+<td><code>typetext</code></td>
+<td>the parameter types: the XLL's registration codes (<code>B</code> is a number), or VBA's declared types</td>
+</tr>
+<tr>
+<td><code>caller</code>, <code>callerref</code></td>
+<td>what started the call. Here every caller is a <code>cell</code>, and <code>callerref</code> is its address</td>
+</tr>
+<tr>
+<td><code>args</code></td>
+<td>on the entry row, the values going in, each as <code>aN:type=value</code>: <code>a1</code> is the first argument (on VBA rows <code>N</code> counts frame slots, so it can skip; see the row model)</td>
+</tr>
+<tr>
+<td><code>ret</code>, <code>rettype</code></td>
+<td>on the exit row, the value that came back and its type</td>
+</tr>
+<tr>
+<td><code>outcome</code></td>
+<td>how it ended. Everything here <code>returned</code>. Demo 04 shows the rest</td>
+</tr>
+<tr>
+<td><code>ticks</code></td>
+<td>how long it took, in <code>QueryPerformanceCounter</code> ticks. On most machines that is 10,000 to a millisecond</td>
+</tr>
+<tr>
+<td><code>trust</code></td>
+<td>whether <code>ticks</code> is exact (<code>exit</code>) or an upper bound. See demo 04</td>
+</tr>
+</tbody>
+</table></div>
+<p>The full list is in <a href="TraceRowModel.html">the row model</a>.</p>
+<h3 id="what-to-notice">What to notice</h3>
+<ul>
+<li><strong>Nesting.</strong> <code>WeightFor</code> has <code>parent=6</code> and <code>depth=2</code>: it was called by
+<code>RiskWeighted</code>, span 6.</li>
+<li><strong>VBA calling an XLL.</strong> <code>OptionBook</code>'s <code>BlackScholes</code> call (rows 6 and 7) falls
+between OptionBook's entry and exit, and carries the same <code>callerref</code>, B12. It reads
+<code>depth=1</code> and <code>parent=0</code>, because <strong>each source counts its own depth</strong>: an XLL
+function is the first XLL call on the stack, whatever VBA is running above it. Its
+place under OptionBook shows in the order of the rows.</li>
+<li><strong>Where the time went.</strong> <code>SlowSum</code> took 432,132 ticks, about 43 ms, more than
+everything else put together. <code>Fibonacci(30)</code> took about 3.5 ms. The <code>ticks</code> column
+is where to look first for a slow sheet.</li>
+<li><strong>Order.</strong> Rows appear in the order Excel calculated the cells, which is not the
+order on the sheet.</li>
+</ul>
+<h3 id="the-options-dialog">The Options dialog</h3>
+<p>Open <strong>Options</strong> from the ribbon:</p>
+<p><img src="images/options-capture.png" alt="The XRayXL Options dialog on its Capture page: XLL add-in functions and VBA
+procedures each with a depth dropdown set to All calls, tickboxes for capturing
+argument and return values, and for VBA a tickbox for describing objects" /></p>
+<div class="table"><table>
+<thead>
+<tr>
+<th>Page</th>
+<th>What is on it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Capture</strong></td>
+<td>For XLL and VBA separately: the <strong>depth</strong> (off, the top-level call only, or everything), whether to capture <strong>argument</strong> and <strong>return</strong> values, and for VBA whether to <strong>describe objects</strong> such as a Range</td>
+</tr>
+<tr>
+<td><strong>Events</strong></td>
+<td>Which of Excel's own events to record, each with its own tick box, or a preset: None, Calc, Selection, Calc &amp; Selection, All. <strong>Calc</strong> is the default. Demo 03 shows them</td>
+</tr>
+<tr>
+<td><strong>Output</strong></td>
+<td>The <strong>format</strong> (CSV or JSON Lines), the output folder, and the current trace file</td>
+</tr>
+<tr>
+<td><strong>Advanced</strong></td>
+<td>The <strong>buffer</strong> between Excel and the file, what to do when it fills, and the <strong>log level</strong> and log file</td>
+</tr>
+<tr>
+<td><strong>About</strong>, <strong>Notices</strong></td>
+<td>The version, the build time and commit, the licence and third-party notices</td>
+</tr>
+</tbody>
+</table></div>
+<p>Settings are read when a recording starts, so they are locked while you are armed.
+Everything is on by default. To get the most accurate timings, turn off argument and
+return values: capturing them is work done inside the call being timed.</p>
+<h3 id="on-a-timeline">On a timeline</h3>
+<p>After <strong>Disarm</strong>, press <strong>Perfetto</strong>. Your browser opens <code>XRayXL-Perfetto.html</code>, the page
+that sits beside <code>XRayXL64.xll</code>, and it has already read the trace: it shows how many
+calls, threads and errors it holds, and anything to watch for, such as dropped rows.
+Press <strong>Open Trace in Perfetto</strong>. Perfetto opens in a new tab and asks whether to trust
+&quot;An unknown origin&quot;. That is the page, so answer <strong>Yes</strong>.</p>
+<p><img src="images/SendToPerfetto.png" alt="The page the Perfetto button opens, here holding demo 10's trace: the file, a summary
+of what is in it, and the buttons to open it in Perfetto or download it" /></p>
+<p>In Perfetto (<a href="#10--a-plasma-painted-two-ways">demo 10</a> has a picture of it):</p>
+<ul>
+<li><strong>Each thread is a track</strong>, and <strong>each call is a bar</strong>, as long as the call took,
+under the call that made it. <code>WeightFor</code> sits under <code>RiskWeighted</code>. OptionBook's
+<code>BlackScholes</code> sits under <code>OptionBook</code>, which the rows could only show by their order.</li>
+<li><strong>Click a bar</strong> for its row's details: the arguments, the result, <code>outcome</code>, <code>ticks</code>,
+and two times worked out from them. <strong>XRayXL time</strong> is what the tracer itself spent
+inside the call: reading arguments, asking for the calling cell, writing rows. <strong>Own
+time</strong> is the rest, which is what the call would have taken with nothing watching.</li>
+<li><strong>The page's summary</strong> adds up XRayXL's time over the top-level calls, so you can see
+how much the recording cost. It is highest for many small VBA functions with
+argument and return values on.</li>
+<li><strong>Excel's events</strong>, and the arm and disarm, are markers on the thread that raised them.</li>
+<li><strong>Nothing is uploaded.</strong> The page converts the trace on your machine, and Perfetto
+keeps it in your browser, with sharing turned off.</li>
+</ul>
+<p>Opened on its own, the same page takes any trace file, CSV or JSON Lines: press
+<strong>Input XRayXL Trace</strong>, or drop the file on it. That is also the way for a trace over
+256 MB, which the button refuses.</p>
+<hr />
+<h2 id="02--arguments-and-values">02 — Arguments and values</h2>
+<p><strong>Try it:</strong> Arm, press <strong>Ctrl+Alt+F9</strong>, then Disarm.</p>
+<p>This workbook is about the <code>args</code> and <code>ret</code> columns: how a range, an array or a Variant is
+written, so that you can read it back.</p>
+<pre><code>function     args / ret
+CellCount    a1:Variant=Range@0x23E81224570([02_Values.xlsm]Values!B23:D25)=Variant[1..3,1..3]{{1.5,&quot;text&quot;,TRUE},{42,#N/A,Empty},{-2.25,&quot;more&quot;,46284}}
+MixedTypes   ret Variant[0..6]{Integer(1),2.5,Long(3),Currency(1.5000),Date(46284),&quot;text&quot;,TRUE}
+TimesTable   ret Long[1..3,1..3]{{1,2,3},{2,4,6},{3,6,9}}
+Total        a1:Ref&amp;=Double[1..5]{1,4,9,16,25}
+MakeSeries   ret Variant[1..1,1..4]{{1,4,9,16}}
+</code></pre>
+<h3 id="the-grammar">The grammar</h3>
+<p>An array is written as its <strong>element type</strong>, its <strong>bounds</strong>, then its values:</p>
+<pre><code>Long[1..3,1..3]{{1,2,3},{2,4,6},{3,6,9}}
+^    ^         ^
+|    |         the values: one brace level per dimension, row 1 first
+|    the bounds of each dimension, as declared (1..3, 0..6, ...)
+the element type
+</code></pre>
+<ul>
+<li><strong>A 2-D array is written row by row.</strong> <code>{{1,2,3},{2,4,6},{3,6,9}}</code> is row 1, then
+row 2, then row 3.</li>
+<li><strong>A range</strong> reads <code>Range@&lt;address in memory&gt;(&lt;the range's address&gt;)=</code> followed by
+its cells as a <code>Variant</code> array: <code>CellCount</code> received <code>B23:D25</code>, three rows of three.
+The blank cell reads <code>Empty</code>, and the <code>#N/A</code> cell reads <code>#N/A</code>.</li>
+<li><strong>Numbers in a Variant.</strong> A <code>Double</code> is written bare (<code>2.5</code>). Every other type names
+itself: <code>Integer(1)</code>, <code>Long(3)</code>, <code>Currency(1.5000)</code>, <code>Date(46284)</code>, where 46284 is
+Excel's serial number for 19 September 2026. Booleans are <code>TRUE</code>/<code>FALSE</code>.</li>
+<li><strong>Text is always in quotes</strong>, so a number and text that look alike never read the
+same: <code>Integer(1)</code> is the number 1 and <code>&quot;1&quot;</code> is the text, <code>#N/A</code> is Excel's error and
+<code>&quot;#N/A&quot;</code> is text, <code>Empty</code> is an empty Variant and <code>&quot;&quot;</code> an empty string. A quote or a
+backslash inside the text is escaped as <code>\&quot;</code> or <code>\\</code>, and a character outside plain
+ASCII as <code>\uNNNN</code>.</li>
+<li><strong>In the file itself the quotes are doubled</strong>, because that is how CSV writes a quote
+inside a field: <code>a1:Variant=&quot;1&quot;</code> is stored as <code>&quot;a1:Variant=&quot;&quot;1&quot;&quot;&quot;</code>. Excel, and anything
+else that reads CSV, shows it as <code>a1:Variant=&quot;1&quot;</code>.</li>
+<li><strong>In a typed array</strong> such as <code>Long[...]</code>, the elements are bare, because the header
+already says what they are.</li>
+<li><strong>An XLL array</strong> reads like a VBA one. <code>MakeSeries(4)</code> returned one row of four
+values, <code>Variant[1..1,1..4]</code>.</li>
+</ul>
+<p>There is no truncation: every element is written. The one limit is a single value whose
+text would pass 4 MB. It is written as its header alone, and the log counts it at disarm.</p>
+<h3 id="declared-or-recognised">Declared or recognised</h3>
+<p><code>Total</code>'s argument reads <code>a1:Ref&amp;=...</code>, where you might have expected <code>a1:Double()</code>.
+<code>SumOfSquares</code> passes its array to <code>Total(ByRef squares() As Double)</code>, and the compiled
+VBA says only &quot;a reference to eight bytes&quot; for that parameter: <code>Ref&amp;</code>. The tracer then
+recognised the array from its own descriptor, which names its element type (<code>Double</code>)
+and bounds (<code>1..5</code>).</p>
+<p>A type after <code>a1:</code> is <strong>declared</strong> when VBA's compiled code names it, and <strong>recognised</strong>
+when the tracer worked it out from the value itself, under strict checks. Most of the time
+XRayXL finds a parameter's type: every argument in demo 05's recalculation has one. A <code>?</code>
+marks the rare one it could not. <a href="TraceRowModel.html#how-xrayxl-knows-a-vba-arguments-type">How XRayXL knows a VBA argument's
+type</a> explains each form.</p>
+<hr />
+<h2 id="03--who-called-it">03 — Who called it</h2>
+<p><strong>Try it:</strong> Arm, then in turn:</p>
+<ol>
+<li>Press <strong>Ctrl+Alt+F9</strong>.</li>
+<li>Type a number into the blue <strong>Trigger</strong> cell.</li>
+<li>Press <strong>Run a macro</strong>.</li>
+<li>Press <strong>Start a timer</strong> and wait a second.</li>
+</ol>
+<p>Then Disarm.</p>
+<p>The <code>caller</code> and <code>callerref</code> columns say what started each call:</p>
+<pre><code>function          caller  callerref                          parent depth
+ThreeOf           cell    [03_Callers.xlsm]Callers!B12:D12   0      1
+Twice             cell    [03_Callers.xlsm]Callers!B11       0      1
+CallCounter       cell    [03_Callers.xlsm]Callers!B13       0      1     &lt;- the recalculation
+CallCounter       cell    [03_Callers.xlsm]Callers!B13       0      1     &lt;- again, after the edit
+Worksheet_Change  none    ref                                0      1
+  Helper          none    ref                                5      2
+FromTheButton     name    RunAMacro                          0      1
+  Helper          name    RunAMacro                          7      2
+StartTimer        name    StartATimer                        0      1
+TimerTick         none    ref                                0      1
+  Helper          none    ref                                10     2
+</code></pre>
+<div class="table"><table>
+<thead>
+<tr>
+<th>What started it</th>
+<th><code>caller</code></th>
+<th><code>callerref</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>A formula in one cell</td>
+<td><code>cell</code></td>
+<td>the cell, <code>...!B11</code></td>
+</tr>
+<tr>
+<td>An array formula over several cells</td>
+<td><code>cell</code></td>
+<td>the whole range, <code>...!B12:D12</code></td>
+</tr>
+<tr>
+<td>A button or shape</td>
+<td><code>name</code></td>
+<td>the button's name, <code>RunAMacro</code></td>
+</tr>
+<tr>
+<td>An event, or a macro run by <code>Application.OnTime</code></td>
+<td><code>none</code></td>
+<td><code>ref</code>: Excel reported no calling cell</td>
+</tr>
+</tbody>
+</table></div>
+<p>What to notice:</p>
+<ul>
+<li><strong>The array formula</strong> <code>{=ThreeOf(5)}</code> over B12:D12 runs once, and its caller is the
+whole range.</li>
+<li><strong><code>CallCounter</code></strong> is volatile, so it runs whenever anything recalculates. Editing the
+Trigger cell caused the second call, and nothing it depends on changed.</li>
+<li><strong><code>Worksheet_Change</code></strong> is VBA run by an event, not by a calculation. Its argument
+shows the cell you edited: <code>a1:Object=Range@...([03_Callers.xlsm]Callers!B14)=5</code>.</li>
+<li><strong>The timer.</strong> <code>StartTimer</code> ran from the button, and <code>TimerTick</code> ran a second later,
+run by Excel itself with no button and no cell behind it. The trace records both, as
+separate top-level calls.</li>
+<li><strong><code>Helper</code></strong> is the same procedure called from three places. Its <code>parent</code> says which
+one called it each time, and its <code>a1:String</code> argument says so too.</li>
+</ul>
+<h3 id="excels-own-events">Excel's own events</h3>
+<p>Between the calls, the trace also records the events Excel raises, one <code>event</code> row
+each. These are the rows from the recalculation and the edit, with the first calls left
+out:</p>
+<pre><code>seq kind  source function          callerref                      args
+1   event XRayXL arm                                             qpcFrequency=10000000 utc=&quot;2026-09-27T10:04:45.5364303Z&quot; pid=5976 XLL_DEPTH=&quot;ALL&quot; ...
+6   entry XLL    CallCounter       ...!B13
+7   exit  XLL    CallCounter
+8   event Excel  SheetCalculate    [03_Callers.xlsm]Callers       Sh:Object=Worksheet@0x27B83E35C80([03_Callers.xlsm]Callers)
+9   event Excel  AfterCalculate
+10  entry XLL    CallCounter       ...!B13                        &lt;- the edit's recalculation
+11  exit  XLL    CallCounter
+12  event Excel  SheetCalculate    [03_Callers.xlsm]Callers       Sh:Object=Worksheet@0x27B83E35C80(...)
+13  event Excel  AfterCalculate
+14  entry VBA    Worksheet_Change  ref                            a1:Object=Range@0x27B83E34FB0([03_Callers.xlsm]Callers!B14)=7
+15  entry VBA    Helper            ref                            a1:String=&quot;change event&quot;
+16  exit  VBA    Helper
+17  exit  VBA    Worksheet_Change
+18  event Excel  SheetChange       [03_Callers.xlsm]Callers!B14   Sh:Object=Worksheet@0x27B83E35C80(...) Target:Range=Range@0x27B83E34FB0([03_Callers.xlsm]Callers!B14)=7
+19  event XRayXL disarm                                          rowsDropped=0 pauses=0 ... eventsRecorded=5 eventsLost=0
+</code></pre>
+<ul>
+<li><strong>An event is not a call.</strong> It has one row, not two, and its <code>span</code>, <code>parent</code> and
+<code>depth</code> are <code>0</code>. <code>callerref</code> is the most specific place it names: the sheet for
+<code>SheetCalculate</code>, the edited cell for <code>SheetChange</code>. <code>args</code> names each parameter,
+and <code>Target</code> carries the new value, <code>7</code>.</li>
+<li><strong>The order is Excel's.</strong> Typing into B14 reads <code>SheetCalculate</code>, <code>AfterCalculate</code>,
+and only then the change: Excel recalculates before it tells anyone a cell changed.
+The sheet's own <code>Worksheet_Change</code> handler runs before the application hears of it,
+so its rows come before <code>SheetChange</code>. Both saw the same <code>Range</code>, at the same address.</li>
+<li><strong>Arm and disarm are events too.</strong> The <code>arm</code> row lists every setting in force, and
+the <code>disarm</code> row the session's totals.</li>
+<li><strong>Which events</strong> is the <strong>Events</strong> page in Options. The default, <strong>Calc</strong>, is these
+three and the other calculation events, such as a table or PivotTable updating.
+<strong>Selection</strong> is where you are and what you click: <code>SheetSelectionChange</code>, activating
+a sheet, workbook or window, double- and right-clicks, and following a hyperlink.
+<strong>All</strong> records everything Excel's <code>Application</code> object raises. Events that fire often
+are marked ⚡.</li>
+</ul>
+<p>In <a href="#on-a-timeline">Perfetto</a>, events are markers on the thread that raised them, among
+the calls.</p>
+<hr />
+<h2 id="04--errors-and-how-calls-end">04 — Errors and how calls end</h2>
+<p><strong>Try it:</strong> Arm, press <strong>Ctrl+Alt+F9</strong>, press <strong>Run the error chain</strong>, then Disarm.</p>
+<p>The <code>outcome</code> column says how each call ended: <code>returned</code>, <code>threw</code>, <code>unwound</code>, <code>handled</code>,
+<code>unhandled</code> or <code>abandoned</code>. <a href="ErrorsInTheTrace.html">ErrorsInTheTrace.md</a> explains each one, and the cases
+where VBA stops at its error dialog instead of passing an error on.</p>
+<h3 id="an-error-passed-up-a-chain">An error passed up a chain</h3>
+<p><strong>Run the error chain</strong> runs <code>Outer</code>, which calls <code>Middle</code>, which calls <code>Thrower</code>.
+<code>Thrower</code> raises an error, <code>Middle</code> does not catch it, and <code>Outer</code> does:</p>
+<pre><code>function       span parent depth ret  outcome   trust
+RunErrorChain  9    0      1          returned  exit
+  Outer        10   9      2          handled   exit
+    Middle     11   10     3          unwound   backstop
+      Thrower  12   11     4          threw     backstop
+</code></pre>
+<p>(Exit rows, reordered to show the chain.) Read it from the bottom up:</p>
+<ul>
+<li><strong><code>threw</code></strong>: the error was raised here and left this procedure.</li>
+<li><strong><code>unwound</code></strong>: the error passed through, and nothing here caught it.</li>
+<li><strong><code>handled</code></strong>: an error from below was caught here, and this procedure carried on.</li>
+</ul>
+<p><strong><code>trust=backstop</code></strong> means the procedure left without running its normal exit, so the
+tracer closed it at the next thing it saw. The <code>ticks</code> on such a row is an upper bound,
+not an exact reading.</p>
+<h3 id="errors-in-worksheet-functions">Errors in worksheet functions</h3>
+<pre><code>function     args                             ret      outcome
+SafeRatio    a1:Double=1 a2:Double=0          &quot;n/a&quot;    handled
+  Divide     a1:Double=1 a2:Double=0                   threw
+RawRatio     a1:Double=1 a2:Double=0                   unhandled
+  Divide     a1:Double=1 a2:Double=0                   threw
+CodeFor      a1:String=&quot;GBP&quot;                  #N/A     returned
+Scaled       a1:Double=10 a2:Variant=Missing  10       returned
+MightDivide  a1:B=10 a2:B=0                   #DIV/0!  returned
+SafeDivide   a1:B=10 a2:B=0                   0        returned
+</code></pre>
+<ul>
+<li><strong><code>handled</code> or <code>unhandled</code>.</strong> <code>SafeRatio</code> has an <code>On Error</code> handler, so it reads
+<code>handled</code> and returns <code>&quot;n/a&quot;</code>. <code>RawRatio</code> has none. The error leaves VBA into the cell,
+Excel shows <code>#VALUE!</code>, and the function reads <code>unhandled</code>. In both cases <code>Divide</code>
+reads <code>threw</code>, so you can see where the error started.</li>
+<li><strong>An error value is not an error.</strong> <code>CodeFor(&quot;GBP&quot;)</code> returns <code>CVErr(xlErrNA)</code>. Nothing
+was raised, so it reads <code>returned</code>, with <code>#N/A</code> in <code>ret</code>. An XLL returning
+<code>#DIV/0!</code> is the same.</li>
+<li><strong><code>Missing</code>.</strong> <code>Scaled(10)</code> leaves out its <code>Optional</code> second argument, and the trace
+says so: <code>a2:Variant=Missing</code>.</li>
+</ul>
+<hr />
+<h2 id="05--a-real-model-vbacurves">05 — A real model: VBACurves</h2>
+<p><code>05_VBACurves.xlsm</code> is a working VBA model rather than a demo sheet: a USD SOFR curve
+bootstrapped from deposits, futures and swaps on <strong>Market Data</strong>, and zero rates,
+forward rates and a chart on <strong>Curve Analytics</strong>. It is one module of ordinary VBA, with
+no add-in calls.</p>
+<p><strong>Try it:</strong> Arm, press <strong>Ctrl+Alt+F9</strong>, then Disarm.</p>
+<p>One full recalculation is about 5,350 calls: 10,710 rows, 3.3 MB of CSV. The busiest
+functions:</p>
+<pre><code>calls  function
+  973  InterpDF
+  969  CurveDF
+  852  Demo_AddMonths
+  776  Demo_YearFrac
+  776  Demo_BasisCode
+  224  HandleToIndex
+</code></pre>
+<h3 id="finding-your-way-around">Finding your way around</h3>
+<ul>
+<li><p><strong>Filter on <code>depth=1</code></strong> to see just the cells. Each is a worksheet function Excel
+called, and everything beneath it is what that function did.</p>
+</li>
+<li><p><strong>Follow a span.</strong> The whole curve is built by one cell, <code>Market Data!B72</code>:</p>
+<pre><code>span parent depth function         ret
+531  0      1     Demo_BuildCurve  &quot;CRV:USD-SOFR-OIS:1&quot;   (ticks 175524, about 18 ms)
+532  531    2       LoadInstruments
+533  531    2       BootstrapCash
+539  531    2       BootstrapFutures
+540  539    3         InterpDF
+548  531    2       BootstrapSwaps
+609  531    2       FindCurve
+</code></pre>
+<p>Filter <code>parent</code> on 531 to see its direct calls.</p>
+</li>
+<li><p><strong>A range, row by row.</strong> <code>Demo_BuildCurve</code>'s fourth argument is the instrument table:</p>
+<pre><code>a4:Object=Range@0x28487BFC100('[05_VBACurves.xlsm]Market Data'!A50:G69)=Variant[1..20,1..7]{{&quot;DEPO&quot;,&quot;ON&quot;,46280,46281,0.00277777777777778,0.03865,&quot;Y&quot;},{&quot;DEPO&quot;,&quot;1W&quot;,...
+</code></pre>
+<p><code>LoadInstruments</code> passes it on and hands back the rows marked <code>Y</code> through a <code>ByRef</code>
+argument. Its exit row shows that argument changing, <code>a2:Variant&amp;=Variant[1..20,1..6]{...}</code>.
+An exit row carries <code>args</code> only for a <code>ByRef</code> argument that changed.</p>
+</li>
+</ul>
+<h3 id="the-same-trace-as-json-lines">The same trace as JSON Lines</h3>
+<p>Open <strong>Options ▸ Output</strong>, set <strong>Format</strong> to <strong>JSON Lines</strong>, then Arm, recalculate and
+Disarm again. The file is now <code>XRayXL_Trace_&lt;id&gt;_&lt;pid&gt;.jsonl</code>, one JSON object per line,
+with the same fields as the CSV columns:</p>
+<pre><code class="language-json">{&quot;seq&quot;:1,&quot;input&quot;:1,&quot;kind&quot;:&quot;entry&quot;,&quot;source&quot;:&quot;VBA&quot;,&quot;span&quot;:1,&quot;parent&quot;:0,&quot;depth&quot;:1,&quot;thread&quot;:49172,&quot;qpc&quot;:3981638123735,&quot;module&quot;:&quot;[05_VBACurves.xlsm]Module1&quot;,&quot;function&quot;:&quot;Demo_TenorNum&quot;,&quot;proc&quot;:&quot;0x18A81C414BC&quot;,&quot;typetext&quot;:&quot;String&quot;,&quot;caller&quot;:&quot;cell&quot;,&quot;callerref&quot;:&quot;'[05_VBACurves.xlsm]Market Data'!C25&quot;,&quot;argcount&quot;:1,&quot;args&quot;:[{&quot;slot&quot;:1,&quot;type&quot;:&quot;String&quot;,&quot;value&quot;:{&quot;t&quot;:&quot;String&quot;,&quot;v&quot;:&quot;6M&quot;}}]}
+{&quot;seq&quot;:4,&quot;input&quot;:4,&quot;kind&quot;:&quot;exit&quot;,&quot;source&quot;:&quot;VBA&quot;,&quot;span&quot;:1,&quot;parent&quot;:0,&quot;depth&quot;:1,&quot;thread&quot;:49172,&quot;qpc&quot;:3981638124839,&quot;module&quot;:&quot;[05_VBACurves.xlsm]Module1&quot;,&quot;function&quot;:&quot;Demo_TenorNum&quot;,&quot;proc&quot;:&quot;0x18A81C414BC&quot;,&quot;ret&quot;:{&quot;t&quot;:&quot;Long&quot;,&quot;v&quot;:6},&quot;rettype&quot;:&quot;Long&quot;,&quot;outcome&quot;:&quot;returned&quot;,&quot;ticks&quot;:1104,&quot;trust&quot;:&quot;exit&quot;}
+</code></pre>
+<p>Every value is structured and names its type, including a <code>Double</code>. An array keeps its
+element type and bounds, and its values are nested one list per dimension:</p>
+<pre><code class="language-json">{&quot;slot&quot;:1,&quot;type&quot;:&quot;Ref&amp;&quot;,&quot;value&quot;:{&quot;t&quot;:&quot;Array&quot;,&quot;elem&quot;:&quot;Double&quot;,&quot;bounds&quot;:[[0,400]],&quot;v&quot;:[0,0.0191780821917808,0.0876712328767123,...]}}
+</code></pre>
+<p>That makes JSON Lines the format to choose when a program will read the trace. The price
+is size: this recalculation is 5.8 MB as JSON Lines, against 3.3 MB of CSV.
+<a href="TraceRowModel.html#json-lines">JSON Lines</a> has the full schema. Set the format back to
+<strong>CSV</strong> when you are done.</p>
+<hr />
+<h2 id="06--objects-and-classes">06 — Objects and classes</h2>
+<p><strong>Try it:</strong> Arm, press <strong>Ctrl+Alt+F9</strong>, press <strong>Describe the objects</strong>, then Disarm.</p>
+<p><code>PositionValue(100,2.5)</code> creates a <code>Position</code> from a class module, sets its quantity,
+values it and lets it go. Every class member is a call of its own:</p>
+<pre><code>span parent depth module                      function          args            ret
+1    0      1     [06_Objects.xlsm]Objects    PositionValue     a1:Double=100 a2:Double=2.5
+2    1      2     [06_Objects.xlsm]Position   Class_Initialize
+3    1      2     [06_Objects.xlsm]Position   Qty               a1:Double=100
+4    1      2     [06_Objects.xlsm]Position   Value             a1:Double=2.5   250
+     ...PositionValue's exit row, ret 250...
+5    0      1     [06_Objects.xlsm]Position   Class_Terminate
+</code></pre>
+<ul>
+<li><strong><code>New</code> runs <code>Class_Initialize</code></strong> inside the procedure that said <code>New</code>: <code>parent=1</code>.</li>
+<li><strong>A property is a call.</strong> <code>p.Qty = units</code> is the <code>Property Let Qty</code>, with its value as <code>a1</code>.</li>
+<li><strong><code>Class_Terminate</code> comes after PositionValue's exit row</strong>, at depth 1. VBA releases
+the object once the function has finished, so the destructor is not nested under it.</li>
+</ul>
+<p><strong>Excel objects as arguments.</strong> With <strong>Describe objects</strong> on (Options ▸ Capture, the
+default), an object argument is named and, for a Range, Worksheet, Workbook, Collection or
+Dictionary, described:</p>
+<pre><code>RangeInfo      a1:Object=Range@0x228072FDBE0([06_Objects.xlsm]Objects!B17:C18)=Variant[1..2,1..2]{{1.5,&quot;a&quot;},{2.5,&quot;b&quot;}}
+Describe       a1:Object=Worksheet@0x2280464D740([06_Objects.xlsm]Objects)
+Describe       a1:Object=Workbook@0x2280464A040([06_Objects.xlsm])
+Describe       a1:Object=Collection@0x2281D2B2EF0=Variant[1..2]{&quot;a&quot;,Long(2)}
+FirstDataCell  ret Range@0x228072FBD20([06_Objects.xlsm]Objects!B17)=1.5
+</code></pre>
+<p>The class comes from the object itself, so a parameter declared <code>As Object</code> still reads
+<code>Worksheet</code>. A Range shows its address and then its cells, and a single cell is a plain
+value. A Collection shows its items as a 1-D array; a Dictionary would show one <code>{key,item}</code>
+row per entry, as a 2-D array. The address after <code>@</code> lets you
+follow one object from row to row. Turning <strong>Describe objects</strong> off leaves only
+<code>object@0x…</code>, which also stops the tracer asking Excel anything during the call.</p>
+<hr />
+<h2 id="07--the-call-tree">07 — The call tree</h2>
+<p><strong>Try it:</strong> Arm, press <strong>Ctrl+Alt+F9</strong>, press <strong>Stop everything</strong>, then Disarm.</p>
+<p><strong>Recursion.</strong> <code>Factorial(5)</code> calls itself four times. Each call gets its own span, and
+<code>parent</code> points to the call above it:</p>
+<pre><code>span parent depth args        ret
+12   0      1     a1:Long=5   120
+13   12     2     a1:Long=4   24
+14   13     3     a1:Long=3   6
+15   14     4     a1:Long=2   2
+16   15     5     a1:Long=1   1
+</code></pre>
+<p><strong>Branching.</strong> <code>VbaFib(4)</code> makes nine calls. Two of them run at depth 3 with different
+parents, so <code>depth</code> alone cannot tell you which call made which, but <code>parent</code> can:</p>
+<pre><code>span parent depth args
+3    0      1     a1:Long=4
+4    3      2     a1:Long=3
+5    4      3     a1:Long=2
+6    5      4     a1:Long=1
+7    5      4     a1:Long=0
+8    4      3     a1:Long=1
+9    3      2     a1:Long=2
+10   9      3     a1:Long=1
+11   9      3     a1:Long=0
+</code></pre>
+<p><strong>A ByRef argument that changed.</strong> <code>Clamped(150)</code> passes a variable <code>ByRef</code> to
+<code>ClampInPlace</code>, which caps it at 100. The exit row carries the argument again, because
+it changed:</p>
+<pre><code>kind  function      args
+entry ClampInPlace  a1:Double&amp;=150 a2:Double=0 a3:Double=100
+exit  ClampInPlace  a1:Double&amp;=100
+</code></pre>
+<p><code>Double&amp;</code> means &quot;a Double, passed by reference&quot;. <code>Clamped(50)</code> makes the same call,
+and its exit row has no <code>args</code>, because nothing changed. An exit row only lists <code>ByRef</code>
+arguments that moved.</p>
+<p><strong><code>End</code>.</strong> <strong>Stop everything</strong> runs <code>StopEverything</code> → <code>Level1</code> → <code>Level2</code>, which says
+<code>End</code>. All VBA stops at once and no procedure returns, so all three read
+<code>outcome abandoned</code>, <code>trust end</code>.</p>
+<hr />
+<h2 id="08--threads">08 — Threads</h2>
+<p><strong>Try it:</strong> Check that <strong>File ▸ Options ▸ Advanced ▸ Formulas ▸ Enable multi-threaded
+calculation</strong> is ticked. Then Arm, press <strong>Ctrl+Alt+F9</strong>, and Disarm.</p>
+<p>Columns D and E each hold 500 formulas. <code>ThreadSafeSquare</code> is registered thread-safe
+(<code>rettype Q$</code>, the <code>$</code>), so Excel spreads it across its calculation threads. <code>VbaSquare</code>
+is VBA, which Excel always runs on its main thread. Counting entry rows by <code>thread</code>:</p>
+<pre><code>calls  function          thread
+  43   ThreadSafeSquare  36940
+  43   ThreadSafeSquare  57248
+  ...  ten more threads, 31 to 44 calls each
+ 500   VbaSquare         57008
+   1   ReverseText       57008
+</code></pre>
+<p>That was twelve threads, the setting on this machine. <code>ReverseText</code> is not thread-safe,
+so it ran on the main thread with the VBA. It also shows an XLL string going both ways:
+<code>typetext C%</code>, <code>a1:C%=&quot;hello&quot;</code>, <code>ret &quot;olleh&quot;</code>.</p>
+<p>On a multi-threaded recalculation, rows from different threads interleave in the file.
+The <code>thread</code> column separates them, and <code>span</code> still pairs each entry with its exit.</p>
+<hr />
+<h2 id="09--an-option-book-all-xll">09 — An option book, all XLL</h2>
+<p><strong>Try it:</strong> Arm, press <strong>Ctrl+Alt+F9</strong>, then Disarm.</p>
+<p>A small priced portfolio with no VBA at all: quotes, ten option positions, portfolio
+figures, a discount curve and a price grid. It is 45 XLL calls, and each argument type
+reads differently:</p>
+<div class="table"><table>
+<thead>
+<tr>
+<th>Formula</th>
+<th>Registered</th>
+<th>In the trace</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>=QuoteLookup(A20,Quotes)</code></td>
+<td><code>QC%Q</code></td>
+<td><code>a1:C%=&quot;ACME&quot; a2:Q=Variant[1..5,1..2]{{&quot;ACME&quot;,102.5},{&quot;BOLT&quot;,48.2},...}</code>: the text, then the whole quotes table as values</td>
+</tr>
+<tr>
+<td><code>=BlackScholes(F20,B20,C20,Rate,D20)</code></td>
+<td><code>QBBBBB</code></td>
+<td><code>a1:B=102.5 a2:B=100 ...</code>: five numbers</td>
+</tr>
+<tr>
+<td><code>=WeightedAverage(G20:G28,E20:E28)</code></td>
+<td><code>QK%K%</code></td>
+<td><code>a1:K%=Double[1..9,1..1]{{12.0999...},...} a2:K%=Double[1..9,1..1]{{10},{-5},{20},...}</code>: plain arrays of doubles</td>
+</tr>
+<tr>
+<td><code>=RangeSize(A20:H29)</code></td>
+<td><code>QU</code></td>
+<td><code>a1:U=SRef(R20C1:R29C8)</code>: a reference, named and deliberately not read; <code>ret 80</code></td>
+</tr>
+<tr>
+<td><code>=NetPresentValue(Rate,B37:F37)</code></td>
+<td><code>QBQ</code></td>
+<td><code>a1:B=0.05 a2:Q=Variant[1..1,1..5]{{100,100,100,100,1100}}</code></td>
+</tr>
+<tr>
+<td><code>=DiscountCurve(Rate,B40:B44)</code></td>
+<td><code>QBQ</code></td>
+<td><code>ret Variant[1..5,1..1]{{0.9759...},{0.9523...},...}</code>: a column in, a column out</td>
+</tr>
+</tbody>
+</table></div>
+<p>What to notice:</p>
+<ul>
+<li><strong>The call that isn't there.</strong> Row 29's ticker, <code>ZZZZ</code>, is not quoted, so
+<code>QuoteLookup</code> returns <code>#N/A</code>. Excel then never calls <code>BlackScholes</code> for that row,
+because its argument is an error. You get 29 BlackScholes calls, not 30, and none has
+<code>callerref …!G29</code>. The trace records what Excel did, not what the sheet might suggest.</li>
+<li><strong>Calculation order.</strong> A position's <code>BlackScholes</code> usually comes straight after its
+<code>QuoteLookup</code>, with the grid's independent cells slotted in between.
+<code>WeightedAverage</code>, which needs every price, comes last.</li>
+<li><strong>A nested formula is two calls, one after the other.</strong> <code>B35</code> holds
+<code>=PresentValue(CompoundReturn(1000,0.07,10),Rate,10)</code>. Both calls read <code>depth 1</code> and
+<code>callerref …!B35</code>. <code>CompoundReturn</code> finishes, returning <code>1967.15135728957</code>, before
+<code>PresentValue</code> starts and receives that number as <code>a1</code>. Excel works out the inner
+function first, so the two never nest.</li>
+<li><strong>Every XLL exit reads <code>returned</code></strong>, the <code>#N/A</code> one included. A returned error value
+is a result, as in demo 04.</li>
+</ul>
+<hr />
+<h2 id="10--a-plasma-painted-two-ways">10 — A plasma, painted two ways</h2>
+<p><strong>Try it:</strong> Arm, press <strong>Start the show</strong> and watch for 20 seconds, then Disarm and
+press <strong>Perfetto</strong>.</p>
+<p>Every cell on this sheet is 10 pixels square, and the 96 × 54 block in the middle is a
+canvas. The show draws a plasma on it, four sine waves added together with the colours
+cycling, for two acts of ten seconds each, with a countdown at the top left:</p>
+<ul>
+<li><strong>Act 1</strong> colours each cell with its own call to Excel, <code>Interior.Color</code>, 5,184 calls a
+frame. You can watch each frame sweep down the canvas.</li>
+<li><strong>Act 2</strong> writes all 5,184 values in one call, <code>Range.Value2 = field</code>, and the canvas's
+colour scale does the colouring.</li>
+</ul>
+<p><img src="images/Plasma.png" alt="Demo 10 after the show: the plasma on its canvas, the countdown at 0, and the status
+line saying act 1 drew 4 frames and act 2 drew 287" /></p>
+<p>The maths is the same in both acts, and so are the cells. On the traced run in Perfetto
+below, act 1 drew 4 frames in its ten seconds, the last cut short when time ran out, and act
+2 drew 245, fewer than the 287 above because the tracer was recording every call: about
+2.5 seconds a frame against 40 milliseconds. Each call across to Excel costs far more than
+the VBA around it, and act 1 makes 5,184 of them a frame where act 2 makes one.</p>
+<h3 id="in-perfetto">In Perfetto</h3>
+<p><img src="images/Perfetto.png" alt="Demo 10's trace in Perfetto UI: StartShow over two RunAct slices, act 1's wide frames
+and act 2's thin ones, with part of act 1 selected and its calls summed by name below" /></p>
+<p>Here 1.75 seconds of act 1 is selected, and the Pivot Table below sums it by name: 3,002
+<code>SetPixel</code> calls took 1.5 seconds between them, and the colour maths inside them, <code>Palette</code>
+with <code>Mix</code> beneath it, 72 milliseconds of that. The rest is Excel colouring cells.</p>
+<ul>
+<li><strong><code>StartShow</code></strong> spans the whole show, with one <strong><code>RunAct</code></strong> under it for each act.</li>
+<li><strong>Act 1's frames are wide.</strong> Each is a sliver of <code>ComputeField</code>, its 54 <code>PlasmaRow</code>
+calls, then <code>PaintOneCellAtATime</code>: a dense comb of <code>SetPixel</code> calls, each with <code>Palette</code>
+and <code>Mix</code> beneath it. Zoom into one <code>SetPixel</code> and click it: most of its time is its
+own, spent in Excel colouring one cell.</li>
+<li><strong>Act 2's frames are thin and close together</strong>: <code>ComputeField</code>, then one
+<code>PaintInOneCall</code>.</li>
+<li><strong>Drag across a second of each act</strong>, as above, and compare the two Pivot Tables.</li>
+<li><strong>Excel's events</strong> are markers on the same track: a <code>SheetChange</code> for each write to the
+sheet, and the <code>AfterCalculate</code> that follows it.</li>
+<li><strong>What tracing cost.</strong> The page's summary adds up XRayXL's own time. On the run above
+it was 7.6% of act 1, whose many small calls each carry the tracer's cost, and 2.1% of
+act 2. The trace was 21.6 MB, most of it act 1's 17,760 calls each to <code>SetPixel</code>,
+<code>Palette</code> and <code>Mix</code>.</li>
+</ul>
+<hr />
+<h2 id="more">More</h2>
+<ul>
+<li><p><strong>Tracing one part of your code.</strong> The buttons are how you will normally arm and
+disarm. Reach for the commands instead when the thing you want to trace is buried
+inside a longer run and pressing a button cannot catch it — wrap that part and
+nothing else:</p>
+<pre><code class="language-vba">Application.Run &quot;XRayXL_Arm&quot;
+RepriceTheBook                    ' the only thing in the trace
+Application.Run &quot;XRayXL_Disarm&quot;
+</code></pre>
+<p>Every button is a registered command, so the same goes for the settings:
+<code>Application.Run &quot;XRayXL_SetTraceParam&quot;, &quot;FORMAT&quot;, &quot;JSONL&quot;</code>. See
+<a href="TraceOptions.html">Trace options</a>.</p>
+</li>
+<li><p><strong>The log.</strong> <code>%TEMP%\XRayXL\Logs\XRayXL_&lt;pid&gt;.log</code> records each arm and disarm, the
+trace file's name, and totals. <strong>Options ▸ Advanced</strong> names it.</p>
+</li>
+<li><p><strong>Crash report.</strong> If Excel crashes with XRayXL loaded, a short text report,
+<code>Logs\XRayXL_crash_&lt;pid&gt;.txt</code>, records registers and module names. It contains no
+workbook content.</p>
+</li>
+</ul>
+</main>
+<footer class="wrap">XRayXL 0.4.0 &middot; this page on GitHub: <a href="https://github.com/XRayXL/XRayXL-AddIn/blob/v0.4.0/docs/DemoWalkthrough.md">docs/DemoWalkthrough.md</a></footer>
+</body>
+</html>

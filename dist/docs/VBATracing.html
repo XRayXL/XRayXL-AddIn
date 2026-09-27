@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>How VBA tracing works &middot; XRayXL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  /* xrayxl.com's palette and type, light only, as XRayXL-Perfetto.html */
+  :root{
+    --ground:#EFF1F3; --surface:#FFFFFF; --surface-2:#E5E9ED;
+    --ink:#14181D; --ink-2:#4A535E; --ink-3:#78828E;
+    --rule:#D3D8DE; --rule-strong:#B2BAC3;
+    --signal:#C43C08; --steel:#1B5A78;
+    --grid-line:rgba(20,24,29,.055);
+    --display:"Archivo",system-ui,sans-serif;
+    --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,"Cascadia Mono","Consolas",monospace;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:var(--body); font-size:16px; line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  :focus-visible{outline:2px solid var(--signal); outline-offset:3px; border-radius:2px}
+  .wrap{max-width:900px; margin-inline:auto; padding-inline:clamp(16px,5vw,48px)}
+
+  /* ---------- heading and navigation, on the site's grid paper ---------- */
+  .masthead{
+    border-bottom:1px solid var(--rule);
+    background:
+      repeating-linear-gradient(to right, var(--grid-line) 0 1px, transparent 1px 88px),
+      repeating-linear-gradient(to bottom, var(--grid-line) 0 1px, transparent 1px 30px);
+  }
+  .masthead .wrap{padding-block:22px 18px}
+  .brandline{display:flex; align-items:center; gap:14px; margin-bottom:14px}
+  .brand{font-family:var(--display); font-weight:800; font-size:24px; letter-spacing:-.035em; line-height:1}
+  .brand span{color:var(--signal)}
+  .tag{
+    font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--signal); border:1px solid var(--signal); border-radius:2px; padding:3px 10px; line-height:1.3;
+  }
+  nav{display:flex; flex-wrap:wrap; gap:4px 22px; font-size:14.5px}
+  nav a{color:var(--ink-2); text-decoration:none; padding-bottom:3px; border-bottom:2px solid transparent}
+  nav a:hover{color:var(--signal)}
+  nav a[aria-current]{color:var(--ink); font-weight:600; border-bottom-color:var(--signal)}
+
+  /* ---------- the page ---------- */
+  .doc{padding-block:34px 20px}
+  .doc h1{font-family:var(--display); font-weight:800; font-size:clamp(30px,5vw,42px); letter-spacing:-.035em; line-height:1.1; margin:0 0 18px}
+  .doc h2{font-family:var(--display); font-weight:700; font-size:26px; letter-spacing:-.02em; line-height:1.15;
+          margin:44px 0 14px; padding-top:22px; border-top:1px solid var(--rule)}
+  .doc hr + h2{margin-top:0; padding-top:0; border-top:none}
+  .doc h3{font-family:var(--display); font-weight:700; font-size:19px; letter-spacing:-.01em; line-height:1.2; margin:30px 0 10px}
+  .doc h4{font-size:16px; font-weight:600; margin:24px 0 8px}
+  .doc p{margin:0 0 14px}
+  .doc ul,.doc ol{margin:0 0 16px; padding-left:24px}
+  .doc li{margin:4px 0}
+  .doc li > p{margin-bottom:6px}
+  .doc a{color:var(--steel); text-decoration-thickness:1px; text-underline-offset:2px}
+  .doc a:hover{color:var(--signal)}
+  .doc code{font-family:var(--mono); font-size:.88em; background:var(--surface-2); padding:1px 5px; border-radius:3px}
+  .doc pre{background:var(--surface); border:1px solid var(--rule); border-radius:3px; padding:14px 16px;
+           overflow-x:auto; margin:0 0 18px; line-height:1.5}
+  .doc pre code{background:none; padding:0; font-size:12.5px}
+  .doc .table{overflow-x:auto; margin:0 0 18px; background:var(--surface); border:1px solid var(--rule); border-radius:3px}
+  .doc table{width:100%; border-collapse:collapse; font-size:14.5px}
+  .doc th{background:var(--surface-2); color:var(--ink-3); font-family:var(--mono); font-weight:500; font-size:10.5px;
+          letter-spacing:.1em; text-transform:uppercase; text-align:left; padding:9px 12px; border-bottom:1px solid var(--rule-strong)}
+  .doc td{padding:8px 12px; border-bottom:1px solid var(--rule); vertical-align:top}
+  .doc tr:last-child td{border-bottom:none}
+  .doc blockquote{margin:0 0 18px; padding:14px 18px; background:var(--surface); border:1px solid var(--rule);
+                  border-left:3px solid var(--signal); border-radius:3px; color:var(--ink-2)}
+  .doc blockquote p:last-child{margin:0}
+  .doc img{display:block; max-width:100%; height:auto; margin:6px 0 20px; border:1px solid var(--rule); border-radius:3px}
+  .doc hr{border:0; border-top:1px solid var(--rule); margin:40px 0 30px}
+  .doc details{margin:0 0 18px; padding:10px 16px; background:var(--surface); border:1px solid var(--rule); border-radius:3px}
+  .doc summary{cursor:pointer; font-weight:600}
+
+  footer{padding-block:18px 44px; border-top:1px solid var(--rule); font-size:13px; color:var(--ink-3)}
+  footer a{color:var(--ink-3)}
+</style>
+</head>
+<body>
+<header class="masthead">
+  <div class="wrap">
+    <div class="brandline"><span class="brand">XRay<span>XL</span></span><span class="tag">Docs &middot; 0.4.0</span></div>
+    <nav>
+      <a href="README.html">Start</a>
+      <a href="DemoWalkthrough.html">Walkthrough</a>
+      <a href="TraceOptions.html">Trace options</a>
+      <a href="TraceRowModel.html">Trace rows</a>
+      <a href="ErrorsInTheTrace.html">Errors</a>
+      <a href="VBATracing.html" aria-current="page">VBA tracing</a>
+    </nav>
+  </div>
+</header>
+<main class="wrap doc">
+<h1 id="how-vba-tracing-works">How VBA tracing works</h1>
+<p>This explains how XRayXL traces VBA — what it changes in Excel, why, and how it
+turns that into a row per call with arguments, return values and error outcomes. It
+is written for a programmer who has not spent time inside interpreters or call
+stacks. It builds up in layers: read the first section for the shape of the whole
+thing, then go deeper only as far as you need. Register names and byte offsets are
+kept out; where a hardware detail matters it is described in words.</p>
+<p>For the exact opcode numbers, offsets and the evidence behind each claim, see
+<code>docs/Implementation.md</code> (Part 4).</p>
+<hr />
+<h2 id="the-picture-in-one-page">The picture in one page</h2>
+<p>VBA code is not run as machine code. Excel compiles it to <strong>p-code</strong>, a compact
+list of instructions for a small interpreter that lives in a Microsoft DLL
+(<code>VBE7.DLL</code>). To run your macro, the interpreter walks that p-code one instruction
+at a time. For each instruction it looks up a handler in a big <strong>dispatch table</strong> — an
+array of function pointers, one per instruction kind — and jumps to it.</p>
+<p>That table is the seam XRayXL works on. We do <strong>not</strong> rewrite any of Excel's or
+VBA's code. We change a handful of pointers in the dispatch table so that, for a few
+chosen instruction kinds, the interpreter first calls a small piece of ours and then
+carries on into the original handler exactly as before. The instruction kinds we
+intercept are the ones that mark meaningful moments:</p>
+<ul>
+<li>the <strong>start of a statement</strong> — so we can see each procedure begin and each line run;</li>
+<li>the <strong>exit</strong> of a procedure — so we can see it end and read its return value;</li>
+<li>the <strong>End</strong> of a VBA session.</li>
+</ul>
+<p>From that stream of moments we rebuild, on the side, a picture of what VBA is doing:
+which procedure is running, who called it, how deep the call nesting is, what
+arguments came in, what value went out, and — when something goes wrong — where an
+error was thrown and where it was caught or escaped. That side picture is kept in a
+per-thread structure we call the <strong>shadow stack</strong>. Every finished call becomes one
+entry row and one exit row in the trace file.</p>
+<pre><code>   VBA source  --compiled to--&gt;  p-code (instructions for the interpreter)
+
+   interpreter runs p-code:   for each instruction, look up its handler and jump
+
+        dispatch table (function pointers, one per instruction kind)
+        +-----------------------------------------------------------+
+        |  ...  | start-of-statement | ... | exit | ... | End | ...  |
+        +--------------^-------------------------^---------^--------+
+                       |                         |         |
+        we swapped these few pointers to point at our stubs first;
+        each stub calls our recorder, then jumps to the original handler
+</code></pre>
+<hr />
+<h2 id="layer-1--what-we-patch-and-why-that-way">Layer 1 — What we patch, and why that way</h2>
+<p><strong>We swap pointers in a table; we never edit code.</strong> Making the table writable,
+storing a few new pointers, and putting the protection back is the whole change.
+Nothing in Excel's or VBA's instruction stream is altered. This matters for three
+reasons.</p>
+<ul>
+<li><strong>It is reversible and cheap.</strong> Disarming puts the original pointers back. There
+is no patched machine code to unpick.</li>
+<li><strong>It survives Excel's own defences.</strong> Modern Excel checks that indirect calls go
+to approved targets and keeps a protected copy of return addresses. Rewriting code
+would trip those and terminate the process. A pointer swap in a data table does
+not touch the instruction stream, so none of those defences fire.</li>
+<li><strong>It is one mechanism for everything.</strong> We don't need to know anything about a
+particular macro. Every procedure in the process runs through the same interpreter
+and the same table, so patching the table traces all of them at once.</li>
+</ul>
+<p><strong>What a patched slot does.</strong> When the interpreter reaches an instruction whose
+handler we replaced, it jumps into our small stub instead. The stub saves the state
+the interpreter was using, calls our recorder (ordinary C++), and then jumps on into
+the <strong>original</strong> handler as if nothing happened. The interpreter never notices; the
+only cost is the detour.</p>
+<p><strong>Which slots, and how many.</strong> The table has about 1,700 slots. We patch a small
+set of them, grouped by role: the two that begin a statement, the ones that end a
+procedure (there are several exit forms), and the one that tears the session down
+(<code>End</code>). Errors need no slot of their own: a call an error ends is the one that
+never runs its exit. Everything the tracer knows is built from those
+few moments.</p>
+<p><strong>A note on trust.</strong> We do not hardcode which slot is which. At arm time the tracer
+<em>derives</em> the table's location and the meaning of the slots from the shape of the
+loaded VBA DLL, and refuses to patch anything unless the structure checks out. If it
+cannot be sure, it trace nothing rather than patch the wrong slot. That derivation is
+its own topic; here it is enough to know the arming step is guarded.</p>
+<hr />
+<h2 id="layer-2--the-shadow-stack-and-why-we-need-one">Layer 2 — The shadow stack, and why we need one</h2>
+<p>The obvious question is: if we see every statement, why keep our own stack? Why not
+just note &quot;we are now in procedure X&quot;?</p>
+<p>Because &quot;which procedure&quot; is not the same as &quot;which <strong>call</strong> of that procedure&quot;.</p>
+<p><strong>A procedure can be running several times at once.</strong> A recursive function that
+calls itself is the clearest case: the interpreter is inside <code>Factorial</code> five levels
+deep, and all five levels are the same procedure. If we only recorded the procedure's
+identity, those five nested calls would look like one, and we could never pair an
+entry with its matching exit or measure how long the innermost call took.</p>
+<p><strong>So each running call gets its own frame on a shadow stack.</strong> A <em>frame</em> is a small
+record: which procedure, when it started, how deep it is, which call it was made
+from, and a few flags we will meet later. The shadow stack is just a per-thread array
+of these frames — one thread's calls never mix with another's. It grows when a call
+begins and shrinks when a call ends, mirroring what the interpreter is really doing.</p>
+<pre><code>   depth
+     1   RunChain            &lt;- a button macro, called by Excel
+     2     OptionBook        &lt;- called by RunChain
+     3       RiskWeighted    &lt;- called by OptionBook
+     4         WeightFor     &lt;- the call running right now (top of the stack)
+</code></pre>
+<p><strong>How a frame opens.</strong> Every genuine call begins by running the procedure's first
+statement, and we see that through a start-of-statement moment. When we notice a
+statement belongs to a call we are not already tracking, we push a new frame. To tell
+one <em>call</em> from another — the recursion problem above — we identify a call by the
+combination of <em>which procedure</em> and <em>how far down the interpreter's own working
+memory the call sits</em>. Two calls of the same procedure sit at different depths, so
+they are distinct, and a genuinely recursive descent pushes a new frame each time.</p>
+<p><strong>How a frame closes.</strong> Most procedures end by running an exit instruction, which we
+also intercept: that closes the matching frame and is the natural place to read the
+return value. Some calls never reach a clean exit — an error can tear out of a
+procedure without running its normal ending. For those we have a backstop: when we
+later see activity at a shallower depth, we know the deeper calls must have finished,
+and we close them. A final sweep at disarm closes anything still open.</p>
+<p><strong>What the shadow stack buys us.</strong> From it we get, for free, the call tree (who
+called whom), the depth of each call, accurate timing for each call, and — crucially —
+the ability to follow an error as it travels outward through the calls that were in
+flight when it was raised. That last one is Layer 4.</p>
+<hr />
+<h2 id="layer-3--arguments-and-return-values">Layer 3 — Arguments and return values</h2>
+<p><strong>Arguments are read once, at the first statement of a call.</strong> When a frame opens, the
+call's arguments are sitting in the interpreter's working memory for that call, in a
+known place. We read them there, before the procedure's body has had a chance to
+overwrite them, and record them on the entry row. A by-reference argument (one the
+procedure can change and hand back) is noted, so that at the exit we can re-read it
+and report whether it actually changed.</p>
+<p><strong>Return values are read at the exit, and the type is the hard part.</strong> There is no
+single place that always holds &quot;the return value&quot;. Depending on the procedure, the
+result might live in one slot for some kinds of function and a different slot for
+others, and a plain <code>Sub</code> has no return at all. Reading a fixed slot blindly would
+make a <code>Sub</code> appear to return a leftover number. So the tracer works out the <em>type</em>
+first, and only reads a value if it can vouch for one:</p>
+<ul>
+<li><strong>The exit instruction often names the type.</strong> Many typed functions leave through
+a type-specific exit, and that tells us what kind of value to expect. An exit that
+means &quot;no result&quot; (a <code>Sub</code>, a property assignment) makes us report nothing.</li>
+<li><strong>When the exit is generic, the instruction that stored the result names the
+type.</strong> Class and form methods leave through a generic exit, so instead we look
+back for the instruction that wrote the result and read the type from it. If two
+candidate writes disagree, we refuse rather than guess.</li>
+<li><strong>A <code>Variant</code> is found by where it lives, not by how it was written.</strong> A <code>Variant</code>
+result always sits in one particular place, and we read the kind tag it carries.</li>
+</ul>
+<p>The upshot: the trace reports a return value only when the type is established, and
+leaves the column empty otherwise. Reporting nothing is preferred over reporting a
+confident wrong value.</p>
+<p><strong>Returning an error value is not an error.</strong> A function can deliberately return a
+worksheet error, for example <code>CVErr(xlErrValue)</code>, which shows as <code>#VALUE!</code> in the
+cell. That is an ordinary return: the function finished, and the trace records it as
+<code>returned</code> with the error value in the return column. This is different from a
+function that <em>fails</em>, which is Layer 4 — and telling the two apart is exactly why the
+outcome column exists.</p>
+<hr />
+<h2 id="layer-4--errors-thrown-caught-and-escaped">Layer 4 — Errors: thrown, caught, and escaped</h2>
+<p>This is the subtle part, and worth reading slowly. The goal is that every finished
+call carries an <strong>outcome</strong> that says how it ended, from a fixed list:</p>
+<div class="table"><table>
+<thead>
+<tr>
+<th>outcome</th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>returned</code></td>
+<td>finished normally</td>
+</tr>
+<tr>
+<td><code>threw</code></td>
+<td>an error was raised in this call and it did not finish</td>
+</tr>
+<tr>
+<td><code>unwound</code></td>
+<td>an error passed through this call on its way out; it did nothing after the raise</td>
+</tr>
+<tr>
+<td><code>handled</code></td>
+<td>this call caught an error raised below it and carried on</td>
+</tr>
+<tr>
+<td><code>unhandled</code></td>
+<td>an error left VBA through this call into a worksheet cell (the cell shows <code>#VALUE!</code>)</td>
+</tr>
+<tr>
+<td><code>abandoned</code></td>
+<td><code>End</code> stopped all VBA, from code or from the error dialog; the call neither returned nor threw</td>
+</tr>
+</tbody>
+</table></div>
+<p>How each of these reads in a real chain, and the cases where VBA handles an error
+unexpectedly, is in <a href="ErrorsInTheTrace.html">ErrorsInTheTrace.md</a>.</p>
+<p><strong>Why the outcome is decided when the call closes.</strong> An error can be raised by
+<code>Err.Raise</code> or by VBA itself, in the middle of a division, a conversion or an
+overflow, and there is no single place where every error starts. But every error
+that leaves a call ends it the same way: without its normal ending. So the tracer
+decides the outcome when the call closes:</p>
+<ul>
+<li>A call that ran its normal ending <code>returned</code>, even if it caught an error of its
+own on the way (<code>On Error Resume Next</code>).</li>
+<li>The innermost call that ended with no normal ending <strong>threw</strong>. <code>End</code>, and a
+macro still running when you disarm, are the two exceptions, and are told apart.</li>
+<li>The calls outside the thrower, still in flight, are <strong>unwound</strong> as the error
+passes through them — unless one of them runs again afterwards, which means it
+<strong>caught</strong> the error, and it reads <code>handled</code>.</li>
+</ul>
+<p>Read outward from the raise, a chain looks like this:</p>
+<pre><code>   depth
+     1   Caller        handled     &lt;- ran its error handler; caught it
+     2     Middle      unwound     &lt;- the error passed straight through
+     3       Thrower   threw       &lt;- the error was raised here
+</code></pre>
+<p>This is where the shadow stack earns its keep: only by holding the calls that were in
+flight can we follow an error outward and label each one.</p>
+<p><strong>When nobody catches it: escaping into a cell.</strong> The case that started this whole
+design is a function called from a worksheet cell that fails with no handler. Excel
+does not show an error dialog for that; it simply puts <code>#VALUE!</code> in the cell and moves
+on. If a macro had triggered the recalculation, that macro keeps running and never
+sees the error. So the trace must say two things: the function that failed reads
+<code>unhandled</code> (it left VBA into the cell), and the macro that recalculated reads
+<code>returned</code> (it was never affected).</p>
+<pre><code>   A button macro recalculates a sheet, and a cell's function then fails:
+
+     RunChain        returned    &lt;- a button started it; no calling cell
+       OptionBook    unhandled   &lt;- Excel computed a cell with it; it failed -&gt; #VALUE!
+</code></pre>
+<p>On the shadow stack <code>OptionBook</code> sits <em>beneath</em> <code>RunChain</code>: the macro's call to
+&quot;recalculate&quot; is still open when Excel computes the cell, so the failing function is
+nested under the macro. That is why the simple idea — &quot;an error that reaches the
+bottom of the stack escaped&quot; — does not work here: the error never reaches the
+bottom, because the macro is under it. We need to recognise the failing call itself
+as the escape point.</p>
+<p><strong>How we know a call is &quot;one Excel started for a cell&quot;.</strong> This is the crux. An error
+should stop and become <code>#VALUE!</code> only when the failing call was one Excel entered to
+compute a worksheet cell — not when one VBA procedure simply called another. To tell
+them apart the tracer asks Excel, for each call, <strong>which cell it is computing</strong> (a
+documented lookup). A worksheet function and any helpers it calls are all computing
+the same cell; a call whose cell is <em>different from the call beneath it</em> — or which
+has a cell where the call beneath it has none, as with <code>OptionBook</code> under the
+button-started <code>RunChain</code> above — marks the point where Excel handed control to VBA.
+An error leaving that call becomes the cell's <code>#VALUE!</code>; an error inside a plain
+VBA-to-VBA call keeps propagating normally.</p>
+<p>That single question — &quot;is this call's cell different from the one beneath it?&quot; —
+turned out to be the reliable signal after several tempting alternatives failed. The
+alternatives and why they broke are recorded in <code>docs/Implementation.md</code>; the short
+version is that trying to read the machine stack directly was fooled by leftover data,
+and measuring how much stack a call used could not separate a class-method call from a
+worksheet call. Because this check needs the calling cell on every call, resolving it
+is not optional and cannot be turned off.</p>
+<hr />
+<h2 id="edge-cases">Edge cases</h2>
+<p>The mechanism above is clean; reality has corners. These are the ones the tracer
+handles deliberately, each covered by a test.</p>
+<ul>
+<li><strong>Recursion.</strong> Handled by identifying a <em>call</em> rather than a <em>procedure</em>, so a
+function calling itself pushes a new frame each level.</li>
+<li><strong>Very deep nesting.</strong> The shadow stack grows as calls nest, so every level of a
+deep recursion is recorded.</li>
+<li><strong>The <code>End</code> statement.</strong> <code>End</code> stops all VBA immediately, running no endings at
+all. We intercept it directly and mark every still-open call <code>abandoned</code>, because
+they neither returned nor threw.</li>
+<li><strong>End on VBA's error dialog.</strong> This End runs no code we can intercept, so its
+calls stay open until the next VBA call finds none of them still on the stack, or
+until disarm, which walks the real call stack and finds them gone. Only End stops
+every call at once, so the innermost call is taken to have raised the error and
+reads <code>threw</code>, and the rest read <code>abandoned</code>.</li>
+<li><strong>A same-procedure <code>On Error Resume Next</code> of a real error.</strong> The call caught its
+own error and runs its normal ending, so it reads <code>returned</code>: nothing left it.</li>
+<li><strong>An error passed an Excel object.</strong> Passing something like a <code>Range</code> to a VBA
+method used to confuse an earlier design; the calling-cell approach is immune,
+because the method is not computing a new cell.</li>
+<li><strong><code>Application.Run</code> and object-model method calls.</strong> These are VBA-to-VBA in
+effect: no new cell, so an error in them propagates to the caller rather than
+becoming <code>#VALUE!</code>.</li>
+<li><strong>A macro still running when tracing is disarmed.</strong> Disarm closes open calls. A
+call that is genuinely still executing (a macro that called disarm, say) must not be
+mistaken for one that threw; the tracer checks whether the call is really still live
+before deciding.</li>
+<li><strong>A call left over from an earlier unhandled error.</strong> The opposite of the above: a
+dead call that never ran its ending must be closed before the next call opens, so
+the next thing Excel computes does not appear nested under a corpse.</li>
+</ul>
+<hr />
+<h2 id="the-one-known-gap">The one known gap</h2>
+<p>An error becomes <code>unhandled</code> only when the failing call has a calling cell. Some
+things Excel starts have <strong>no</strong> calling cell: a sheet event fired by a user edit
+(<code>Worksheet_Change</code> and the like), and an <code>Application.OnTime</code> macro. An unhandled
+error in one of those reads <code>threw</code> rather than <code>unhandled</code>. This is under-labelled,
+not wrong — the failing call is still identified, the escape is still counted, and
+Excel shows its own dialog. Closing this gap would need a different signal than the
+calling cell, and none cheap and reliable is in hand. An event <em>triggered by VBA</em> (a
+macro writes a cell, firing an event beneath it) behaves the same way: the error does
+not reach the macro, VBA's dialog appears in the event handler, and End stops both, so
+the handler reads <code>threw</code> and the macro <code>abandoned</code>.</p>
+<hr />
+<h2 id="what-vba-tracing-deliberately-does-not-do">What VBA tracing deliberately does not do</h2>
+<ul>
+<li>It does not modify your workbook or its code.</li>
+<li>It does not follow an error's <em>identity</em> — the outcome column says where an error
+was thrown and who caught it, never which error number it was.</li>
+<li>It does not call into your own classes. An object argument is described by its class
+and, for a few known types, a detail: where a Range, sheet or book is, a Range's cells,
+and a Collection's or Dictionary's contents.</li>
+<li>It runs 64-bit Excel only.</li>
+</ul>
+<p>See <code>docs/TraceOptions.md</code> for the settings, <code>docs/TraceRowModel.md</code> for the exact
+shape of each row, and <code>docs/Implementation.md</code> for the mechanism in full detail.</p>
+</main>
+<footer class="wrap">XRayXL 0.4.0 &middot; this page on GitHub: <a href="https://github.com/XRayXL/XRayXL-AddIn/blob/v0.4.0/docs/VBATracing.md">docs/VBATracing.md</a></footer>
+</body>
+</html>

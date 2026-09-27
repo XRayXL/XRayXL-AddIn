@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>How errors read in a trace &middot; XRayXL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  /* xrayxl.com's palette and type, light only, as XRayXL-Perfetto.html */
+  :root{
+    --ground:#EFF1F3; --surface:#FFFFFF; --surface-2:#E5E9ED;
+    --ink:#14181D; --ink-2:#4A535E; --ink-3:#78828E;
+    --rule:#D3D8DE; --rule-strong:#B2BAC3;
+    --signal:#C43C08; --steel:#1B5A78;
+    --grid-line:rgba(20,24,29,.055);
+    --display:"Archivo",system-ui,sans-serif;
+    --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,"Cascadia Mono","Consolas",monospace;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:var(--body); font-size:16px; line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  :focus-visible{outline:2px solid var(--signal); outline-offset:3px; border-radius:2px}
+  .wrap{max-width:900px; margin-inline:auto; padding-inline:clamp(16px,5vw,48px)}
+
+  /* ---------- heading and navigation, on the site's grid paper ---------- */
+  .masthead{
+    border-bottom:1px solid var(--rule);
+    background:
+      repeating-linear-gradient(to right, var(--grid-line) 0 1px, transparent 1px 88px),
+      repeating-linear-gradient(to bottom, var(--grid-line) 0 1px, transparent 1px 30px);
+  }
+  .masthead .wrap{padding-block:22px 18px}
+  .brandline{display:flex; align-items:center; gap:14px; margin-bottom:14px}
+  .brand{font-family:var(--display); font-weight:800; font-size:24px; letter-spacing:-.035em; line-height:1}
+  .brand span{color:var(--signal)}
+  .tag{
+    font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--signal); border:1px solid var(--signal); border-radius:2px; padding:3px 10px; line-height:1.3;
+  }
+  nav{display:flex; flex-wrap:wrap; gap:4px 22px; font-size:14.5px}
+  nav a{color:var(--ink-2); text-decoration:none; padding-bottom:3px; border-bottom:2px solid transparent}
+  nav a:hover{color:var(--signal)}
+  nav a[aria-current]{color:var(--ink); font-weight:600; border-bottom-color:var(--signal)}
+
+  /* ---------- the page ---------- */
+  .doc{padding-block:34px 20px}
+  .doc h1{font-family:var(--display); font-weight:800; font-size:clamp(30px,5vw,42px); letter-spacing:-.035em; line-height:1.1; margin:0 0 18px}
+  .doc h2{font-family:var(--display); font-weight:700; font-size:26px; letter-spacing:-.02em; line-height:1.15;
+          margin:44px 0 14px; padding-top:22px; border-top:1px solid var(--rule)}
+  .doc hr + h2{margin-top:0; padding-top:0; border-top:none}
+  .doc h3{font-family:var(--display); font-weight:700; font-size:19px; letter-spacing:-.01em; line-height:1.2; margin:30px 0 10px}
+  .doc h4{font-size:16px; font-weight:600; margin:24px 0 8px}
+  .doc p{margin:0 0 14px}
+  .doc ul,.doc ol{margin:0 0 16px; padding-left:24px}
+  .doc li{margin:4px 0}
+  .doc li > p{margin-bottom:6px}
+  .doc a{color:var(--steel); text-decoration-thickness:1px; text-underline-offset:2px}
+  .doc a:hover{color:var(--signal)}
+  .doc code{font-family:var(--mono); font-size:.88em; background:var(--surface-2); padding:1px 5px; border-radius:3px}
+  .doc pre{background:var(--surface); border:1px solid var(--rule); border-radius:3px; padding:14px 16px;
+           overflow-x:auto; margin:0 0 18px; line-height:1.5}
+  .doc pre code{background:none; padding:0; font-size:12.5px}
+  .doc .table{overflow-x:auto; margin:0 0 18px; background:var(--surface); border:1px solid var(--rule); border-radius:3px}
+  .doc table{width:100%; border-collapse:collapse; font-size:14.5px}
+  .doc th{background:var(--surface-2); color:var(--ink-3); font-family:var(--mono); font-weight:500; font-size:10.5px;
+          letter-spacing:.1em; text-transform:uppercase; text-align:left; padding:9px 12px; border-bottom:1px solid var(--rule-strong)}
+  .doc td{padding:8px 12px; border-bottom:1px solid var(--rule); vertical-align:top}
+  .doc tr:last-child td{border-bottom:none}
+  .doc blockquote{margin:0 0 18px; padding:14px 18px; background:var(--surface); border:1px solid var(--rule);
+                  border-left:3px solid var(--signal); border-radius:3px; color:var(--ink-2)}
+  .doc blockquote p:last-child{margin:0}
+  .doc img{display:block; max-width:100%; height:auto; margin:6px 0 20px; border:1px solid var(--rule); border-radius:3px}
+  .doc hr{border:0; border-top:1px solid var(--rule); margin:40px 0 30px}
+  .doc details{margin:0 0 18px; padding:10px 16px; background:var(--surface); border:1px solid var(--rule); border-radius:3px}
+  .doc summary{cursor:pointer; font-weight:600}
+
+  footer{padding-block:18px 44px; border-top:1px solid var(--rule); font-size:13px; color:var(--ink-3)}
+  footer a{color:var(--ink-3)}
+</style>
+</head>
+<body>
+<header class="masthead">
+  <div class="wrap">
+    <div class="brandline"><span class="brand">XRay<span>XL</span></span><span class="tag">Docs &middot; 0.4.0</span></div>
+    <nav>
+      <a href="README.html">Start</a>
+      <a href="DemoWalkthrough.html">Walkthrough</a>
+      <a href="TraceOptions.html">Trace options</a>
+      <a href="TraceRowModel.html">Trace rows</a>
+      <a href="ErrorsInTheTrace.html" aria-current="page">Errors</a>
+      <a href="VBATracing.html">VBA tracing</a>
+    </nav>
+  </div>
+</header>
+<main class="wrap doc">
+<h1 id="how-errors-read-in-a-trace">How errors read in a trace</h1>
+<p>Every VBA call in a trace ends with an <code>exit</code> row, and that row's <code>outcome</code> column says
+how the call ended. When nothing goes wrong it says <code>returned</code>. This page is about the
+rest: what each word means, how a chain of calls reads when an error passes through it,
+and the cases where VBA or Excel handle an error in a way you might not expect.</p>
+<p>The column reference is in <a href="TraceRowModel.html">TraceRowModel.md</a>; how the tracer works
+out an outcome is in <a href="VBATracing.html">VBATracing.md</a>.</p>
+<hr />
+<h2 id="the-six-outcomes">The six outcomes</h2>
+<div class="table"><table>
+<thead>
+<tr>
+<th><code>outcome</code></th>
+<th>what happened to the call</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>returned</code></td>
+<td>it finished normally</td>
+</tr>
+<tr>
+<td><code>threw</code></td>
+<td>an error was raised in it, and it went no further</td>
+</tr>
+<tr>
+<td><code>unwound</code></td>
+<td>an error raised below it passed through it on the way out; it ran nothing after that</td>
+</tr>
+<tr>
+<td><code>handled</code></td>
+<td>it caught an error raised below it, and carried on</td>
+</tr>
+<tr>
+<td><code>unhandled</code></td>
+<td>an error left VBA through it into a worksheet cell, which shows <code>#VALUE!</code></td>
+</tr>
+<tr>
+<td><code>abandoned</code></td>
+<td>VBA stopped it: it neither returned nor passed an error on</td>
+</tr>
+</tbody>
+</table></div>
+<p>An XLL function's exit row always reads <code>returned</code>, because it is written only when
+the function returns.</p>
+<p><strong>Read <code>outcome</code> together with <code>trust</code>.</strong> <code>trust</code> says what closed the call, and so
+whether its <code>ticks</code> is a measurement or only a ceiling:</p>
+<div class="table"><table>
+<thead>
+<tr>
+<th><code>trust</code></th>
+<th>the call was closed by</th>
+<th><code>ticks</code> is</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>exit</code></td>
+<td>its own ending</td>
+<td>a measurement</td>
+</tr>
+<tr>
+<td><code>end</code></td>
+<td>the <code>End</code> statement</td>
+<td>a measurement</td>
+</tr>
+<tr>
+<td><code>backstop</code></td>
+<td>the next VBA statement to run, after the call had already gone</td>
+<td>an upper bound</td>
+</tr>
+<tr>
+<td><code>flush</code></td>
+<td>disarming</td>
+<td>an upper bound</td>
+</tr>
+</tbody>
+</table></div>
+<p>A call that ended in an error runs no ending of its own, so it is always closed by
+something else: <code>backstop</code>, <code>flush</code> or <code>end</code>.</p>
+<hr />
+<h2 id="an-error-caught-by-a-caller">An error caught by a caller</h2>
+<p>The common case. <code>Report</code> has an error handler and calls <code>Load</code>, which calls <code>Parse</code>,
+which raises:</p>
+<pre><code class="language-vba">Sub Report()
+    On Error GoTo Failed
+    Load
+    Exit Sub
+Failed:
+    Debug.Print Err.Description
+End Sub
+
+Sub Load()
+    Parse
+End Sub
+
+Sub Parse()
+    Err.Raise 5
+End Sub
+</code></pre>
+<div class="table"><table>
+<thead>
+<tr>
+<th>function</th>
+<th>depth</th>
+<th>outcome</th>
+<th>trust</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Parse</code></td>
+<td>3</td>
+<td><code>threw</code></td>
+<td><code>backstop</code></td>
+</tr>
+<tr>
+<td><code>Load</code></td>
+<td>2</td>
+<td><code>unwound</code></td>
+<td><code>backstop</code></td>
+</tr>
+<tr>
+<td><code>Report</code></td>
+<td>1</td>
+<td><code>handled</code></td>
+<td><code>exit</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>Read it outwards from the raise: <code>Parse</code> raised it, it passed through <code>Load</code>, and
+<code>Report</code> caught it. <code>Parse</code> and <code>Load</code> never ran their endings, so they are closed when
+<code>Report</code> runs its next statement.</p>
+<p><strong>An error caught in the same procedure reads <code>returned</code>.</strong> With <code>On Error Resume Next</code>,
+or a handler in the procedure that raised, nothing leaves the call, and it does return.
+<code>threw</code>, <code>unwound</code> and <code>handled</code> describe an error crossing from one call to another.</p>
+<p><strong>A handler that raises again.</strong> If <code>Report</code>'s handler raised a new error that left it,
+<code>Report</code> reads <code>threw</code>, and whichever call catches that one reads <code>handled</code>.</p>
+<hr />
+<h2 id="an-error-into-a-worksheet-cell">An error into a worksheet cell</h2>
+<p>A VBA function used in a cell formula has no VBA caller to pass an error to. Excel
+catches it and the cell shows <code>#VALUE!</code>:</p>
+<div class="table"><table>
+<thead>
+<tr>
+<th>function</th>
+<th>depth</th>
+<th>outcome</th>
+<th>trust</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Parse</code></td>
+<td>2</td>
+<td><code>threw</code></td>
+<td><code>backstop</code></td>
+</tr>
+<tr>
+<td><code>PriceOf</code></td>
+<td>1</td>
+<td><code>unhandled</code></td>
+<td><code>backstop</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><code>PriceOf</code> is the function the cell called, so it reads <code>unhandled</code>: the error left VBA
+there. The functions it called keep <code>threw</code> and <code>unwound</code>, so the raise is still found.
+The calls close when Excel starts its next VBA call, or at disarm (<code>trust=flush</code>).</p>
+<ul>
+<li><strong>A macro that recalculates the cell reads <code>returned</code>.</strong> The error stopped at the cell;
+the macro never saw it.</li>
+<li><strong>A function that returns an error value raised nothing.</strong> <code>PriceOf = CVErr(xlErrValue)</code>
+reads <code>returned</code>, with <code>#VALUE!</code> in the <code>ret</code> column.</li>
+<li><strong><code>Application.Evaluate</code>, defined names and conditional formatting count as cells.</strong> A
+function run through any of them is given a calling cell, so its error reads
+<code>unhandled</code>. Under <code>Evaluate</code> that cell is the active cell, not one holding a formula.</li>
+</ul>
+<hr />
+<h2 id="an-error-nothing-catches-vbas-error-dialog">An error nothing catches: VBA's error dialog</h2>
+<p>An error that no call catches, in a macro, a sheet event, an <code>Application.OnTime</code> macro or
+a macro started with <code>Application.Run</code>, makes VBA stop and show its <em>Run-time error</em>
+dialog. <strong>Pressing End</strong> stops all VBA at once. No call runs its ending, and the tracer
+sees nothing happen at that moment. The calls stay open until the tracer finds them gone.
+That happens when the next VBA call starts, or at disarm, whichever comes first. Either
+way they read the same:</p>
+<div class="table"><table>
+<thead>
+<tr>
+<th>function</th>
+<th>depth</th>
+<th>outcome</th>
+<th>trust</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Parse</code></td>
+<td>3</td>
+<td><code>threw</code></td>
+<td><code>backstop</code> or <code>flush</code></td>
+</tr>
+<tr>
+<td><code>Load</code></td>
+<td>2</td>
+<td><code>abandoned</code></td>
+<td><code>backstop</code> or <code>flush</code></td>
+</tr>
+<tr>
+<td><code>Report</code></td>
+<td>1</td>
+<td><code>abandoned</code></td>
+<td><code>backstop</code> or <code>flush</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><code>Parse</code> raised the error. <code>Load</code> and <code>Report</code> read <code>abandoned</code>: the error never passed
+through them, and End stopped them where they were. Their <code>ticks</code> run until the calls
+were found closed, which includes however long the dialog was open.</p>
+<p>A call chain that Excel started for a cell is the exception. Its error went to the cell,
+so it reads <code>threw</code> … <code>unhandled</code> as above, and only the calls beneath it read <code>abandoned</code>.</p>
+<p><strong>Pressing Debug</strong> stops VBA in the editor instead, with every call still running:</p>
+<ul>
+<li><strong>Continue</strong> (F5 or F8), and the calls carry on and close normally.</li>
+<li><strong>Reset</strong>, and they read as if you had pressed End.</li>
+<li><strong>Disarm while VBA is stopped there</strong>, and they are closed as still running (<code>returned</code>,
+<code>trust=flush</code>).</li>
+</ul>
+<p>These need a person at the editor, so no automated test covers them.</p>
+<h3 id="errors-that-do-not-reach-their-caller">Errors that do not reach their caller</h3>
+<p>Two situations look as if an error should go back to the caller's <code>On Error</code>, but VBA
+stops at the dialog instead. The caller reads <code>abandoned</code>, even with a handler:</p>
+<ul>
+<li><strong>A macro called with <code>Application.Run</code>.</strong> An error in the called macro, with no handler
+of its own, shows the dialog in that macro. The caller's <code>On Error Resume Next</code> never
+gets it. A direct call (<code>Load</code> rather than <code>Application.Run &quot;Load&quot;</code>) does return the
+error to the caller.</li>
+<li><strong>A sheet event fired by a macro.</strong> When a macro writes a cell and the sheet's
+<code>Worksheet_Change</code> raises an error, the dialog appears in the event handler. The macro
+that wrote the cell is stopped too.</li>
+</ul>
+<p><strong>An error in a call Excel started on its own reads <code>threw</code>.</strong> A sheet event fired by a
+user's edit, or an <code>OnTime</code> macro, is the first call in its chain, so the raiser is also
+the outermost call. It reads <code>threw</code>, not <code>unhandled</code>: only a cell formula makes an error
+<code>unhandled</code>.</p>
+<hr />
+<h2 id="the-end-statement">The End statement</h2>
+<p><code>End</code> in your code stops all VBA, as the dialog's End button does. Here the tracer sees it
+happen, so every open call closes at once, <code>abandoned</code> with <code>trust=end</code>. That includes the
+call that ran <code>End</code>: no error was raised, so no call reads <code>threw</code>.</p>
+<hr />
+<h2 id="stopping-vba-from-the-editor">Stopping VBA from the editor</h2>
+<ul>
+<li><strong>Reset after a breakpoint or a <code>Stop</code> statement</strong> reads like End, with one difference:
+the call that was stopped reads <code>abandoned</code> rather than <code>threw</code>, because it raised
+nothing. The tracer knows it stopped from the <code>breaks</code> count, which is kept whether or
+not the <code>breaks</code> column is switched on (<code>BREAKPOINTS</code> in
+<a href="TraceOptions.html">TraceOptions.md</a>).</li>
+<li><strong>Time spent stopped in the editor is part of the call's <code>ticks</code>.</strong> Switch the <code>breaks</code>
+column on to see which calls include it.</li>
+</ul>
+<p>These cases need a person at the editor, so no automated test covers them.</p>
+<hr />
+<h2 id="edge-cases-and-limits">Edge cases and limits</h2>
+<ul>
+<li><strong>Ctrl+Break.</strong> A user break is not forced. If the code sets
+<code>Application.EnableCancelKey = xlErrorHandler</code>, it arrives as error 18, which reads like
+any other error. Otherwise VBA shows <em>Code execution has been interrupted</em>, and pressing
+End there should read as End on the error dialog, which means the call that was running
+reads <code>threw</code> though nothing raised an error: the tracer cannot tell the two dialogs apart.
+This one needs a person at the keyboard, so it has not been measured.</li>
+<li><strong>Disarming while a macro runs.</strong> A macro still running at disarm, for example one that
+disarms itself, or one waiting in <code>DoEvents</code>, reads <code>returned</code> with <code>trust=flush</code>. It
+never reads <code>threw</code>.</li>
+<li><strong>Excel calling a function twice.</strong> When a formula needs a cell that is not yet
+calculated, Excel lets the function finish and calls it again later. That is two whole
+<code>returned</code> calls, not an abandoned one.</li>
+</ul>
+<hr />
+<h2 id="how-the-tracer-tells-a-stopped-call-from-a-running-one">How the tracer tells a stopped call from a running one</h2>
+<p>VBA gives no signal when its dialog's End button is pressed, so the tracer works it out
+from the stack.</p>
+<ul>
+<li><strong>When the next VBA call starts</strong>, and none of the open calls is still on the stack,
+VBA stopped them all. Only End (or Reset) stops every call at once; an error that is
+caught always leaves the catching call running.</li>
+<li><strong>At disarm</strong>, the tracer walks the thread's real call stack. A call whose place on the
+stack now belongs to other code is gone. The walk only reads code that belongs to a
+loaded module, and stops at the first address that does not. Some calls sit beyond that
+point, as under <code>Application.Run</code>. For those, the tracer checks whether the call's own
+marker is still in place on the stack.</li>
+</ul>
+<p>The details are in <a href="https://github.com/XRayXL/XRayXL-AddIn/blob/v0.4.0/docs/Implementation.md">Implementation.md</a>, under <em>A stack that dies
+whole was ended by VBA</em> and <em>A trailer can outlive its frame</em>.</p>
+</main>
+<footer class="wrap">XRayXL 0.4.0 &middot; this page on GitHub: <a href="https://github.com/XRayXL/XRayXL-AddIn/blob/v0.4.0/docs/ErrorsInTheTrace.md">docs/ErrorsInTheTrace.md</a></footer>
+</body>
+</html>

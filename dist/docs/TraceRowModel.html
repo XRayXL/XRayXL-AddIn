@@ -1,0 +1,1062 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>The trace row model — the contract for XRayXL&#39;s output &middot; XRayXL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  /* xrayxl.com's palette and type, light only, as XRayXL-Perfetto.html */
+  :root{
+    --ground:#EFF1F3; --surface:#FFFFFF; --surface-2:#E5E9ED;
+    --ink:#14181D; --ink-2:#4A535E; --ink-3:#78828E;
+    --rule:#D3D8DE; --rule-strong:#B2BAC3;
+    --signal:#C43C08; --steel:#1B5A78;
+    --grid-line:rgba(20,24,29,.055);
+    --display:"Archivo",system-ui,sans-serif;
+    --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,"Cascadia Mono","Consolas",monospace;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:var(--body); font-size:16px; line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  :focus-visible{outline:2px solid var(--signal); outline-offset:3px; border-radius:2px}
+  .wrap{max-width:900px; margin-inline:auto; padding-inline:clamp(16px,5vw,48px)}
+
+  /* ---------- heading and navigation, on the site's grid paper ---------- */
+  .masthead{
+    border-bottom:1px solid var(--rule);
+    background:
+      repeating-linear-gradient(to right, var(--grid-line) 0 1px, transparent 1px 88px),
+      repeating-linear-gradient(to bottom, var(--grid-line) 0 1px, transparent 1px 30px);
+  }
+  .masthead .wrap{padding-block:22px 18px}
+  .brandline{display:flex; align-items:center; gap:14px; margin-bottom:14px}
+  .brand{font-family:var(--display); font-weight:800; font-size:24px; letter-spacing:-.035em; line-height:1}
+  .brand span{color:var(--signal)}
+  .tag{
+    font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--signal); border:1px solid var(--signal); border-radius:2px; padding:3px 10px; line-height:1.3;
+  }
+  nav{display:flex; flex-wrap:wrap; gap:4px 22px; font-size:14.5px}
+  nav a{color:var(--ink-2); text-decoration:none; padding-bottom:3px; border-bottom:2px solid transparent}
+  nav a:hover{color:var(--signal)}
+  nav a[aria-current]{color:var(--ink); font-weight:600; border-bottom-color:var(--signal)}
+
+  /* ---------- the page ---------- */
+  .doc{padding-block:34px 20px}
+  .doc h1{font-family:var(--display); font-weight:800; font-size:clamp(30px,5vw,42px); letter-spacing:-.035em; line-height:1.1; margin:0 0 18px}
+  .doc h2{font-family:var(--display); font-weight:700; font-size:26px; letter-spacing:-.02em; line-height:1.15;
+          margin:44px 0 14px; padding-top:22px; border-top:1px solid var(--rule)}
+  .doc hr + h2{margin-top:0; padding-top:0; border-top:none}
+  .doc h3{font-family:var(--display); font-weight:700; font-size:19px; letter-spacing:-.01em; line-height:1.2; margin:30px 0 10px}
+  .doc h4{font-size:16px; font-weight:600; margin:24px 0 8px}
+  .doc p{margin:0 0 14px}
+  .doc ul,.doc ol{margin:0 0 16px; padding-left:24px}
+  .doc li{margin:4px 0}
+  .doc li > p{margin-bottom:6px}
+  .doc a{color:var(--steel); text-decoration-thickness:1px; text-underline-offset:2px}
+  .doc a:hover{color:var(--signal)}
+  .doc code{font-family:var(--mono); font-size:.88em; background:var(--surface-2); padding:1px 5px; border-radius:3px}
+  .doc pre{background:var(--surface); border:1px solid var(--rule); border-radius:3px; padding:14px 16px;
+           overflow-x:auto; margin:0 0 18px; line-height:1.5}
+  .doc pre code{background:none; padding:0; font-size:12.5px}
+  .doc .table{overflow-x:auto; margin:0 0 18px; background:var(--surface); border:1px solid var(--rule); border-radius:3px}
+  .doc table{width:100%; border-collapse:collapse; font-size:14.5px}
+  .doc th{background:var(--surface-2); color:var(--ink-3); font-family:var(--mono); font-weight:500; font-size:10.5px;
+          letter-spacing:.1em; text-transform:uppercase; text-align:left; padding:9px 12px; border-bottom:1px solid var(--rule-strong)}
+  .doc td{padding:8px 12px; border-bottom:1px solid var(--rule); vertical-align:top}
+  .doc tr:last-child td{border-bottom:none}
+  .doc blockquote{margin:0 0 18px; padding:14px 18px; background:var(--surface); border:1px solid var(--rule);
+                  border-left:3px solid var(--signal); border-radius:3px; color:var(--ink-2)}
+  .doc blockquote p:last-child{margin:0}
+  .doc img{display:block; max-width:100%; height:auto; margin:6px 0 20px; border:1px solid var(--rule); border-radius:3px}
+  .doc hr{border:0; border-top:1px solid var(--rule); margin:40px 0 30px}
+  .doc details{margin:0 0 18px; padding:10px 16px; background:var(--surface); border:1px solid var(--rule); border-radius:3px}
+  .doc summary{cursor:pointer; font-weight:600}
+
+  footer{padding-block:18px 44px; border-top:1px solid var(--rule); font-size:13px; color:var(--ink-3)}
+  footer a{color:var(--ink-3)}
+</style>
+</head>
+<body>
+<header class="masthead">
+  <div class="wrap">
+    <div class="brandline"><span class="brand">XRay<span>XL</span></span><span class="tag">Docs &middot; 0.4.0</span></div>
+    <nav>
+      <a href="README.html">Start</a>
+      <a href="DemoWalkthrough.html">Walkthrough</a>
+      <a href="TraceOptions.html">Trace options</a>
+      <a href="TraceRowModel.html" aria-current="page">Trace rows</a>
+      <a href="ErrorsInTheTrace.html">Errors</a>
+      <a href="VBATracing.html">VBA tracing</a>
+    </nav>
+  </div>
+</header>
+<main class="wrap doc">
+<h1 id="the-trace-row-model--the-contract-for-xrayxls-output">The trace row model — the contract for XRayXL's output</h1>
+<p>What the trace file contains, guaranteed, and what a reader may rely on. If
+you only want to <em>read</em> a trace, the README's tour is enough; this is for
+anyone writing a reader, a test, or a change to the writer. The settings that
+decide what gets recorded are in <a href="TraceOptions.html">TraceOptions.md</a>. The
+writer is <code>src/emit/csv.cpp</code> and <code>src/emit/rowcsv.cpp</code>, plus the two row builders
+(<code>src/xll/xlltrace.cpp</code> and <code>src/vba/vbatrace.cpp</code>); the
+enforcing reader is <code>Read-TraceFile</code> in <code>tests/sweep/_xray_common.ps1</code>.
+If the code and this document disagree, the disagreement is <strong>loud</strong> — the
+reader refuses the file — and the fix updates both in the same change.</p>
+<h2 id="three-output-channels-one-invariant">Three output channels, one invariant</h2>
+<div class="table"><table>
+<thead>
+<tr>
+<th>Channel</th>
+<th>File</th>
+<th>Nature</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Trace</strong></td>
+<td><code>%TEMP%\XRayXL\TraceFiles\XRayXL_Trace_&lt;id&gt;_&lt;pid&gt;.csv</code>, or <code>.jsonl</code> with <code>FORMAT=JSONL</code></td>
+<td>The data product: one row per event. <code>&lt;id&gt;</code> is a monotonic OS tick (<code>GetSystemTimePreciseAsFileTime</code>) that always rises — across arms, processes and reboots — so a re-arm never overwrites; created lazily on the first record, which is the session's <code>arm</code> row, so every arm leaves one: an arm that armed nothing leaves its <code>arm</code> and <code>disarm</code> rows. Buffered; drops shown by <code>input</code>-column holes</td>
+</tr>
+<tr>
+<td><strong>Log</strong></td>
+<td><code>%TEMP%\XRayXL\Logs\XRayXL_&lt;pid&gt;.log</code></td>
+<td>Control: arm outcomes, the derivation line, commands, and the disarm report — the totals line and the procedures line. One line per message. Appended synchronously, <strong>never dropped</strong>. Levelled (DEBUG/INFO/WARNING/ERROR), default INFO</td>
+</tr>
+<tr>
+<td><strong>Crash log</strong></td>
+<td>alongside the logs</td>
+<td>Notes that must survive the process dying; opened <code>FILE_APPEND_DATA</code> per note, installed with the top-level exception filter</td>
+</tr>
+</tbody>
+</table></div>
+<p>Totals are counted <strong>in memory at capture</strong> (interlocked, no I/O) and written
+to the <em>log</em> at disarm — they never pass through the trace file's write
+path. That separation is what makes loss checkable: <strong>totals say what
+happened, rows say what was recorded, and the difference is reported out of
+band — a loss count on the control channels — and located in the file through
+the <code>input</code> column's holes</strong>. If
+totals were derived from the file, drops would silently shrink them and the
+check would be vacuous.</p>
+<h2 id="lifetime">Lifetime</h2>
+<ul>
+<li>One file <strong>per arming session</strong>, named with the monotonic <code>&lt;id&gt;</code> and the
+pid. A re-arm writes a <strong>new</strong> file with a new <code>&lt;id&gt;</code> and never overwrites
+the last.</li>
+<li>Created lazily on the <strong>first record</strong> (with <code>CREATE_ALWAYS</code>), the session's <code>arm</code>
+row: a file holds exactly <strong>one arming session</strong>, and <code>seq</code> restarts at 1 in each
+new file. Reading after a re-arm reads the new session only — this is the
+suites' isolation guarantee.</li>
+<li>Flushed and closed at <strong>disarm</strong> (<code>FlushFileBuffers</code>). Reading after your
+own disarm sees the complete session; a mid-arm read sees a prefix.</li>
+<li>Disarm additionally <strong>drains</strong> any buffer before returning. The
+read-after-disarm completeness guarantee is the part of this contract that
+buffering must not change.</li>
+</ul>
+<h2 id="the-header">The header</h2>
+<p>Byte-for-byte, the first line is:</p>
+<pre><code>seq,input,kind,source,span,parent,depth,thread,qpc,module,function,proc,typetext,caller,callerref,argcount,args,ret,rettype,outcome,ticks,tracerticks,trust
+</code></pre>
+<p>Encoding: UTF-8, CRLF line endings, minimal RFC 4180 quoting — a field is
+quoted only when it contains a comma, a quote or a newline, and embedded quotes
+are doubled. Module names, workbook names and addresses are written as UTF-8.
+Inside <code>args</code> and <code>ret</code> every character above 126 is escaped as <code>\uNNNN</code> and a
+line break as <code>\r</code> or <code>\n</code> (see <em>String escaping</em>), so a value is always ASCII;
+a CR or LF anywhere else becomes a space. A row is at most 4 × 4 MB + 64 KB, the
+two value columns at their limit; a row larger than that is dropped whole, and
+its <code>input</code> value is a hole.</p>
+<p><strong>One optional column.</strong> With <code>XRayXL_SetTraceParam &quot;VBA&quot;, &quot;BREAKPOINTS&quot;, TRUE</code>
+set when tracing arms (and VBA traced), the header ends <code>...,ticks,tracerticks,trust,breaks</code>
+instead, and every row of that file has the extra field. Nothing else ever
+changes the header: a reader accepts exactly these two, and refuses any other.
+In JSON Lines the key simply appears on the rows that carry a count.</p>
+<h2 id="kinds-and-sources">Kinds and sources</h2>
+<p><strong>What</strong> happened is <code>kind</code>; <strong>who</strong> it happened in is <code>source</code>. They are two
+columns because they are two facts. One column carrying both (<code>vba-entry</code>)
+forces a filter on either to spell out the other, and makes &quot;every entry row&quot; a
+wildcard match.</p>
+<div class="table"><table>
+<thead>
+<tr>
+<th><code>kind</code></th>
+<th><code>source</code></th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>entry</code> / <code>exit</code></td>
+<td><code>XLL</code></td>
+<td>A hooked add-in function activated / returned</td>
+</tr>
+<tr>
+<td><code>entry</code> / <code>exit</code></td>
+<td><code>VBA</code></td>
+<td>An interpreter frame opened / closed</td>
+</tr>
+<tr>
+<td><code>event</code></td>
+<td><code>Excel</code></td>
+<td>Excel raised one of its Application events, named in <code>function</code></td>
+</tr>
+<tr>
+<td><code>event</code></td>
+<td><code>XRayXL</code></td>
+<td>Tracing started (<code>arm</code>) or stopped (<code>disarm</code>)</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Every trace starts with the <code>arm</code> row and, when tracing stops cleanly, ends with the <code>disarm</code>
+row.</strong> <code>arm</code> carries what a reader needs to read the rest: <code>qpcFrequency</code>, the <code>utc</code> time its <code>qpc</code>
+was taken at, the <code>pid</code>, and every setting in force. <code>disarm</code> carries the session's totals
+(<code>rowsDropped</code>, <code>eventsRecorded</code> and the rest), each <code>0</code> for a source the session did not run.
+Both are <code>name=value</code> in <code>args</code>, with no type, and only text quoted:
+<code>qpcFrequency=10000000 utc=&quot;2026-09-25T15:13:00.0910753Z&quot; pid=52204 XLL_DEPTH=&quot;ALL&quot; XLL_ARGS=TRUE</code>
+and <code>rowsDropped=0 vbaStoodDown=FALSE</code>. A trace with no <code>disarm</code> row stopped because
+Excel did, by a crash or a hang.</p>
+<p><strong>Excel's events</strong> are recorded in the order Excel raises them, which is not always the order one
+might expect: an edit reads <code>SheetCalculate</code>, <code>AfterCalculate</code>, then <code>SheetChange</code>, because Excel
+recalculates before it raises the change. Which events are recorded is the <code>EVENTS</code> setting, one
+event at a time, the Calc set by default:</p>
+<pre><code>XRayXL_SetTraceParam &quot;EVENTS&quot;, &quot;SheetSelectionChange&quot;, TRUE
+XRayXL_GetTraceParam &quot;EVENTS&quot;, &quot;SheetSelectionChange&quot;     ' TRUE or FALSE
+XRayXL_GetTraceParam &quot;EVENTS&quot;                             ' the preset the set matches, else Custom
+</code></pre>
+<p>An event row has <code>span</code>, <code>parent</code> and <code>depth</code> <code>0</code>, since an event is not a call. <code>callerref</code> is
+the most specific place it names (the target range, else the sheet, else the workbook), quoted as
+a cell's is (<code>'[has space.xlsx]Sheet1'</code>), and <code>args</code>
+holds its parameters by name: <code>Sh:Object=Worksheet@0x...([Book1]Sheet1) Target:Range=Range@0x...([Book1]Sheet1!A1)=5</code>.
+An event a newer Excel adds, which this add-in does not know, is recorded under the name its type
+library gives it, when every known event is chosen.</p>
+<p>There is <strong>no drop-marker row</strong>: the CSV holds
+only real events. A <code>BUFFERWHENFULL=DROP</code> run that lost rows reports the count OUT OF
+BAND -- returned by <code>XRayXL_Disarm</code>, on the status summary, and on the disarm log
+line. The file still shows loss, but through the <strong><code>input</code> column's holes</strong>,
+not a phantom row: a gap in the producer's <code>input</code> sequence is exactly where a row
+was dropped. So the count comes from the operator's channels and the <em>location</em>
+from the file itself.</p>
+<p>Both sets are <strong>closed</strong>: a new kind or source arrives only together with an
+update to this document and to the reader, so an old reader meeting a new
+value refuses loudly rather than mis-filtering silently.</p>
+<p>Which rows <em>appear</em> is mode-dependent:
+<code>XRayXL_SetTraceParam &quot;VBA&quot;,&quot;DEPTH&quot;,&quot;TOP&quot;</code> emits only depth-1 VBA frames
+(<code>&quot;ALL&quot;</code> emits every frame; the totals count everything either way), and <code>XRayXL_SetTraceParam &quot;XLL&quot;,&quot;DEPTH&quot;,&quot;OFF&quot;</code>
+means no XLL rows because nothing was hooked. The row <em>shapes</em> above are
+mode-independent.</p>
+<h2 id="columns">Columns</h2>
+<div class="table"><table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Type</th>
+<th>Contents per kind — and what EMPTY means</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>seq</code></td>
+<td>int64 ≥ 1</td>
+<td>Stamped by the <strong>writer</strong> (the drain, or the sync producer under the lock): seq order <strong>is</strong> file order, across both sources. Strictly increasing and <strong>dense</strong> — every written row gets the next number, so a lossy file still reads <code>1..N</code> (which is why drops are not visible from <code>seq</code>)</td>
+</tr>
+<tr>
+<td><code>input</code></td>
+<td>int64 ≥ 1</td>
+<td>Stamped by the <strong>producer</strong> at emit: unique, but <strong>not</strong> contiguous and <strong>not</strong> in file order. A dropped row consumes an <code>input</code> value that never lands, so its <strong>holes show where, and how much, data was dropped</strong>. Sort by <code>qpc</code> (then <code>input</code>) for event order; the holes are the in-file record of loss that replaced the <code>gap</code> row</td>
+</tr>
+<tr>
+<td><code>kind</code></td>
+<td>enum</td>
+<td><code>entry</code>, <code>exit</code>, <code>event</code> -- see above</td>
+</tr>
+<tr>
+<td><code>source</code></td>
+<td>enum</td>
+<td><code>XLL</code> or <code>VBA</code> for a call; <code>Excel</code> or <code>XRayXL</code> for an event</td>
+</tr>
+<tr>
+<td><code>span</code></td>
+<td>uint64</td>
+<td>Pairs an entry with its exit. <strong>One sequence for both sources</strong>, increasing in the order calls started, and unique for the life of the Excel process. It does not restart when tracing is armed again, so a later trace file's spans need not begin at 1 — a call still running across a re-arm can never reuse a number</td>
+</tr>
+<tr>
+<td><code>parent</code></td>
+<td>uint64</td>
+<td><strong>Every row, never empty.</strong> The <code>span</code> of the activation of the same source that called this one; <code>0</code> at the top of a chain, which is a value and not an absence</td>
+</tr>
+<tr>
+<td><code>depth</code></td>
+<td>int</td>
+<td><strong>Every row, never empty.</strong> How far down the call chain this activation was, counted per source and per thread; <code>1</code> when no other frame of the same source was open</td>
+</tr>
+<tr>
+<td><code>thread</code></td>
+<td>uint32</td>
+<td>OS id of the traced thread</td>
+</tr>
+<tr>
+<td><code>qpc</code></td>
+<td>int64</td>
+<td><code>QueryPerformanceCounter</code> at the <strong>event</strong> — never wall clock. A row is <em>stamped</em> when it happened and <em>numbered</em> when written; <code>seq</code> and <code>qpc</code> order different things</td>
+</tr>
+<tr>
+<td><code>module</code></td>
+<td>text</td>
+<td>XLL: the add-in file (<code>PricingLib.xll</code>). VBA: the qualified module (<code>[Book.xlsm]Module1</code>, and <code>[unsaved:006cd206e1]Module1</code> for a workbook that was never saved, which has no file name for VBA to report) — or <strong>empty when unresolvable</strong>, never a guess like <code>VBE7.DLL</code></td>
+</tr>
+<tr>
+<td><code>function</code></td>
+<td>text</td>
+<td>XLL: the registered name. VBA: the resolved procedure name, falling back to the trailer address in hex — an address obviously <em>looks like</em> an address</td>
+</tr>
+<tr>
+<td><code>proc</code></td>
+<td>text</td>
+<td>XLL: the exported procedure name. VBA: <strong>always</strong> the trailer in hex — the identity the tracer actually used, which tells two same-named procedures apart</td>
+</tr>
+<tr>
+<td><code>typetext</code></td>
+<td>text</td>
+<td><strong>Entry rows only.</strong> The parameter types, comma-separated, with no brackets: the XLL registration's argument codes (<code>B,B</code>, <code>O%</code>, <code>D%,K%,E</code>) or the VBA declared types (<code>Long,String</code>). <strong>Empty</strong> when there are no parameters, where <code>argcount</code> reads <code>0</code>; and when VBA could not recover the types, where <code>argcount</code> holds the slot count or is empty. Empty on exits</td>
+</tr>
+<tr>
+<td><code>caller</code></td>
+<td>text</td>
+<td>Entry rows only, and <strong>never empty</strong>: what the caller <em>was</em>, as a kind from a closed set — <code>cell</code>, <code>name</code>, <code>toolbar</code>, <code>menu</code>, <code>editor</code>, <code>registerid</code>, <code>none</code>, <code>unavailable</code>, <code>array</code>, <code>unknown</code>. Two of those are different &quot;no&quot; answers and are kept apart deliberately: <code>none</code> is Excel saying there is no caller on a sheet, <code>unavailable</code> is Excel declining to answer. The calling cell is always resolved, so a row is never left unasked. <code>name</code> rather than <code>object</code> because a graphic object and an <code>Auto_*</code> macro both come back as a string and Excel gives no way to tell them apart — the kind says what is certain</td>
+</tr>
+<tr>
+<td><code>callerref</code></td>
+<td>text</td>
+<td>The description, whose meaning <code>caller</code> decides. <code>cell</code>: one <strong>external address</strong>, <code>[Book1]Sheet1!B2</code> or <code>'[my book.xlsx]Sheet 1'!B2</code> when Excel would quote it, or a whole range <code>…!B2:D4</code> for a CSE array formula — the same text <code>Range.Address(,,,True)</code> returns, so it can be pasted back. <code>name</code>: the shape's name, or an <code>Auto_*</code> macro's calling sheet. <code>toolbar</code>: the button's position, then the bar: <code>2/5</code>, or <code>2/&quot;MyBar&quot;</code> when a custom bar answers with its name; the Quick Access Toolbar is bar <code>0</code>. <code>menu</code>: the command's position, the menu's, the bar's ID and the submenu's (<code>0</code> for none), so <code>27/27/14/0</code> is the 27th command on the cell's right-click menu. Excel sends both in the reverse of the order its documentation gives. <code>editor</code>: empty; the VBA editor started it (Run, F8 or the Immediate window). <code>registerid</code>, <code>unavailable</code>, <code>array</code>, <code>unknown</code>: the one value. <code>none</code>: which no — the short name of the Excel error it answered with (<code>ref</code>, <code>value</code>, <code>name</code>, …, or <code>err&lt;N&gt;</code> for one without a name), <code>nil</code>, <code>emptyref</code>, <code>sheetless-B2</code>, <code>nametoolong</code></td>
+</tr>
+<tr>
+<td><code>argcount</code></td>
+<td>int</td>
+<td><strong>Entry rows only.</strong> The number of parameters. XLL: one per type code, so an <code>O</code> array counts once though it takes three slots. VBA: the parameter count when the types were recovered, the slot count when only that was, empty when capture did not check out</td>
+</tr>
+<tr>
+<td><code>args</code></td>
+<td>text</td>
+<td><strong>Entry rows: the values going IN. Exit rows: the ByRef ones that CHANGED</strong> — a VBA exit row carries <code>args</code> only when a re-read at the exit differs from the entry, so a row that has them is saying &quot;these moved&quot;; absent means unchanged, and <code>byrefEligible</code>/<code>byrefChanged</code>/<code>byrefSame</code>/<code>byrefDeclined</code> in the disarm line separate that from &quot;never looked&quot;. <code>argcount</code> and <code>typetext</code> stay <strong>entry-only</strong>: they describe the signature, which has not changed, and the entry row this pairs with by <code>span</code> already carries them. <strong>ByVal is never reported at an exit</strong> — the callee's copy may differ but the caller never sees it, so an &quot;after&quot; value would assert an effect that does not exist. One field, <code>a&lt;N&gt;:&lt;type&gt;=&lt;value&gt;</code> per argument on both sources — <code>a&lt;N&gt;:&lt;type&gt;@0x&lt;address&gt;=&lt;value&gt;</code> where a VBA argument's storage has an address to match on (see <em>Reading <code>args</code></em>) — joined by single spaces — one column whatever the arity, which keeps the file rectangular. On XLL rows <code>N</code> is the argument's position. <strong>On VBA rows <code>N</code> is the argument's first frame slot</strong>: a <code>ByVal Variant</code> fills three slots, so the argument after one reads <code>a4</code>, and <code>argcount</code> still counts arguments, not slots. <strong>A VBA <code>Variant</code> argument is decoded by the same code as <code>ret</code></strong>, so it reads its held value the same way, by the rules in <em>Values</em>: a Double bare (<code>1.5</code>), any other number named (<code>Integer(42)</code>, <code>Decimal(12345.678901234567890123456)</code>), <code>&quot;text&quot;</code>, <code>TRUE</code>, an array (<code>Variant[1..2,1..2]{{1,&quot;x&quot;},{2,TRUE}}</code>), an object (see <em>Objects</em>), <code>Nothing</code>, <code>Empty</code>, <code>Null</code>, and an Excel error <strong>spelt as Excel spells it</strong> — <code>#N/A</code>, <code>#DIV/0!</code>, <code>#VALUE!</code>, <code>#REF!</code>, <code>#NAME?</code>, <code>#NUM!</code>, <code>#NULL!</code>, <code>#GETTING_DATA</code> — falling back to <code>Error(0x…)</code> for an SCODE outside that set. An omitted argument reads <code>Missing</code> on both sources. A slot that decodes to nothing truthful is the raw qword (<code>0x…</code>), never a coerced value. <strong>On VBA rows the type is the one XRayXL found for the parameter, which it does most of the time, and a <code>?</code> marker where it found none</strong> — see <em>How XRayXL knows a VBA argument's type</em> below. On XLL rows it is the registration's code, and a value with nothing to decode reads as a bare word: <code>Missing</code>, <code>Empty</code> or <code>AsyncHandle</code>; a reference argument (<code>R</code> or <code>U</code>) reads <code>SRef(R2C2:R3C3)</code> for one area on the calling sheet and <code>Ref(R2C2:R3C3,R5C5:R5C5)</code> otherwise, the sheet not named; anything else <code>?xltype&lt;N&gt;</code></td>
+</tr>
+<tr>
+<td><code>ret</code>, <code>rettype</code></td>
+<td>text</td>
+<td><strong>Exit</strong> rows only. XLL: the decoded return value, and in <code>rettype</code> the registered return code followed by any registration flags — <code>Q</code>, <code>Q$</code> (thread-safe), <code>Q!</code> (volatile), <code>Q#</code> (macro-sheet equivalent), <code>Q&amp;</code> (cluster-safe). <code>ret</code> is empty for a function registered with no return value (<code>&gt;</code>, or a modify-in-place digit) and for an async call, whose answer arrives later. VBA: every <strong>Function</strong> exit at any depth, <code>rettype</code> naming the kind the exit opcode declared — <code>Double</code> (also Date), <code>Single</code>, <code>Byte</code>, <code>Integer</code> (also Boolean, as −1/0), <code>Long</code>, <code>LongLong</code>, <code>Currency</code>, <code>String</code> (quoted), <code>Object</code>, <code>Variant</code>, <code>Elem()</code> for a typed array, or <code>Udt</code> for a user-defined <code>Type</code>, whose <code>ret</code> is its address, <code>udt@0x…</code>, as a record argument reads. An array, a Variant and an object read as they do in <code>args</code>, by the rules in <em>Values</em> — <code>Long[1..3]{3,6,9}</code>, <code>Double[0..1,0..1]{{1234.5,2},{3,4}}</code>, <code>Long(777)</code> for a Variant holding a Long — so one object can be followed from argument to result. <strong>Empty</strong> for a Sub (no result exists) and anything whose descriptor fails validation</td>
+</tr>
+<tr>
+<td><code>outcome</code></td>
+<td>text</td>
+<td><strong>Exit rows only, and never empty on one.</strong> How the activation ended, from a closed set: <code>returned</code>, <code>threw</code>, <code>unwound</code>, <code>handled</code>, <code>abandoned</code>, <code>unhandled</code>. An XLL exit row always reads <code>returned</code> — see below. Empty on every other row</td>
+</tr>
+<tr>
+<td><code>ticks</code></td>
+<td>uint64</td>
+<td><strong>Exit rows only.</strong> The duration in QPC ticks, spelled the same by both sources. Empty on the one exit that has no duration — an async XLL call, where the span measured the dispatch and the work has not finished</td>
+</tr>
+<tr>
+<td><code>tracerticks</code></td>
+<td>uint64</td>
+<td><strong>Exit rows only, beside <code>ticks</code>.</strong> How many of <code>ticks</code> the tracer's own hooks spent inside this activation: reading arguments, asking Excel for the calling cell, writing rows, and waiting on a full buffer under <code>PAUSE</code>, for this call and every call it made, on both sources. <code>ticks</code> minus <code>tracerticks</code> is the call's own time. The per-statement VBA check is too small to time and is not included. Empty whenever <code>ticks</code> is</td>
+</tr>
+<tr>
+<td><code>trust</code></td>
+<td>text</td>
+<td><strong>Exit rows only, and never empty on one.</strong> What ended the measurement, and so whether <code>ticks</code> is a reading or a ceiling: <code>exit</code>, <code>end</code>, <code>backstop</code>, <code>flush</code>, <code>async</code>. <code>exit</code> means the same thing on both sources — the return path fired. <strong><code>async</code> is NOT SUPPORTED</strong> — see below</td>
+</tr>
+<tr>
+<td><code>breaks</code></td>
+<td>uint32</td>
+<td><strong>Optional — only in a file traced with <code>BREAKPOINTS</code> on.</strong> On every VBA exit row, how many times that activation paused in the VBA editor -- at a breakpoint, or at a <code>Stop</code> statement in the code; <code>0</code> when it did not. A non-zero count means <code>ticks</code> includes time spent in the debugger, not running. Its callers' <code>ticks</code> include that time too, though their own count is <code>0</code>. Empty on every other row</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong><code>outcome</code> — how an activation ended.</strong> A value from a closed set that readers
+group and count by, which is why it is a column: a substring match on free text
+can only approximate one. One of <code>returned</code>, <code>threw</code>,
+<code>unwound</code>, <code>handled</code>, <code>abandoned</code>, <code>unhandled</code> on every <code>exit</code> row. A chain reads outwards from the
+throw: the frame that raised says <code>threw</code>, each frame the error passed through
+without handling says <code>unwound</code>, and the frame that resumed says <code>handled</code>. A frame
+that caught an error and then raised one that left it says <code>threw</code>, and the frame
+that catches that one says <code>handled</code> in turn.
+<code>returned</code> is written explicitly, never omitted, so a clean call cannot be
+confused with an older writer's silence.</p>
+<p><strong>The scope is errors that CROSS a frame boundary.</strong> An error raised and
+swallowed inside one frame -- a same-frame <code>On Error Resume Next</code> -- reads
+<code>returned</code>, because nothing propagated and the activation did return. <code>threw</code>,
+<code>unwound</code> and <code>handled</code> describe a chain, and a chain needs at least two frames;
+<code>handled</code> in particular means <em>this frame caught something thrown below it</em>,
+which is the thing a reader is hunting for. Reading it any other way would make
+<code>handled</code> common and uninformative.</p>
+<p><strong><code>unhandled</code> is an error that left VBA into a worksheet cell.</strong> The function Excel
+entered to compute a cell reads <code>unhandled</code>, and the cell shows <code>#VALUE!</code>. Frames it
+called keep <code>threw</code> and <code>unwound</code>, so the raise is still located, and the chain ends
+there even when a macro recalculated the cell, which then reads <code>returned</code>. The
+frame is identified by its calling cell (<code>xlfCaller</code>, always resolved) differing
+from the frame beneath. An entry with no calling cell, such as a user-triggered sheet event, an
+<code>Application.OnTime</code> macro or an <code>Application.Run</code> macro, reads <code>threw</code> instead. A function that <em>returns</em> an error value, such as <code>CVErr(xlErrValue)</code>,
+raised nothing and reads <code>returned</code>, with the error in <code>ret</code>. A frame still
+running when disarm closes it, such as a macro that disarmed, never reads <code>threw</code> or
+<code>unwound</code>.</p>
+<p><strong><code>abandoned</code> is the fifth, and it is not an error.</strong> <code>End</code> tears the whole VBA
+session down without running an epilogue anywhere, so the frames it kills
+neither returned nor threw. They are marked <code>abandoned</code> -- never <code>returned</code>, which would
+assert a return that did not happen.</p>
+<p><strong>Two things give it.</strong> The <code>End</code> statement fires the <code>End</code> opcode, which closes
+every open frame at once, <code>abandoned</code> with <code>trust=end</code>. The <strong>End</strong> button on VBA's
+error dialog fires no opcode, so its frames are closed later, when the next VBA call
+finds them all gone (<code>trust=backstop</code>) or at disarm (<code>trust=flush</code>). There the
+innermost frame raised the error and reads <code>threw</code>; the frames beneath read
+<code>abandoned</code>, and frames from a cell entry upwards keep the cell's <code>unhandled</code>. Every
+case, with examples, is in <a href="ErrorsInTheTrace.html">ErrorsInTheTrace.md</a>. Two things that sound like they belong here do not. Excel
+rescheduling a formula whose precedent was not yet calculated does <strong>not</strong>
+abandon the call -- the activation runs to completion and the UDF is simply
+called <em>again</em>, so the trace shows two whole <code>returned</code> pairs, not a truncated
+one. And a user break during a long calculation is <em>cooperative</em>: an XLL is
+merely asked, through <code>xlAbort</code>, and returns of its own accord; VBA gets error
+18, a trappable error like any other, which reads <code>threw</code> or <code>handled</code>. Excel
+has no way to take a running activation away, which is why there is no third
+route.</p>
+<p><strong>An XLL exit row always reads <code>returned</code>.</strong> The row is written only on the
+call's return path, so the word is always true; the other four describe an error
+chain, which only VBA's shadow stack can follow. An XLL call that ends in an
+exception writes no exit row at all. <code>trust</code> <code>async</code> is a separate statement,
+about the number beside it: an async function returned perfectly normally, it
+just returned before its answer existed.</p>
+<p>It holds for class modules, property accessors, constructors and form modules
+as well as ordinary procedures, and each of those is a separate test -- an
+error raised inside <code>Class_Initialize</code> is attributed to the constructor, not to
+whoever said <code>New</code>. <strong>Two limits.</strong> A raise inside <code>Class_Terminate</code> is not
+propagated by VBA at all (it puts up a message box instead), so nothing on that
+chain is marked <code>handled</code>. And the error's NUMBER and DESCRIPTION are not
+recovered: <code>outcome</code> says WHERE an error was thrown and who caught it, never
+WHICH error it was.</p>
+<h3 id="how-xrayxl-knows-a-vba-arguments-type">How XRayXL knows a VBA argument's type</h3>
+<p>Every VBA argument reads <code>a&lt;N&gt;:&lt;type&gt;=&lt;value&gt;</code>. <strong>Most of the time XRayXL finds each
+parameter's type, and so reads its value exactly.</strong> In the demo's yield-curve model, every
+one of the 13,230 arguments in a recalculation has one. It looks in the compiled VBA, in turn:</p>
+<ol>
+<li><strong>The procedure's own code</strong>, wherever it uses the parameter in a typed way.</li>
+<li><strong>Its caller</strong>, when VBA code called it: what the caller passed for each argument.</li>
+<li><strong>The procedure it hands the parameter on to</strong>, up to four calls deep, since a <code>ByRef</code>
+argument has to match the parameter it goes to exactly.</li>
+</ol>
+<p>A <code>Variant</code> carries the type of what it holds, so once a slot is known to be one, the value
+inside reads as <code>Long(42)</code>, <code>&quot;EUR&quot;</code> or an array, whatever it is.</p>
+<pre><code>a1:Long=42                         declared Long                                certain
+a1:Variant=Long(42)                a Variant, holding a Long                     certain
+a1:Ref&amp;=Long[1..5]{4097,4098,…}    passed by reference; the array recognised    recognised
+a1:?unseen=&quot;EUR&quot;                   no type found; the value recognised          recognised
+a1:?none=0x4004000000000000        no type, nothing recognised: the raw bytes   raw
+</code></pre>
+<p><strong><code>Ref&amp;</code></strong> is an argument passed by reference that the compiled code says nothing more
+about, typically an array passed <code>ByRef</code>. Its value is read from the array itself, which
+names its element type and bounds.</p>
+<p><strong>When no type is found</strong>, the type reads <code>?</code> and XRayXL looks at the value itself. It
+accepts an omitted <code>Optional</code>, a string or an array only when every one of a set of strict
+checks passes, and otherwise shows the raw 8 bytes, <code>0x…</code>, never a guessed number. A value
+recognised this way is very nearly always right; the <code>?</code> says it was recognised rather than
+declared. The word after it says why there was no type:</p>
+<div class="table"><table>
+<thead>
+<tr>
+<th><code>a1:</code></th>
+<th>meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>?unseen</code></td>
+<td>the procedure never uses the parameter, and neither caller nor callee said</td>
+</tr>
+<tr>
+<td><code>?none</code></td>
+<td>it uses it only in ways that carry no type</td>
+</tr>
+<tr>
+<td><code>?opNNN</code></td>
+<td>an instruction XRayXL has no type for yet; worth reporting, with <code>NNN</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><strong><code>typetext</code></strong> gives the types as a signature, <code>Long,String</code>. A <code>~</code> at its end means
+XRayXL did not read the whole procedure, so a <code>?</code> in that row may stand for a use it
+skipped. It is rare.</p>
+<p><strong>String escaping, in <code>args</code> and <code>ret</code>, on XLL and VBA rows alike.</strong> A decoded string is rendered
+between quotes, with everything escaped that would otherwise be ambiguous, so
+the value round-trips out of its CSV field unchanged:</p>
+<div class="table"><table>
+<thead>
+<tr>
+<th>in the string</th>
+<th>rendered as</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>&quot;</code></td>
+<td><code>\&quot;</code></td>
+</tr>
+<tr>
+<td><code>\</code></td>
+<td><code>\\</code></td>
+</tr>
+<tr>
+<td>tab, CR, LF</td>
+<td><code>\t</code>, <code>\r</code>, <code>\n</code></td>
+</tr>
+<tr>
+<td>any other character below 32, and DEL</td>
+<td><code>\xNN</code></td>
+</tr>
+<tr>
+<td>any character above 126</td>
+<td><code>\uNNNN</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>The closing quote is therefore the only unescaped <code>&quot;</code> in the value. Two of these
+exist because the alternatives were silently lossy: a raw CR or LF would be
+turned into a <em>space</em> by the CSV writer, claiming the string held a space where
+it held a line break; and a character outside ASCII used to become <code>?</code>, which no
+reader could tell from a question mark the string really contained. <code>\uNNNN</code>
+keeps every value ASCII, so it reads the same in any viewer. A VBA string longer
+than 256 characters is cut there, and ends with <code>...</code> after the closing quote.</p>
+<p><strong><code>parent</code> and <code>depth</code> — where a call sits in the chain.</strong> Both are columns of
+their own, beside <code>span</code>, because <code>parent</code> <em>is</em> a span: the three call-tree
+fields read together. Both are on every row, entry and exit, on both sources.</p>
+<ul>
+<li><strong><code>depth</code></strong> is how far down the call chain this activation was. <code>depth=1</code>
+means no other frame of the same source was open on that thread — this call
+started the chain. (Excel may well have been busy; the depth counts frames of
+one source, not everything in flight.) <strong>Each source counts its own:</strong> an XLL
+function a VBA procedure calls reads <code>depth=1</code> and <code>parent=0</code>, and its place
+under the VBA frame shows only in the order of the rows.</li>
+<li><strong><code>parent</code></strong> is the <code>span</code> of the activation that called it, <code>0</code> at the top.
+Because <code>span</code> pairs an entry row with its exit, <code>parent=2</code> means <em>called by
+the activation whose two rows both say <code>span=2</code></em>.</li>
+<li><strong>A macro Excel runs while VBA waits in <code>DoEvents</code></strong> — an <code>Application.OnTime</code>
+macro, an event — starts a chain of its own: <code>depth=1</code>, <code>parent=0</code>. It runs on
+top of the frame that called <code>DoEvents</code>, but that frame did not call it. The
+disarm log counts these as <code>doEventsChains</code>.</li>
+</ul>
+<p>Together they place a row exactly:</p>
+<pre><code>seq  kind   span  parent  depth  function  ticks  trust
+1    entry  1     0       1      Go
+2    entry  2     1       2      Middle
+3    entry  3     2       3      Leaf
+4    exit   3     2       3      Leaf      412    exit
+5    exit   2     1       2      Middle    980    exit
+6    exit   1     0       1      Go        1533   exit
+</code></pre>
+<p><strong>Why both, when one nearly implies the other.</strong> <code>depth</code> tells you the <em>shape</em>
+of the chain; <code>parent</code> tells you <em>who</em>.</p>
+<p>You could almost manage on <code>depth</code> alone: reading one thread's rows in <code>seq</code>
+order, a <code>depth=3</code> entry belongs to the last <code>depth=2</code> still open. That
+reconstruction is right until a row goes missing — and rows can go missing,
+which is exactly what the holes in <code>input</code> record. After a gap, every later row
+is quietly attached to the wrong caller. <code>parent</code> names the caller outright, so
+the same missing row shows up instead as a <code>parent</code> pointing at a <code>span</code> that is
+not in the file: a question, rather than a confident wrong answer.</p>
+<p><code>parent</code> also settles <strong>recursion</strong>, which <code>depth</code> cannot. Three activations of
+one procedure produce three rows with the same <code>function</code> and the same <code>proc</code>;
+only <code>parent</code> says which of them called which.</p>
+<p>Going the other way, <code>parent</code> alone would turn &quot;how deep did this get&quot; into a
+link-by-link walk of the whole file. <code>depth</code> is a property of the row itself, so
+it survives a gap. There is no depth limit: each thread's frame stack grows as
+the calls nest.</p>
+<p><strong><code>trust</code> — whether <code>ticks</code> is a measurement or an upper bound.</strong> It names
+<strong>what ended the measurement</strong>, not a verdict on it, so the cause survives and
+the verdict is one lookup away. A column of its own, beside the number it
+qualifies, now that <code>note</code> is gone.</p>
+<div class="table"><table>
+<thead>
+<tr>
+<th>value</th>
+<th>what ended the measurement</th>
+<th><code>ticks</code> is</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>exit</code></td>
+<td>the exit opcode (VBA), or the return detour (XLL)</td>
+<td>a measurement</td>
+</tr>
+<tr>
+<td><code>end</code></td>
+<td>the <code>End</code> opcode, which killed the whole chain</td>
+<td>a measurement</td>
+</tr>
+<tr>
+<td><code>backstop</code></td>
+<td>the stack pointer, at the <em>next</em> statement</td>
+<td>an <strong>upper bound</strong></td>
+</tr>
+<tr>
+<td><code>flush</code></td>
+<td>the flush at disarm</td>
+<td>an <strong>upper bound</strong></td>
+</tr>
+<tr>
+<td><code>async</code></td>
+<td>nothing yet — the call was dispatched and has not answered</td>
+<td><strong>absent</strong>: <code>ticks</code> is empty</td>
+</tr>
+</tbody>
+</table></div>
+<p><code>end</code> is grouped with <code>exit</code> and not with the other two abrupt closes on
+purpose: the <code>End</code> opcode fires at the moment the session dies, so the frame is
+closed when it actually ended rather than whenever the next statement happened
+to arrive. It always accompanies <code>outcome</code> <code>abandoned</code>.</p>
+<p><strong>Asynchronous XLL functions are NOT SUPPORTED.</strong> An add-in function registered
+asynchronously — a leading <code>&gt;</code> in its type text, or an <code>X</code> (async handle)
+argument — is recognised and its exit row is marked <code>trust</code> <code>async</code> with an
+empty <code>ticks</code>, and that is the whole of it. <strong>Do not rely on a duration, or on
+any pairing with the answer, for such a call.</strong></p>
+<p>The reason is structural rather than an omission we intend to close. An async
+function returns <em>before its answer exists</em>: it hands Excel a handle, and the
+result arrives later through <code>xlAsyncReturn</code>, on whatever thread the add-in
+chooses. The <code>span</code> therefore measures the <strong>dispatch</strong>, not the work, and there
+is no second event this tracer hooks that would let it close the pair. Reporting
+the dispatch time would say a four-second call took microseconds, which for a
+tool that exists to find slow things is worse than saying nothing — so <code>ticks</code>
+is left empty and <code>trust</code> says which question it is not answering.</p>
+<p><strong>This path is also untested.</strong> No add-in in this repository registers an
+asynchronous function, so the behaviour above is reasoned from the registration
+flags, not measured. Treat an <code>async</code> row as a marker that a call happened, and
+nothing more.</p>
+<p>Real-time data (<code>=RTD(...)</code>) is a <strong>different mechanism</strong> — a COM server, not
+the XLL C API — and is not hooked at all. It produces no rows.</p>
+<p>Only the exit opcode fires when an activation actually ends. A fully unhandled
+unwind fires none at all, so its frames are closed later and <code>ticks</code> runs until
+whatever happened next -- measured at 9,164,013 ticks against 383 for a
+comparable clean call. <code>qpc</code> is late on those rows for the same reason, which
+matters because it is what orders the merged XLL/VBA timeline. The number is
+kept rather than blanked, because it is a true bound; what would be wrong is
+presenting it as a reading.</p>
+<p><strong>Nesting.</strong> Both sources state it outright, in <code>parent</code> and <code>depth</code>, each counting
+its own frames per thread. The same tree can be read independently from the
+ENTRY/EXIT INTERLEAVING -- span B is inside span A when A opens before B and
+closes after it on the same thread, ordered by <code>seq</code>. So an add-in that
+re-enters Excel via <code>xlUDF</code> reads as nested intervals, at <code>depth</code> 2 and 3 with
+each <code>parent</code> naming its caller, while cell-level nesting (<code>=TxB(TxB(1,2),3)</code>)
+reads as two disjoint calls at <code>depth</code> 1, because Excel evaluates the inner call
+and finishes it before the outer begins. The one exception is a macro run inside
+<code>DoEvents</code>: its rows fall inside the waiting frame's interval but begin a chain of
+their own. <code>Get-MaxNestDepth</code> and the fuzz suite's
+<code>NestDepth</code> check the columns against the interleaving -- a flattened tree would
+pass entry/exit pairing, span uniqueness and the caller invariants unchanged.</p>
+<h2 id="values-arrays-variants-and-types">Values: arrays, Variants and types</h2>
+<p>One grammar spells every value in <code>args</code> and <code>ret</code>, on both sources, and one code path writes
+it (<code>core::ValueWriter</code>), so the same value reads the same wherever it lands.</p>
+<p><strong>An array is its element type, both bounds of every dimension, then one brace level per
+dimension</strong>, the first dimension outermost. For a 2-D array that means rows: the whole of row 1,
+then row 2.</p>
+<pre><code>Long[0..3]{1,2,3,4}                                   1-D
+Variant[1..2,1..3]{{11,12,13},{21,22,23}}             2-D: a range, rows first
+Variant[1..1,1..3]{{1,2,3}}                           one row of a range is still 2-D
+Long[0..1,0..1,0..2]{{{1,2,3},{4,5,6}},{{7,8,9},{10,11,12}}}   3-D
+Variant[0..-1]{}                                      Array(): bounds 0..-1, no elements
+Long()                                                a dynamic array never allocated: its type, no bounds
+?[0..-1]{}                                            an empty ParamArray: its descriptor names no element type
+</code></pre>
+<ul>
+<li><strong>Both bounds, always</strong>, because <code>Option Base</code> decides what a bare count would mean:
+<code>Dim a(3)</code> is 0..3 under base 0 and 1..3 under base 1.</li>
+<li><strong>A bare brace is always a dimension; a nested array always carries its own header.</strong> So
+<code>{{1,2}}</code> is one row of a 2-D array, and <code>{Long[0..1]{1,2}}</code> is a 1-D array holding an array.
+Nesting goes 32 levels deep, then reads <code>[...]</code>.</li>
+<li><strong>Every element is written.</strong> Arrays are not truncated. The one limit is 4 MB for a single
+value: an array past it keeps its header and has no braces — <code>Double[0..99999999]</code> — so its
+shape is known and its contents are not in the file. Never part of the contents. The disarm
+log counts these (<code>values: N array(s) over the 4 MB value limit</code>).</li>
+<li><strong>An element that would not decode is <code>?</code></strong>, not a refusal of the array: the shape came from
+the descriptor and stays true whatever one element holds.</li>
+<li><strong>An array with no storage is still a value.</strong> <code>Dim a() As Long</code> before <code>ReDim</code> reads <code>Long()</code>
+in a Variant, and <code>?()</code> as a <code>Function … As Long()</code> result, whose element type nothing records.
+In a <code>Ref&amp;</code> argument a zero reads <code>0x0</code>: a <code>ByRef LongLong</code> holding 0 and an unallocated
+<code>ByRef</code> array are the same eight bytes.</li>
+</ul>
+<p><strong>Inside a Variant, a bare number means Double; every other type is named.</strong> This covers a
+Variant argument, a Variant result, each element of a Variant array, and a Range's contents:</p>
+<pre><code>1.5                   Double
+Integer(1)            Integer, and Boolean passed as an Integer
+Long(7)  Single(1.5)  Byte(3)  LongLong(9)  Currency(1.5000)  Decimal(1.5)  Date(46352)
+&quot;x&quot;   TRUE   #N/A   Empty   Null   Nothing                    already say what they are
+Variant[0..3]{1234.5,&quot;two&quot;,Long(3),TRUE}
+</code></pre>
+<p>A typed array's elements are bare, because the header already names them — <code>Long[1..3]{3,6,9}</code>
+— and so is a declared scalar argument, <code>a1:Long=5</code>. <code>Range.Value2</code> hands back only Doubles,
+strings, Booleans, errors and Empty, so a range's contents are never tagged.</p>
+<p>An object reads <code>Class@0x…(where)</code>, and a Range, Collection or Dictionary whose contents were
+read is followed by <code>=</code> and its value (see <em>Objects</em>). A user-defined Type reads <code>udt@0x…</code>. An XLL reference reads
+<code>SRef(R2C2:R3C3)</code> or <code>Ref(R2C2:R3C3,R5C5:R5C5)</code>: its cells are not read, because <code>xlCoerce</code> on a
+cell not yet calculated makes Excel abandon the call and run it again later.</p>
+<h2 id="json-lines">JSON Lines</h2>
+<p>With <code>FORMAT=JSONL</code> the trace file is <code>XRayXL_Trace_&lt;id&gt;_&lt;pid&gt;.jsonl</code>: no header, and one JSON
+object a line whose keys are the CSV columns in the same order. <code>seq</code>, <code>span</code>, <code>parent</code>,
+<code>depth</code>, <code>thread</code>, <code>qpc</code>, <code>argcount</code> and <code>ticks</code> are numbers; the rest are strings; an empty
+field has no key. <code>args</code> and <code>ret</code> are structured, and <strong>every value names its type</strong>, a
+Double included:</p>
+<pre><code>{&quot;seq&quot;:12,&quot;input&quot;:12,&quot;kind&quot;:&quot;exit&quot;,&quot;source&quot;:&quot;VBA&quot;,...,&quot;ret&quot;:{&quot;t&quot;:&quot;Array&quot;,&quot;elem&quot;:&quot;Variant&quot;,
+ &quot;bounds&quot;:[[0,2]],&quot;v&quot;:[{&quot;t&quot;:&quot;Long&quot;,&quot;v&quot;:7},{&quot;t&quot;:&quot;Double&quot;,&quot;v&quot;:2.5},{&quot;t&quot;:&quot;String&quot;,&quot;v&quot;:&quot;x&quot;}]},
+ &quot;rettype&quot;:&quot;Variant&quot;,&quot;outcome&quot;:&quot;returned&quot;,&quot;ticks&quot;:604,&quot;trust&quot;:&quot;exit&quot;}
+</code></pre>
+<div class="table"><table>
+<thead>
+<tr>
+<th>value</th>
+<th>JSON</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>a number</td>
+<td><code>{&quot;t&quot;:&quot;Double&quot;,&quot;v&quot;:1.5}</code>, <code>{&quot;t&quot;:&quot;Long&quot;,&quot;v&quot;:7}</code>. <code>Currency</code>, <code>Decimal</code>, <code>LongLong</code> and <code>UInt64</code> carry their exact digits as a string: <code>{&quot;t&quot;:&quot;Currency&quot;,&quot;v&quot;:&quot;1.5000&quot;}</code>. <code>NaN</code> and the infinities are strings too</td>
+</tr>
+<tr>
+<td>a string</td>
+<td><code>{&quot;t&quot;:&quot;String&quot;,&quot;v&quot;:&quot;x&quot;}</code>, with <code>&quot;cut&quot;:true</code> when the source was longer than was read</td>
+</tr>
+<tr>
+<td>Boolean, error</td>
+<td><code>{&quot;t&quot;:&quot;Boolean&quot;,&quot;v&quot;:true}</code>, <code>{&quot;t&quot;:&quot;Error&quot;,&quot;v&quot;:&quot;#N/A&quot;}</code></td>
+</tr>
+<tr>
+<td>a word</td>
+<td><code>{&quot;t&quot;:&quot;Empty&quot;}</code>, and the same for <code>Null</code>, <code>Missing</code>, <code>Nothing</code>, <code>AsyncHandle</code></td>
+</tr>
+<tr>
+<td>not known</td>
+<td><code>{&quot;t&quot;:&quot;Unknown&quot;,&quot;v&quot;:&quot;?vt17&quot;}</code></td>
+</tr>
+<tr>
+<td>an array</td>
+<td><code>{&quot;t&quot;:&quot;Array&quot;,&quot;elem&quot;:&quot;Variant&quot;,&quot;bounds&quot;:[[1,2],[1,3]],&quot;v&quot;:[[…],[…]]}</code>: <code>v</code> nests one JSON array per dimension, rows first. In a typed array (<code>elem</code> other than <code>Variant</code>) the elements are bare JSON values, since <code>elem</code> names their type; a cut string there is still an object. Over the value limit, <code>v</code> is replaced by <code>&quot;omitted&quot;:&quot;over the value limit&quot;</code>. An element type the descriptor does not name is <code>&quot;elem&quot;:null</code>, and an array never allocated has <code>&quot;bounds&quot;:[]</code> and no <code>v</code></td>
+</tr>
+<tr>
+<td>an object</td>
+<td><code>{&quot;t&quot;:&quot;Object&quot;,&quot;class&quot;:&quot;Range&quot;,&quot;ptr&quot;:&quot;0x1E2…&quot;,&quot;where&quot;:&quot;'[Book1]Sheet1'!A1:C2&quot;,&quot;value&quot;:{…}}</code></td>
+</tr>
+<tr>
+<td>a reference</td>
+<td><code>{&quot;t&quot;:&quot;SRef&quot;,&quot;areas&quot;:[[2,2,3,3]]}</code></td>
+</tr>
+<tr>
+<td>a UDT</td>
+<td><code>{&quot;t&quot;:&quot;Udt&quot;,&quot;ptr&quot;:&quot;0x…&quot;}</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>On an event row, each object names its parameter instead of a slot:
+<code>{&quot;name&quot;:&quot;Target&quot;,&quot;type&quot;:&quot;Range&quot;,&quot;value&quot;:{…}}</code>. The <code>arm</code> and <code>disarm</code> rows' values have no
+<code>&quot;type&quot;</code> key; each value names its own <code>t</code> as always.</p>
+<p><code>args</code> is an array with one object per slot — <code>{&quot;slot&quot;:1,&quot;type&quot;:&quot;Variant&quot;,&quot;value&quot;:{…}}</code>, with
+<code>&quot;address&quot;:&quot;0x…&quot;</code> after the type where the text has <code>@0x…</code>, and
+<code>&quot;unreadable&quot;:true</code> in place of a value that could not be read — and, when the XLL plan
+describes fewer slots than exist, a closing <code>{&quot;described&quot;:2,&quot;slots&quot;:5}</code>.</p>
+<h2 id="excel-errors">Excel errors</h2>
+<p>An error travelling through VBA — in an argument, in a return, or as an element
+of an array — reads as the text the user sees in the cell:</p>
+<pre><code>args   a1:Variant=#N/A
+ret    #DIV/0!
+ret    Variant[0..2]{Integer(1),#VALUE!,Integer(3)}
+</code></pre>
+<p><code>#NULL!</code>, <code>#DIV/0!</code>, <code>#VALUE!</code>, <code>#REF!</code>, <code>#NAME?</code>, <code>#NUM!</code>, <code>#N/A</code> and
+<code>#GETTING_DATA</code>. <strong>Unquoted</strong>, so it cannot be mistaken for the string <code>&quot;#N/A&quot;</code>,
+which renders with its quotes. The same table names them on the XLL side, so an
+error an add-in returned and an error a UDF was handed read identically.</p>
+<p><strong>An SCODE outside that set keeps its number</strong> — <code>Error(0x…)</code>. A COM error is
+not a cell error and naming it would claim it was.</p>
+<p><strong><code>Missing</code> is not an error, though it arrives as one.</strong> An omitted <code>Optional</code>
+is a VARIANT carrying <code>VT_ERROR</code> exactly like <code>#N/A</code> does; the two are told apart
+by the SCODE alone — <code>DISP_E_PARAMNOTFOUND</code> is facility <code>0x2</code>, an Excel error is
+facility <code>0xA</code>. So a supplied <code>#N/A</code> can never be reported as an absent
+argument, and an absent argument can never be reported as a cell error.</p>
+<p><strong>A cell REFERENCE in a <code>Variant</code> parameter is an object, not a value.</strong> Excel
+hands a <code>Range</code> for <code>=MyUdf(A1)</code> and the value for <code>=MyUdf(NA())</code>, so the first
+reads <code>object@0x…</code> and the second <code>#N/A</code>. VBA's own <code>IsError</code> and <code>CStr</code> coerce
+through the Range's default property and will say &quot;error&quot; for both — they are
+answering about the coerced value, not about what the parameter holds. The trace
+reports what the parameter holds.</p>
+<h2 id="objects">Objects</h2>
+<p>With <code>OBJECTS</code> on — the default — an object argument or return is named, and a
+<code>Range</code>, <code>Worksheet</code>, <code>Workbook</code>, <code>Collection</code> or <code>Scripting.Dictionary</code> is
+described. The address is always kept, so one object can be followed from row to
+row:</p>
+<pre><code>a1:Variant=Range@0x000001E2…('[Book1]Sheet1'!A1:C2)=Variant[1..2,1..3]{{11,12,13},{21,22,23}}
+a1:Variant=Range@0x000001E2…('[Book1]Sheet1'!A:A)   -- addressed, deliberately not read
+a1:Variant=Worksheet@0x000001E2…([Book1]Sheet1)
+a1:Variant=Workbook@0x000001E2…([Book1])
+a1:Variant=Collection@0x000001E2…=Variant[1..3]{1.5,&quot;x&quot;,Nothing}
+a1:Variant=Dictionary@0x000001E2…=Variant[0..1,0..1]{{&quot;a&quot;,Integer(1)},{Long(2),Empty}}
+a1:Variant=Position@0x000001E2…                     -- named; no detail we know how to fetch
+a1:Variant=object@0x000001E2…                       -- OBJECTS off, or nothing worked out
+a1:Object=Nothing                                   -- no object at all
+</code></pre>
+<p><strong>This is the one setting that makes the tracer TALK to Excel.</strong> Everything else
+reads memory or asks the flat C API, which is passive. This calls the object
+model — <code>Address</code>, <code>Count</code>, <code>Value2</code>, <code>Name</code>, and a container's <code>Keys</code>, <code>Items</code>
+or enumerator — on the calculating thread, at a statement boundary. <code>XRayXL_SetTraceParam VBA, &quot;OBJECTS&quot;, FALSE</code> returns the
+tracer to pure observation, and every object then reads <code>object@0x…</code>.</p>
+<p><strong>A class is identified, never guessed.</strong> <code>QueryInterface</code> against the published
+interface ids — Excel's, VBA's <code>_Collection</code> and the Scripting Runtime's
+<code>IDictionary</code> — decides whether a detail may be fetched — not the presence of an <code>Address</code> property, and not a familiar-looking
+vtable. An interface id that is wrong, or that Excel changes, simply never
+matches and the object falls through to being named.</p>
+<p><strong>The name is the CLASS, from <code>IProvideClassInfo</code></strong> — the same question VBA's
+<code>TypeName()</code> asks. <code>IDispatch::GetTypeInfo</code> answers with the default <em>interface</em>
+instead, which is <code>_Collection</code> where VBA says <code>Collection</code>; trimming that
+underscore would be a guess about a naming convention, so the class comes from
+the source that actually knows it. Where no class info exists, the interface name
+is reported as it comes, underscore and all.</p>
+<p><strong>A range's cell count is checked BEFORE its value is asked for.</strong> <code>A:A</code> is over
+a million cells and reading it would materialise a ~25 MB array inside a
+calculation. Over the ceiling of 4,096 cells — or when the count
+could not be had at all — the address is reported and the contents are not, which
+is visible in the row: no <code>=</code> follows the address. The same goes for a range of
+several areas (<code>A1:A2,C1:C2</code>), whose <code>Value2</code> is the first area's alone.</p>
+<p><strong>What Excel hands back for <code>Value2</code> is measured, not assumed.</strong> A single cell
+gives a <strong>scalar</strong>. Every multi-cell range gives a <strong>2-D</strong> array, including a
+single row — <code>A1:C1</code> is <code>[1..1,1..3]{{1,2,3}}</code>, <em>not</em> a 1-D array of 3. Rows come
+first, one brace level each: <code>A1:C2</code> reads <code>{{11,12,13},{21,22,23}}</code>.</p>
+<p><strong>A Collection reads as a 1-D Variant array from 1</strong>, in the order <code>For Each</code>
+gives. Its keys are not shown: a Collection has no way to give them back. <strong>A Dictionary reads as a 2-D Variant
+array of <code>{key,item}</code> rows</strong>, in <code>Keys</code> order, the rows numbered as <code>Keys()</code>
+numbers them. Every key and item is read as a Variant array's element is, so each
+is any type — a number named, a string quoted, <code>Empty</code>, <code>Nothing</code>, an array, or
+another object described by these same rules. An empty one keeps its shape:
+<code>Variant[1..0]{}</code> and <code>Variant[0..-1,0..1]{}</code>.</p>
+<p><strong>A container's contents are declined, not cut</strong>, as a range's are: over 4,096
+items, or when its items cannot all be read, it is named with no <code>=</code>. A container
+already being read — one that holds itself, or holds one that holds it — is named
+where it recurs rather than read again, and past eight containers deep the next is
+named only.</p>
+<p><strong>Any failure renders the address.</strong> A call that fails, a class with no name, the
+setting off — all produce <code>object@0x…</code>, which is what this always said and is
+never wrong.</p>
+<p><strong>Addresses here are Excel's own</strong>, from <code>Range.Address(…, External:=True)</code> —
+and <code>callerref</code> now matches them, quoting included. See <em>Quoting</em> below.</p>
+<h2 id="quoting-an-external-address">Quoting an external address</h2>
+<p>An address — in <code>callerref</code>, and in a described <code>Range</code> — is quoted exactly where
+Excel quotes it, so it can be pasted straight back into a formula. Measured
+against Excel rather than recalled:</p>
+<div class="table"><table>
+<thead>
+<tr>
+<th>Address</th>
+<th>Quoted</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>[Plain1.xlsx]Sheet1!A1</code></td>
+<td>no — <strong>a dot alone does not quote</strong>, so an ordinary saved workbook is bare</td>
+</tr>
+<tr>
+<td><code>[Under_score.xlsx]Under_1!A1</code></td>
+<td>no — underscore is safe</td>
+</tr>
+<tr>
+<td><code>[Plain5.xlsx]A.B!A1</code></td>
+<td>no — a dot in the <em>sheet</em> is safe too</td>
+</tr>
+<tr>
+<td><code>'[has-hyphen.xlsx]Sheet1'!A1</code></td>
+<td>yes — a hyphen, either side</td>
+</tr>
+<tr>
+<td><code>'[has space.xlsx]Sheet1'!A1</code></td>
+<td>yes — a space, either side</td>
+</tr>
+<tr>
+<td><code>'[Digits123.xlsx]1Sheet'!A1</code></td>
+<td>yes — a <strong>sheet name starting with a digit</strong></td>
+</tr>
+<tr>
+<td><code>'[Plain4.xlsx]Bob''s'!A1</code></td>
+<td>yes, and the apostrophe is <strong>doubled</strong> inside</td>
+</tr>
+</tbody>
+</table></div>
+<p>So the safe set is letters, digits, <code>_</code> and <code>.</code>; anything else in either name
+quotes, as does a sheet name beginning with a digit.</p>
+<p><strong>The doubt falls on the side of the quote.</strong> Quoting where Excel would not is a
+cosmetic difference in a reference that still pastes back; failing to quote where
+Excel would produces one that does not.</p>
+<p><strong>A reader needs to accept both forms.</strong> An address has exactly one <code>!</code>,
+separating the prefix from the reference, and neither half can contain another —
+so splitting on it works whether or not the prefix is quoted.</p>
+<h2 id="reading-args-and-what--means-where">Reading <code>args</code>, and what <code>?</code> means where</h2>
+<p><strong>In CSV, <code>args</code> is a small format inside one field.</strong> (JSON Lines writes it as
+an array of objects instead; see <em>JSON Lines</em>.) Values are
+<code>a&lt;N&gt;:&lt;type&gt;=&lt;value&gt;</code>, joined by single spaces, where <code>&lt;N&gt;</code> is the SLOT and not
+the parameter ordinal — a <code>ByVal Variant</code> is a 24-byte VARIANT across three
+slots, so the parameter after one is <code>a4</code>.</p>
+<p><strong><code>@0x&lt;address&gt;</code> after a VBA argument's type says where its storage is.</strong> For a <code>ByRef</code>
+parameter, <code>a1:Long&amp;@0x…</code>, it is the caller's variable, so the same address on a row beneath
+it in the same call tree is the same variable. Match only within one call tree: an address
+is reused once a call has ended.</p>
+<p>Only a quoted string can contain a space, and a string's own quotes and
+backslashes are escaped, so <strong>splitting on <code> a&lt;N&gt;:</code> outside quotes is
+unambiguous</strong>. Track quote depth; do not split on spaces alone.</p>
+<p><strong><code>?</code> appears in several places and means something different in each.</strong> It is
+always &quot;this is not known&quot;, and the position says what <em>this</em> is:</p>
+<div class="table"><table>
+<thead>
+<tr>
+<th>where</th>
+<th>what is not known</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>the type position — <code>a1:?unseen=…</code></td>
+<td>the parameter's TYPE. The word says which not-knowing (see above)</td>
+</tr>
+<tr>
+<td>before an array's bounds — <code>?[0..2]{…}</code></td>
+<td>the array's ELEMENT TYPE could not be named</td>
+</tr>
+<tr>
+<td>inside an array — <code>{1,?,3}</code></td>
+<td>that one ELEMENT would not decode. Deliberately not a refusal of the whole array: the shape and size came from the descriptor and stay true whatever one element holds</td>
+</tr>
+<tr>
+<td>a typed array's return — <code>?()</code></td>
+<td>the element type of an <code>Elem()</code> return could not be named</td>
+</tr>
+</tbody>
+</table></div>
+<p>On the <strong>XLL</strong> side a type position is the registration's own code (<code>Q</code>, <code>B</code>,
+<code>D%</code>…), which is authoritative — so a <code>?</code> never appears there in a traced row.
+<code>&lt;N&gt;</code> counts slots there too: an <code>O</code> array takes three, so the argument after one
+is <code>a4</code>. An XLL array reads like a VBA one, rows first with both bounds:
+<code>Double[1..2,1..2]{{1,2},{3,4}}</code> for an <code>FP</code> or <code>O</code> argument, <code>Variant[1..R,1..C]{{…},…}</code>
+for an <code>XLOPER</code> array.</p>
+<h2 id="what-the-trace-cannot-tell-you-on-its-own">What the trace cannot tell you on its own</h2>
+<p><strong>Whether argument capture was OFF, or tried and declined.</strong> On VBA rows both
+leave <code>typetext</code>, <code>argcount</code> and <code>args</code> empty, and the trace file carries no
+record of the setting. XLL rows keep <code>typetext</code> and <code>argcount</code> with <code>ARGS</code> off:
+they come from the registration, not from capture. The <strong>log</strong> does — <code>trace param set: VBA ARGS</code> at arm,
+and <code>VBA args: N captured</code> with the decline reasons at disarm. If a whole
+session has no arguments anywhere, read the log before concluding anything
+failed.</p>
+<p>This is the one place the three channels are not independent: the trace is the
+data, and for this question the log is the only witness.</p>
+<p><strong><code>argcount</code> distinguishes what it can.</strong> <code>0</code> means the procedure takes no
+parameters — a fact — and empty means the capture did not run or declined. The
+signature does the same: <code>()</code> is &quot;no parameters&quot;, empty is &quot;not recovered&quot;.</p>
+<h2 id="limitations">Limitations</h2>
+<p><strong>The declared TYPE of an object parameter is always just <code>Object</code>.</strong> VBA's
+bytecode selects the load instruction by <em>kind</em> — &quot;an object reference&quot; — not by
+class, so <code>As Range</code>, <code>As Worksheet</code> and your own class modules all read
+<code>Object</code> in <code>typetext</code>. The class comes from the VALUE instead, not the
+declaration — see <em>Objects</em> below.</p>
+<p><strong>A UDT is reported as the record's address, with no members.</strong></p>
+<pre><code>typetext   (Udt&amp;)
+args       a1:Udt&amp;=udt@0x000001E226D99100
+</code></pre>
+<p>A user-defined <code>Type</code> is always passed by reference and the slot points straight
+at the record. Its fields are not walked, so an object field — a <code>Range</code> inside a
+<code>Type</code> — does not appear at all.</p>
+<h2 id="ordering-guarantees">Ordering guarantees</h2>
+<ul>
+<li><code>seq</code> is strictly increasing and equals file order.</li>
+<li>Sorting by <code>qpc</code> is sound because — asserted, not assumed — within a thread
+<code>qpc</code> never runs backwards, and within a span the entry is stamped before
+its exit (and numbered before it, too).</li>
+<li>Across threads under multithreaded calc, <code>seq</code> and <code>qpc</code> genuinely disagree
+(measured: 213 inversions in 809 row boundaries). That is the design, not a
+defect: <code>seq</code> orders the file, <code>qpc</code> orders the events.</li>
+</ul>
+<h2 id="asserting-against-volatile-columns">Asserting against volatile columns</h2>
+<p>Stable across runs: <code>kind</code>, <code>module</code>, <code>function</code>, <code>typetext</code>, <code>caller</code>,
+<code>argcount</code>, the shape of <code>args</code>, <code>ret</code>, <code>rettype</code>. Volatile by nature: <code>seq</code>,
+<code>span</code>, <code>thread</code>, <code>qpc</code>, tick counts, trailer addresses, pid-stamped workbook
+names. Tests assert <em>values</em> on the stable set and <em>relations</em> on the
+volatile set — pairing, ordering, reconciliation against the totals line.
+This is why there is no golden file.</p>
+<p><strong>A row must carry every column.</strong> The reader counts the fields on each line
+and refuses the file if any row disagrees with the header — a row short by one
+would otherwise be padded with blanks and every value after the gap silently
+read as the column before it.</p>
+<p>The row invariants hold for <em>any</em> correct trace and are asserted on
+every row by every driver, via <code>Test-RowInvariants</code> in
+<code>tests/sweep/_xray_common.ps1</code>: an entry-kind row always names its caller; the
+kind is one of the closed set above; a <code>callerref</code> is present exactly when
+the kind says one should be; a <code>cell</code> description is a full external
+address and not a bare reference; an exit row carries neither. Drivers
+additionally assert the <em>expected</em> caller of the first traced frame, keyed
+on how the test triggered it (a formula: <code>cell</code>; Run/Evaluate and event
+handlers: <code>none</code>).</p>
+<p>The same function holds <code>outcome</code> to its closed set: every exit row carries
+one, an XLL exit row carries only <code>returned</code>, and no other row carries any — so
+a <code>threw</code> on an XLL row, where no error chain is followed, is a test
+failure rather than a plausible-looking value.</p>
+<p><strong><code>caller</code> answers &quot;what started this chain&quot;, not &quot;what called this
+frame&quot;.</strong> Excel <em>inherits</em> it: a <code>Worksheet_Change</code> that fires because a
+button's macro wrote a cell reports the <strong>button</strong>, not its own absence of
+a caller — measured for a graphic object, a toolbar button and a
+right-click item alike, with a <code>Worksheet_Change</code> that had no outer macro
+correctly reporting <code>none</code>/<code>ref</code> as the control. So an event cascade names
+whatever started it, all the way down, which is usually the question worth
+asking. To tell a root from an inherited frame, read <code>depth</code>: <code>1</code> is the
+root. On the XLL side <code>depth</code> counts XLL frames on the thread, and a thread
+nested past 64 XLL calls writes no rows for the deeper ones, with no marker.</p>
+<h2 id="evolution-policy">Evolution policy</h2>
+<p>The header line <strong>is</strong> the version. Any change — a column (append-only, at
+the end), a new kind, a new format — lands as one change touching four
+places: <code>kHeader</code> in <code>rowcsv.cpp</code>, this document, <code>Read-TraceFile</code>, and
+<code>tests/sweep/format/reader-contract.test.ps1</code>. An old reader meeting a new file
+fails the header check and <em>says so</em>; nothing skips silently. A future format
+(a richer JSON, should one land) adds a dispatch
+branch to the reader and a section here; the <strong>model</strong> — the kinds, the
+guarantees, the channel split — is format-independent.</p>
+<h2 id="what-buffering-guarantees-about-the-file">What buffering guarantees about the file</h2>
+<p>The settings themselves are in <a href="TraceOptions.html">TraceOptions.md</a>. What
+matters <em>to a reader of the file</em> is what each choice guarantees:</p>
+<div class="table"><table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>The file is</th>
+<th>Loss is</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>BUFFERSIZE=0</code></td>
+<td>complete, and written as it happens — a crash mid-calc leaves everything up to it on disk</td>
+<td>impossible</td>
+</tr>
+<tr>
+<td><code>BUFFERSIZE=N</code>, <code>BUFFERWHENFULL=PAUSE</code> (the default)</td>
+<td>complete</td>
+<td>impossible; a full ring makes the calc wait until it is half empty</td>
+</tr>
+<tr>
+<td><code>BUFFERSIZE=N</code>, <code>BUFFERWHENFULL=DROP</code></td>
+<td>possibly short</td>
+<td><strong>out of band</strong> — the count from <code>XRayXL_Disarm</code>, the status summary and the disarm line; located in the file by holes in <code>input</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>Under <code>DROP</code> the reconciliation invariant still holds exactly: rows written
+plus rows dropped equals <code>framesOpened + framesClosed</code>. A dropped entry does not
+take its exit with it, so an exit row can appear with no entry in the file. <strong>The file itself
+carries no marker row</strong> — a phantom row would be an event that never happened.</p>
+<p><strong>Disarm drains.</strong> Read-after-disarm completeness survives buffering, whatever
+the setting. That is the fence every suite stands behind, and it is why the
+suites run the shipped configuration rather than a special unbuffered test mode.</p>
+</main>
+<footer class="wrap">XRayXL 0.4.0 &middot; this page on GitHub: <a href="https://github.com/XRayXL/XRayXL-AddIn/blob/v0.4.0/docs/TraceRowModel.md">docs/TraceRowModel.md</a></footer>
+</body>
+</html>

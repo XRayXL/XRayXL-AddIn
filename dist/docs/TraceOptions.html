@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Trace options — controlling what gets recorded &middot; XRayXL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  /* xrayxl.com's palette and type, light only, as XRayXL-Perfetto.html */
+  :root{
+    --ground:#EFF1F3; --surface:#FFFFFF; --surface-2:#E5E9ED;
+    --ink:#14181D; --ink-2:#4A535E; --ink-3:#78828E;
+    --rule:#D3D8DE; --rule-strong:#B2BAC3;
+    --signal:#C43C08; --steel:#1B5A78;
+    --grid-line:rgba(20,24,29,.055);
+    --display:"Archivo",system-ui,sans-serif;
+    --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,"Cascadia Mono","Consolas",monospace;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:var(--body); font-size:16px; line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  :focus-visible{outline:2px solid var(--signal); outline-offset:3px; border-radius:2px}
+  .wrap{max-width:900px; margin-inline:auto; padding-inline:clamp(16px,5vw,48px)}
+
+  /* ---------- heading and navigation, on the site's grid paper ---------- */
+  .masthead{
+    border-bottom:1px solid var(--rule);
+    background:
+      repeating-linear-gradient(to right, var(--grid-line) 0 1px, transparent 1px 88px),
+      repeating-linear-gradient(to bottom, var(--grid-line) 0 1px, transparent 1px 30px);
+  }
+  .masthead .wrap{padding-block:22px 18px}
+  .brandline{display:flex; align-items:center; gap:14px; margin-bottom:14px}
+  .brand{font-family:var(--display); font-weight:800; font-size:24px; letter-spacing:-.035em; line-height:1}
+  .brand span{color:var(--signal)}
+  .tag{
+    font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--signal); border:1px solid var(--signal); border-radius:2px; padding:3px 10px; line-height:1.3;
+  }
+  nav{display:flex; flex-wrap:wrap; gap:4px 22px; font-size:14.5px}
+  nav a{color:var(--ink-2); text-decoration:none; padding-bottom:3px; border-bottom:2px solid transparent}
+  nav a:hover{color:var(--signal)}
+  nav a[aria-current]{color:var(--ink); font-weight:600; border-bottom-color:var(--signal)}
+
+  /* ---------- the page ---------- */
+  .doc{padding-block:34px 20px}
+  .doc h1{font-family:var(--display); font-weight:800; font-size:clamp(30px,5vw,42px); letter-spacing:-.035em; line-height:1.1; margin:0 0 18px}
+  .doc h2{font-family:var(--display); font-weight:700; font-size:26px; letter-spacing:-.02em; line-height:1.15;
+          margin:44px 0 14px; padding-top:22px; border-top:1px solid var(--rule)}
+  .doc hr + h2{margin-top:0; padding-top:0; border-top:none}
+  .doc h3{font-family:var(--display); font-weight:700; font-size:19px; letter-spacing:-.01em; line-height:1.2; margin:30px 0 10px}
+  .doc h4{font-size:16px; font-weight:600; margin:24px 0 8px}
+  .doc p{margin:0 0 14px}
+  .doc ul,.doc ol{margin:0 0 16px; padding-left:24px}
+  .doc li{margin:4px 0}
+  .doc li > p{margin-bottom:6px}
+  .doc a{color:var(--steel); text-decoration-thickness:1px; text-underline-offset:2px}
+  .doc a:hover{color:var(--signal)}
+  .doc code{font-family:var(--mono); font-size:.88em; background:var(--surface-2); padding:1px 5px; border-radius:3px}
+  .doc pre{background:var(--surface); border:1px solid var(--rule); border-radius:3px; padding:14px 16px;
+           overflow-x:auto; margin:0 0 18px; line-height:1.5}
+  .doc pre code{background:none; padding:0; font-size:12.5px}
+  .doc .table{overflow-x:auto; margin:0 0 18px; background:var(--surface); border:1px solid var(--rule); border-radius:3px}
+  .doc table{width:100%; border-collapse:collapse; font-size:14.5px}
+  .doc th{background:var(--surface-2); color:var(--ink-3); font-family:var(--mono); font-weight:500; font-size:10.5px;
+          letter-spacing:.1em; text-transform:uppercase; text-align:left; padding:9px 12px; border-bottom:1px solid var(--rule-strong)}
+  .doc td{padding:8px 12px; border-bottom:1px solid var(--rule); vertical-align:top}
+  .doc tr:last-child td{border-bottom:none}
+  .doc blockquote{margin:0 0 18px; padding:14px 18px; background:var(--surface); border:1px solid var(--rule);
+                  border-left:3px solid var(--signal); border-radius:3px; color:var(--ink-2)}
+  .doc blockquote p:last-child{margin:0}
+  .doc img{display:block; max-width:100%; height:auto; margin:6px 0 20px; border:1px solid var(--rule); border-radius:3px}
+  .doc hr{border:0; border-top:1px solid var(--rule); margin:40px 0 30px}
+  .doc details{margin:0 0 18px; padding:10px 16px; background:var(--surface); border:1px solid var(--rule); border-radius:3px}
+  .doc summary{cursor:pointer; font-weight:600}
+
+  footer{padding-block:18px 44px; border-top:1px solid var(--rule); font-size:13px; color:var(--ink-3)}
+  footer a{color:var(--ink-3)}
+</style>
+</head>
+<body>
+<header class="masthead">
+  <div class="wrap">
+    <div class="brandline"><span class="brand">XRay<span>XL</span></span><span class="tag">Docs &middot; 0.4.0</span></div>
+    <nav>
+      <a href="README.html">Start</a>
+      <a href="DemoWalkthrough.html">Walkthrough</a>
+      <a href="TraceOptions.html" aria-current="page">Trace options</a>
+      <a href="TraceRowModel.html">Trace rows</a>
+      <a href="ErrorsInTheTrace.html">Errors</a>
+      <a href="VBATracing.html">VBA tracing</a>
+    </nav>
+  </div>
+</header>
+<main class="wrap doc">
+<h1 id="trace-options--controlling-what-gets-recorded">Trace options — controlling what gets recorded</h1>
+<p>Everything XRayXL captures is set through registered functions, all called
+through <code>Application.Run</code>; the setters refuse a cell. This document is the
+reference for those settings and for the add-in's own log. What the resulting
+rows <em>mean</em> is <a href="TraceRowModel.html">TraceRowModel.md</a>.</p>
+<p>The <strong>XRayXL group</strong> on the Developer tab is a front end to exactly these calls —
+<strong>Arm</strong>, <strong>Disarm</strong> and <strong>Options</strong>, the last a dialog with six pages: Capture (a section
+per source, each a Depth drop-down and check boxes), Events (which of Excel's own events are recorded), Output (the format
+drop-down, the trace folder and file, the file greyed until the first arm names one), Advanced (the output buffer, the optional <code>breaks</code> column and the log level),
+About (the version, when it was built and from which commit, and the licence), and Notices (the third-party notices). It holds no settings of its own, so the two can never
+disagree: press Apply and <code>XRayXL_GetTraceParam</code> reports what you chose; change
+something from a macro and the dialog shows it the next time it opens. Cancel
+changes nothing. The dialog is reached from the ribbon button; the settings themselves are
+reachable from a macro through the functions below, which is what a script should drive.</p>
+<p><strong>Tail</strong>, between Disarm and Options, opens PowerShell on the current trace file and follows
+it as rows are written. It is live from the first arm, and after a disarm follows the last trace.</p>
+<p>The group's last button, <strong>Diag</strong> (Diagnostics), sets nothing: it shows the modules
+loaded into the process, the environment and the process counters, and is
+described in the <a href="README.html#diagnostics-what-is-actually-loaded">README</a>.</p>
+<div class="table"><table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>XRayXL_SetTraceParam(Source, Name, Value)</code></td>
+<td>Sets one setting</td>
+</tr>
+<tr>
+<td><code>XRayXL_GetTraceParam(Source, Name)</code></td>
+<td>Reads it back — omit either argument to get a table</td>
+</tr>
+<tr>
+<td><code>XRayXL_GetTraceSummary(Filter)</code></td>
+<td>Lists what has been traced, with live call counts</td>
+</tr>
+<tr>
+<td><code>XRayXL_IsArmed()</code></td>
+<td><code>TRUE</code> while either source is armed</td>
+</tr>
+</tbody>
+</table></div>
+<p><code>XRayXL_Arm</code> and <code>XRayXL_Disarm</code> start and stop a recording; <code>XRayXL_Disarm</code>
+returns the number of rows dropped.</p>
+<p>Everything is on by default except <code>BREAKPOINTS</code>, which changes the file's header. If you are after the most accurate timings, set
+<code>ARGS</code>, <code>RETVAL</code> and <code>OBJECTS</code> to <code>FALSE</code> — each one costs work inside the call
+being measured. The calling cell is always resolved and is not a setting: the VBA
+tracer needs it to tell an error that escapes into a cell from one that propagates.</p>
+<h2 id="per-source-settings">Per-source settings</h2>
+<p><code>Source</code> is <code>&quot;XLL&quot;</code> or <code>&quot;VBA&quot;</code>; omit it to address both at once. The two
+sources are <strong>independent</strong> -- each holds its own value for every setting
+below, and each is armed by its own value alone. Turning one off says
+nothing about the other.</p>
+<div class="table"><table>
+<thead>
+<tr>
+<th><code>Name</code></th>
+<th><code>Value</code></th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DEPTH</code></td>
+<td><code>OFF</code> / <code>TOP</code> / <code>ALL</code></td>
+<td><code>ALL</code></td>
+<td>Applies to <strong>that source alone</strong>: don't trace it / trace only the outermost call, the one Excel itself initiated / follow nested calls too</td>
+</tr>
+<tr>
+<td><code>ARGS</code></td>
+<td><code>TRUE</code> / <code>FALSE</code></td>
+<td><code>TRUE</code></td>
+<td>Capture argument values</td>
+</tr>
+<tr>
+<td><code>RETVAL</code></td>
+<td><code>TRUE</code> / <code>FALSE</code></td>
+<td><code>TRUE</code></td>
+<td>Capture return values</td>
+</tr>
+<tr>
+<td><code>OBJECTS</code></td>
+<td><code>TRUE</code> / <code>FALSE</code></td>
+<td><code>TRUE</code></td>
+<td><strong>VBA only</strong> — <code>XLL</code>, or an omitted <code>Source</code>, is <strong>refused</strong>. Name an object argument or result, and describe a <code>Range</code>, <code>Worksheet</code>, <code>Workbook</code>, <code>Collection</code> or <code>Scripting.Dictionary</code>. The one setting that calls Excel's object model from inside a traced call; <code>FALSE</code> renders every object as its address. An XLL argument is an <code>XLOPER</code> decoded structurally, with no object model to call, so there is nothing for it to gate</td>
+</tr>
+<tr>
+<td><code>BREAKPOINTS</code></td>
+<td><code>TRUE</code> / <code>FALSE</code></td>
+<td><code>FALSE</code></td>
+<td><strong>VBA only</strong> — refused for <code>XLL</code> or an omitted <code>Source</code>. Adds one column, <code>breaks</code>, to the trace file: on each VBA exit row, how often that call paused in the VBA editor -- at a breakpoint, or at a <code>Stop</code> statement in the code -- so a duration that includes time in the debugger says so. Off by default because it changes the file's header (<a href="TraceRowModel.html">TraceRowModel.md</a>). In the Options dialog it is the check box on the Advanced page. Breakpoints and <code>Stop</code> are <em>handled</em> either way -- a call whose first lines have breakpoints still opens on time, and a <code>Stop</code> ends no frame -- this only adds the column</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong><code>DEPTH</code> changes which rows appear, never their shape.</strong> Under <code>TOP</code> the
+totals still count every frame, so the disarm report and
+<code>XRayXL_GetTraceSummary</code> stay complete even when the file is deliberately thin.</p>
+<h2 id="settings-for-the-recording-as-a-whole">Settings for the recording as a whole</h2>
+<p>These take no <code>Source</code>.</p>
+<div class="table"><table>
+<thead>
+<tr>
+<th><code>Name</code></th>
+<th><code>Value</code></th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>BUFFERSIZE</code></td>
+<td>MB, e.g. <code>64</code></td>
+<td><code>64</code></td>
+<td>Size of the ring buffer between the calculation thread and the writer; <code>0</code> writes every row synchronously</td>
+</tr>
+<tr>
+<td><code>BUFFERWHENFULL</code></td>
+<td><code>PAUSE</code> / <code>DROP</code></td>
+<td><code>PAUSE</code></td>
+<td>What a full ring does — make the calculation wait until it is half empty, or drop rows</td>
+</tr>
+<tr>
+<td><code>FORMAT</code></td>
+<td><code>CSV</code> / <code>JSONL</code></td>
+<td><code>CSV</code></td>
+<td>The trace file's format: CSV, with values as text, or JSON Lines, one object a line with every value structured and typed (see <a href="TraceRowModel.html#json-lines">the row model</a>). Also <strong>Options › Output › Format</strong></td>
+</tr>
+<tr>
+<td><code>LOGLEVEL</code></td>
+<td><code>DEBUG</code>/<code>INFO</code>/<code>WARNING</code>/<code>ERROR</code></td>
+<td><code>INFO</code></td>
+<td>The log's level (see <a href="#the-log">The log</a>)</td>
+</tr>
+<tr>
+<td><code>EVENTS</code></td>
+<td>an event's name, then <code>TRUE</code> / <code>FALSE</code></td>
+<td>the Calc set</td>
+<td>Whether one of Excel's Application events is recorded (see <a href="#excels-events">Excel's events</a>)</td>
+</tr>
+</tbody>
+</table></div>
+<p>The ring keeps file I/O off the calculation thread, so tracing disturbs the
+timings as little as possible. The defaults suit most sessions.</p>
+<ul>
+<li><strong><code>PAUSE</code></strong> keeps every row. When the ring fills, the traced threads wait
+until the writer has emptied it to half, so the calculation resumes with room
+for a burst rather than stalling again at once. The waits are counted as
+<em>hot-path pauses</em> on the disarm line.</li>
+<li><strong><code>DROP</code></strong> never makes the calculation wait, and loses rows when the ring
+fills instead. It shows where through holes in the trace's <code>input</code> column;
+the count comes back from <code>XRayXL_Disarm</code> and appears on the disarm log line
+— the file itself carries no marker row. A dropped entry does not take its
+exit with it, so an exit row can appear with no entry.</li>
+<li><strong><code>BUFFERSIZE=0</code></strong> writes each row the moment it happens. That is what you
+want when hunting the exact function that was running at a crash, because
+everything up to the crash is already on disk.</li>
+</ul>
+<p><code>BUFFERSIZE</code> accepts a unit — bare or <code>M</code>/<code>MB</code> is megabytes, <code>K</code>/<code>KB</code>
+kilobytes. A ring below 16 KB or above 240 MB is refused. A row goes through the ring like any
+other and waits or drops by <code>BUFFERWHENFULL</code>; one larger than the whole ring can never fit, so
+it is dropped and counted even under <code>PAUSE</code>, since waiting for it would stall the calculation
+for good. A value is at most 4 MB — an array past that is written as its shape alone — so with
+the default ring only a deliberately small <code>BUFFERSIZE</code> meets this.</p>
+<h2 id="excels-events">Excel's events</h2>
+<p>While armed, XRayXL also records the events Excel raises on its <code>Application</code> object, one
+<code>event</code> row each, in the order Excel raises them (<a href="TraceRowModel.html#kinds-and-sources">TraceRowModel.md</a>).
+Each is chosen on its own:</p>
+<pre><code class="language-vba">Application.Run &quot;XRayXL_SetTraceParam&quot;, &quot;EVENTS&quot;, &quot;SheetSelectionChange&quot;, True
+Application.Run &quot;XRayXL_GetTraceParam&quot;, &quot;EVENTS&quot;, &quot;SheetSelectionChange&quot;    ' TRUE or FALSE
+Application.Run &quot;XRayXL_GetTraceParam&quot;, &quot;EVENTS&quot;                            ' Calc, Selection, Calc &amp; Selection, All, None or Custom
+</code></pre>
+<p>A name Excel does not have is refused, so a typo fails. One that this Excel lacks but a newer
+one has is kept, and the arm log names it. The default is the <strong>Calc</strong> set: <code>SheetChange</code>,
+<code>SheetCalculate</code>, <code>AfterCalculate</code>, <code>SheetTableUpdate</code>, <code>SheetPivotTableUpdate</code>,
+<code>SheetPivotTableAfterValueChange</code>, <code>WorkbookModelChange</code>, <code>WorkbookAfterRemoteChange</code> and
+<code>RemoteSheetChange</code>.</p>
+<p><strong>Options › Events</strong> shows every event with a check box, grouped by area, and a drop-down of
+presets — None, Calc, Selection, Calc &amp; Selection, All — that ticks exactly a preset's events; ticking anything
+else turns it to Custom. A group's own box ticks the whole group, clears it, and on a third
+click gives back the mix it had. Events that fire often are marked ⚡, and events this Excel
+does not have are greyed.</p>
+<h2 id="arming-loads-vba-if-it-is-not-already-loaded">Arming loads VBA if it is not already loaded</h2>
+<p>Excel loads VBA only when it needs it, and XRayXL patches the VBA interpreter
+once, when you arm. So if you arm an Excel that has never opened a macro, there
+would be nothing to patch and VBA would stay untraced for the rest of that
+session -- even after you opened a macro workbook.</p>
+<p>To avoid that, arming asks Excel to load VBA first, by reading the active
+workbook's VBA project. Excel loads it exactly as it would when you open any
+macro-enabled workbook. It happens only when you arm, and only when VBA tracing
+is on: set <code>VBA</code> <code>DEPTH</code> to <code>OFF</code> and XRayXL will not touch VBA at all.</p>
+<h2 id="when-settings-can-change">When settings can change</h2>
+<p><strong>A refused call answers <code>#Err - </code> and the reason</strong>, and changes nothing. The
+value is the return of <code>Application.Run</code>, so the caller reads it directly.</p>
+<p><strong>Every setting is refused while armed</strong> — disarm, set, re-arm — so a recording
+can never change shape halfway through. <code>LOGLEVEL</code> is the one exception: it
+affects only logging, never the trace, so it can be changed at any time.</p>
+<p>On the ribbon this is why <strong>Arm</strong> is greyed while a recording is running and
+<strong>Disarm</strong> while one is not, and why the capture settings in <strong>Options</strong> are
+greyed while armed — the log level is not. It is the same rule, shown rather
+than refused.</p>
+<p>The setters also refuse when called from a cell. A trace setting changed
+mid-calculation, or written by a formula, would no longer describe the run it
+is attached to.</p>
+<p>Both getters are volatile, so they can live in cells and keep up as you go:</p>
+<pre><code>=XRayXL_GetTraceParam()            ' every setting, both sources
+=XRayXL_GetTraceSummary(&quot;*.xll&quot;)   ' Source | Module | Function | Calls
+</code></pre>
+<p>The summary's filter is a wildcard (<code>*</code> and <code>?</code>, any case) matched against the function
+and the module, so <code>&quot;*.xll&quot;</code> picks out the add-ins and <code>&quot;[Book1.xlsm]*&quot;</code> one workbook.
+When nothing matches it says <code>(nothing matches the filter)</code>; before anything is traced
+it says <code>(nothing traced yet)</code>.</p>
+<h2 id="the-log">The log</h2>
+<p>Alongside the trace, <code>%TEMP%\XRayXL\Logs\XRayXL_&lt;pid&gt;.log</code> records what the
+<em>add-in</em> did — a different question from what your spreadsheet did. It is a
+levelled log in the familiar Log4Net line format: timestamp, thread, level,
+message.</p>
+<pre><code>2026-09-07 10:53:07,123 [ 4812] INFO  - armed 46 of 53 registered; declined 7 [module 0, proc 0, typetext 0, ours 7, detour 0, space 0]
+2026-09-07 10:53:07,124 [ 4812] INFO  - arm cost: total 5ms = enumerate 0ms + name resolution 1ms + hook install 3ms
+</code></pre>
+<div class="table"><table>
+<thead>
+<tr>
+<th>Set it</th>
+<th>How</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>At startup</td>
+<td><code>XRAYXL_LOGLEVEL=DEBUG</code> (or <code>WARNING</code>, <code>ERROR</code>) before launching Excel</td>
+</tr>
+<tr>
+<td>Live</td>
+<td><code>Application.Run &quot;XRayXL_SetTraceParam&quot;, &quot;LOGLEVEL&quot;, &quot;DEBUG&quot;</code> — settable while armed</td>
+</tr>
+<tr>
+<td>Developer detail</td>
+<td><code>XRAYXL_DIAG=1</code> before launching Excel, which adds diagnostics to the disarm report</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Note the declines.</strong> Every path where the tracer chose <em>not</em> to trace
+something is counted and named — <code>module</code>, <code>proc</code>, <code>typetext</code>, <code>ours</code>,
+<code>detour</code>, <code>space</code> in the line above. A tool that quietly skips things will
+report a broken spreadsheet as a healthy one, so &quot;we never looked&quot; and &quot;we
+looked and found nothing&quot; are never allowed to read as the same sentence.</p>
+<h2 id="environment-switches">Environment switches</h2>
+<p>Read when Excel loads the add-in, so set them before launching Excel.</p>
+<div class="table"><table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>XRAYXL_LOGLEVEL</code></td>
+<td>Starting log level (see <a href="#the-log">The log</a>)</td>
+</tr>
+<tr>
+<td><code>XRAYXL_OUTPUT_DIR</code></td>
+<td>Root for <code>Logs</code> and <code>TraceFiles</code> (see below)</td>
+</tr>
+<tr>
+<td><code>XRAYXL_CRASHDUMP=1</code></td>
+<td>Write a full minidump on a crash, as well as the text report</td>
+</tr>
+<tr>
+<td><code>XRAYXL_DIAG=1</code></td>
+<td>Diagnostics in the disarm report, and registers <code>XRayXL_FaultProbe</code>, which faults on purpose to test the crash handler</td>
+</tr>
+<tr>
+<td><code>XRAYXL_NOREGWATCH=1</code></td>
+<td>Do not watch for functions registered after arming; only functions registered at arm time are traced</td>
+</tr>
+<tr>
+<td><code>XRAYXL_RIBBON=0</code></td>
+<td>No ribbon buttons, and no COM object of ours in the process at all. Everything else is unaffected — it is the switch to reach for if you suspect the ribbon of anything</td>
+</tr>
+<tr>
+<td><code>XRAYXL_NOMESSAGEBOX=1</code></td>
+<td>No message box when the ribbon cannot load; the log still says why. A hidden Excel never gets the box</td>
+</tr>
+</tbody>
+</table></div>
+<p>While <code>%TEMP%\XRayXL\inert.on</code> exists, the add-in loads and does nothing at all —
+no log, no commands, no hooks — which tells a crash caused by what it does from
+one caused by its presence.</p>
+<h2 id="where-the-files-go">Where the files go</h2>
+<div class="table"><table>
+<thead>
+<tr>
+<th>File</th>
+<th>Where</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Trace</td>
+<td><code>%TEMP%\XRayXL\TraceFiles\XRayXL_Trace_&lt;id&gt;_&lt;pid&gt;.csv</code> — one per arm</td>
+</tr>
+<tr>
+<td>Log</td>
+<td><code>%TEMP%\XRayXL\Logs\XRayXL_&lt;pid&gt;.log</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>XRayXL never deletes these. Each Excel process adds one log, each arm one trace
+file, and each crash one report, so clear the folder yourself when you no longer
+need them.</p>
+<p><code>XRAYXL_OUTPUT_DIR</code> moves all of it: set it before launching Excel and the
+<code>Logs</code> and <code>TraceFiles</code> folders are created under that root instead of
+<code>%TEMP%</code>. The test suites use this to keep each session's output separate.</p>
+</main>
+<footer class="wrap">XRayXL 0.4.0 &middot; this page on GitHub: <a href="https://github.com/XRayXL/XRayXL-AddIn/blob/v0.4.0/docs/TraceOptions.md">docs/TraceOptions.md</a></footer>
+</body>
+</html>
