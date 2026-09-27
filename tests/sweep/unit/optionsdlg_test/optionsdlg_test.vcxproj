@@ -40,6 +40,7 @@
     <ClCompile Include="$(XRayRoot)src\ui\softtext.cpp" />
     <ClCompile Include="$(XRayRoot)src\ui\glyphs.cpp" />
     <ClCompile Include="$(XRayRoot)src\ui\traceactions.cpp" />
+    <ClCompile Include="$(XRayRoot)src\ui\perfettopage.cpp" />
     <ClCompile Include="$(XRayRoot)src\core\tracemodes.cpp" />
     <ClCompile Include="$(XRayRoot)src\core\notify.cpp" />
     <ClCompile Include="$(XRayRoot)src\app\paramparse.cpp" />

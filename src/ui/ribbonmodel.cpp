@@ -38,7 +38,7 @@ namespace
     bool Is(const wchar_t* id, const wchar_t* what) { return id && wcscmp(id, what) == 0; }
 }
 
-// Five large buttons on the Developer tab; a wrong built-in id drops the lot.
+// Six large buttons on the Developer tab; a wrong built-in id drops the lot.
 const wchar_t* const kCustomUi =
 L"<customUI xmlns='http://schemas.microsoft.com/office/2009/07/customui' onLoad='OnRibbonLoad' loadImage='OnLoadImage'>"
  L"<ribbon><tabs>"
@@ -57,13 +57,18 @@ L"<customUI xmlns='http://schemas.microsoft.com/office/2009/07/customui' onLoad=
            L" screentip='Follow the trace file'"
            L" supertip='Opens PowerShell on the current trace file: its last rows, then each "
            L"new row as it is written. Available once armed; after a disarm, the last trace.'/>"
+    L"<button id='btnPerfetto' label='Perfetto' size='large' getEnabled='GetEnabled' onAction='OnPerfetto'"
+           L" image='perfetto'"
+           L" screentip='See the last trace on a timeline'"
+           L" supertip='Opens the trace in Perfetto UI in your browser. It is converted on this machine and "
+           L"nothing is uploaded. Available after a disarm.'/>"
     L"<button id='btnOptions' label='Options' size='large' getEnabled='GetEnabled' onAction='OnOptions'"
-           L" imageMso='ApplicationOptionsDialog'"
+           L" image='options'"
            L" screentip='What to record, and where it goes'"
            L" supertip='Everything XRayXL_SetTraceParam can set. Settings are read at the "
            L"next arm, so they cannot be changed while armed.'/>"
-    L"<button id='btnDiagnostics' label='Diagnostics' size='large' getEnabled='GetEnabled' onAction='OnDiagnostics'"
-           L" imageMso='FileDocumentInspect'"
+    L"<button id='btnDiagnostics' label='Diag' size='large' getEnabled='GetEnabled' onAction='OnDiagnostics'"
+           L" image='diagnostics'"
            L" screentip='What is loaded into this Excel'"
            L" supertip='Loaded modules and their versions, the environment, and what the "
            L"process is using. Read-only, and exportable as CSV or JSON.'/>"
@@ -82,6 +87,7 @@ Callback CallbackForName(const wchar_t* name)
     if (_wcsicmp(name, L"OnDiagnostics") == 0)      return CbOnDiagnostics;
     if (_wcsicmp(name, L"OnLoadImage") == 0)          return CbLoadImage;
     if (_wcsicmp(name, L"OnTail") == 0)               return CbOnTail;
+    if (_wcsicmp(name, L"OnPerfetto") == 0)           return CbOnPerfetto;
     return CbUnknown;
 }
 
@@ -98,7 +104,7 @@ bool KnownControl(const wchar_t* id)
 {
     Source ignored = Source::Xll;
     return Is(id, L"btnArm") || Is(id, L"btnDisarm") || Is(id, L"btnOptions")
-        || Is(id, L"btnDiagnostics") || Is(id, L"btnTail")
+        || Is(id, L"btnDiagnostics") || Is(id, L"btnTail") || Is(id, L"btnPerfetto")
         || IsToggle(id) || IsDepthControl(id, ignored);
 }
 
@@ -107,6 +113,7 @@ bool EnabledFor(const wchar_t* id, bool armed, bool traced)
     if (Is(id, L"btnArm"))    return !armed;
     if (Is(id, L"btnDisarm")) return  armed;
     if (Is(id, L"btnTail"))   return traced;
+    if (Is(id, L"btnPerfetto")) return traced && !armed;     // a trace still being written is not finished
     // always reachable: the dialog greys what cannot be changed, which explains itself
     if (Is(id, L"btnOptions")) return true;
     if (Is(id, L"btnDiagnostics")) return true;      // read-only, so armed changes nothing

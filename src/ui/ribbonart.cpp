@@ -1,3 +1,6 @@
+// The ribbon's button pictures: a page, most with a round badge over its lower right holding the
+// button's mark. Drawn on a 32-unit grid, a large button's icon at 96 DPI, and scaled to the screen's DPI.
+
 #include "ribbonart.h"
 
 #include <olectl.h>
@@ -12,252 +15,230 @@ namespace art
 {
 namespace
 {
-    IDispatch* GetObjectProp(IDispatch* obj, const wchar_t* name)
+    // As a 32-bit DIB holds a pixel: blue first, colour premultiplied by alpha.
+    struct Pixel { BYTE b, g, r, a; };
+
+    const Pixel kInk   { 0x38, 0x3A, 0x3A, 0xFF };
+    const Pixel kGrey  { 0x74, 0x77, 0x79, 0xFF };      // what a page lists
+    const Pixel kSheet { 0xFA, 0xFA, 0xFA, 0xFF };      // inside the badge, and the checklist's paper
+    const Pixel kGreen { 0x41, 0x7C, 0x10, 0xFF };      // Excel's green, #107C41
+    const Pixel kRed   { 0x4F, 0x4C, 0xE9, 0xFF };      // Office's record red, #E94C4F
+    const Pixel kClear { 0x00, 0x00, 0x00, 0x00 };
+
+    // ---- shapes ------------------------------------------------------------------------------
+
+    // Includes its left and top edges, not its right and bottom.
+    struct Box { double left, top, right, bottom; };
+
+    bool In(const Box& b, double x, double y)
     {
-        if (!obj) return nullptr;
-        DISPID id = 0;
-        OLECHAR* n = const_cast<OLECHAR*>(name);
-        if (FAILED(obj->GetIDsOfNames(IID_NULL, &n, 1, LOCALE_USER_DEFAULT, &id))) return nullptr;
-        DISPPARAMS none{};
-        VARIANT out; VariantInit(&out);
-        if (FAILED(obj->Invoke(id, IID_NULL, LOCALE_USER_DEFAULT, DISPATCH_PROPERTYGET, &none, &out, nullptr, nullptr)))
-            return nullptr;
-        if (out.vt == VT_DISPATCH) return out.pdispVal;
-        VariantClear(&out);
+        return x >= b.left && x < b.right && y >= b.top && y < b.bottom;
+    }
+
+    template <size_t N>
+    bool In(const Box (&boxes)[N], double x, double y)
+    {
+        for (const Box& b : boxes)
+            if (In(b, x, y)) return true;
+        return false;
+    }
+
+    // The page behind Arm, Disarm, Tail and Perfetto: a window with a title bar, holding a list.
+    const Box kWindowFrame[] = {
+        {  2,  3, 30,  4 }, {  2, 28, 30, 29 },             // top, bottom
+        {  2,  3,  3, 29 }, { 29,  3, 30, 29 },             // left, right
+        {  2,  7, 30,  8 },                                 // under the title bar
+    };
+    const Box kWindowList[] = {
+        {  6, 11,  8, 12 }, { 11, 11, 16, 12 }, { 18, 11, 26, 12 },
+        {  6, 15,  8, 16 }, { 11, 15, 17, 16 }, { 19, 15, 22, 16 },
+        {  6, 19,  8, 20 }, { 11, 19, 17, 20 }, { 19, 19, 27, 20 },
+        {  6, 23,  8, 24 }, { 11, 23, 15, 24 }, { 18, 23, 24, 24 },
+    };
+
+    // The page behind Diagnostics: a sheet of paper with its top right corner folded down.
+    const Box kPaperEdges[] = {
+        {  5,  2,  6, 30 }, {  5, 29, 26, 30 },             // left, bottom
+        {  5,  2, 18,  3 }, { 25, 10, 26, 30 },             // top, right
+        { 17,  2, 18, 11 }, { 17, 10, 26, 11 },             // the fold's two straight sides
+    };
+    // The fold's diagonal, from the top edge's end to the right edge's top, drawn a little heavier
+    // than a unit so it weighs the same as the straight edges.
+    bool OnFold(double x, double y)
+    {
+        return x >= 17 && x < 26 && y >= 2 && y < 11 && std::fabs(x - y - 15.25) <= 0.75;
+    }
+
+    // The page behind Options: a sheet listing three items, each with a check box, as Office's own.
+    const Box kChecklistPaper = { 5, 2, 26, 30 };
+    const Box kChecklistEdges[] = {
+        {  5,  2, 26,  3 }, {  5, 29, 26, 30 },             // top, bottom
+        {  5,  2,  6, 30 }, { 25,  2, 26, 30 },             // left, right
+    };
+    const Box kChecklistItems[] = {                         // a box's four sides, then its line
+        {  9,  7, 13,  8 }, {  9, 10, 13, 11 }, {  9,  7, 10, 11 }, { 12,  7, 13, 11 }, { 15,  8, 22,  9 },
+        {  9, 14, 13, 15 }, {  9, 17, 13, 18 }, {  9, 14, 10, 18 }, { 12, 14, 13, 18 }, { 15, 15, 22, 16 },
+        {  9, 21, 13, 22 }, {  9, 24, 13, 25 }, {  9, 21, 10, 25 }, { 12, 21, 13, 25 }, { 15, 22, 22, 23 },
+    };
+
+    enum class Page { Window, Paper, Checklist };
+
+    const Pixel& PageAt(Page page, double x, double y)
+    {
+        switch (page)
+        {
+        case Page::Window:
+            if (In(kWindowFrame, x, y)) return kInk;
+            return In(kWindowList, x, y) ? kGrey : kClear;
+        case Page::Paper:
+            return In(kPaperEdges, x, y) || OnFold(x, y) ? kInk : kClear;
+        case Page::Checklist:
+            if (In(kChecklistEdges, x, y)) return kInk;
+            if (In(kChecklistItems, x, y)) return kGrey;
+            return In(kChecklistPaper, x, y) ? kSheet : kClear;
+        }
+        return kClear;
+    }
+
+    // ---- the badge and its marks ---------------------------------------------------------------
+
+    // A ring of ink round a sheet holding the mark, with a clear gap outside it cutting the page.
+    const double kBadgeX = 21.2, kBadgeY = 21.2, kBadgeRadius = 10.8;
+    const double kRingWidth = 32.0 / 30, kGapWidth = 1;
+
+    // Marks are measured in the stop square's side, from the badge's centre.
+    const double kMarkSize = 10.08;
+
+    // Three bars: a call, and two nested beneath it, as Perfetto draws them.
+    const Box kTimeline[] = {
+        { -0.6,  -0.5,  0.6, -0.22 },
+        { -0.45, -0.14, 0.3,  0.14 },
+        { -0.3,   0.22, 0.0,  0.5  },
+    };
+    // Two bars, as on Office's Document Inspector.
+    const Box kEquals[] = {
+        { -0.643, -0.357, 0.643, -0.214 },
+        { -0.643,  0.214, 0.643,  0.357 },
+    };
+
+    // An equilateral triangle pointing down, its corners as far out as the square's. Centred on its
+    // centroid it looks low beside the square, so it sits a tenth higher.
+    bool InTriangle(double x, double y)
+    {
+        const double base = 1.2247, height = base * 0.8660;
+        const double top = -height / 3 - 0.1, apex = 2 * height / 3 - 0.1;
+        return y >= top && y <= apex && std::fabs(x) <= (base / 2) * (apex - y) / height;
+    }
+
+    enum class Mark { None, Record, Stop, Follow, Timeline, Equals };
+
+    // The mark's colour at (x, y) in mark units, or null where the sheet shows.
+    const Pixel* MarkAt(Mark mark, double x, double y)
+    {
+        switch (mark)
+        {
+        case Mark::None:     return nullptr;
+        case Mark::Record:   return x * x + y * y <= 0.25                     ? &kRed   : nullptr;
+        case Mark::Stop:     return std::fabs(x) <= 0.5 && std::fabs(y) <= 0.5 ? &kInk   : nullptr;
+        case Mark::Follow:   return InTriangle(x, y)                          ? &kGreen : nullptr;
+        case Mark::Timeline: return In(kTimeline, x, y)                       ? &kGreen : nullptr;
+        case Mark::Equals:   return In(kEquals, x, y)                         ? &kRed   : nullptr;
+        }
         return nullptr;
     }
 
-    // CommandBars.GetImageMso(name, size, size)
-    IDispatch* ImageMso(IDispatch* bars, const wchar_t* name, int size)
+    // ---- drawing -------------------------------------------------------------------------------
+
+    struct Icon { Page page; Mark mark; };
+
+    const Pixel& ColourAt(const Icon& icon, double x, double y)
     {
-        if (!bars) return nullptr;
-        DISPID id = 0;
-        OLECHAR method[] = L"GetImageMso";
-        OLECHAR* n = method;
-        if (FAILED(bars->GetIDsOfNames(IID_NULL, &n, 1, LOCALE_USER_DEFAULT, &id))) return nullptr;
-        VARIANT args[3];                                   // reverse order
-        for (VARIANT& a : args) VariantInit(&a);
-        args[0].vt = VT_I4;   args[0].lVal = size;
-        args[1].vt = VT_I4;   args[1].lVal = size;
-        args[2].vt = VT_BSTR; args[2].bstrVal = SysAllocString(name);
-        DISPPARAMS dp{ args, nullptr, 3, 0 };
-        VARIANT out; VariantInit(&out);
-        const HRESULT hr = bars->Invoke(id, IID_NULL, LOCALE_USER_DEFAULT, DISPATCH_METHOD, &dp, &out, nullptr, nullptr);
-        VariantClear(&args[2]);
-        if (SUCCEEDED(hr) && out.vt == VT_DISPATCH) return out.pdispVal;
-        VariantClear(&out);
-        return nullptr;
+        const double d = std::hypot(x - kBadgeX, y - kBadgeY);
+        if (icon.mark == Mark::None || d > kBadgeRadius + kGapWidth) return PageAt(icon.page, x, y);
+        if (d > kBadgeRadius)              return kClear;
+        if (d > kBadgeRadius - kRingWidth) return kInk;
+        const Pixel* m = MarkAt(icon.mark, (x - kBadgeX) / kMarkSize, (y - kBadgeY) / kMarkSize);
+        return m ? *m : kSheet;
     }
 
-    int DpiOf(HWND h)
+    // The icon at `size` pixels square. Each pixel averages 4x4 samples; as every colour is opaque
+    // or clear, the average is already premultiplied.
+    std::vector<Pixel> Draw(const Icon& icon, int size)
     {
+        const double unitsPerPixel = 32.0 / size;
+        std::vector<Pixel> px;
+        px.reserve(static_cast<size_t>(size) * size);
+        for (int y = 0; y < size; ++y)
+            for (int x = 0; x < size; ++x)
+            {
+                int b = 0, g = 0, r = 0, a = 0;
+                for (int sy = 0; sy < 4; ++sy)
+                    for (int sx = 0; sx < 4; ++sx)
+                    {
+                        const Pixel& c = ColourAt(icon, (x + (sx + 0.5) / 4) * unitsPerPixel,
+                                                        (y + (sy + 0.5) / 4) * unitsPerPixel);
+                        b += c.b; g += c.g; r += c.r; a += c.a;
+                    }
+                px.push_back(Pixel{ static_cast<BYTE>(b / 16), static_cast<BYTE>(g / 16),
+                                    static_cast<BYTE>(r / 16), static_cast<BYTE>(a / 16) });
+            }
+        return px;
+    }
+
+    // ---- handing it to Office ------------------------------------------------------------------
+
+    int DpiOf(HWND window)
+    {
+        // GetDpiForWindow, where Windows has it
         typedef UINT (WINAPI* Fn)(HWND);
         static const auto fn = reinterpret_cast<Fn>(reinterpret_cast<void*>(
             GetProcAddress(GetModuleHandleW(L"user32.dll"), "GetDpiForWindow")));
-        const UINT d = (fn && h) ? fn(h) : 0;
-        return d ? static_cast<int>(d) : 96;
+        const UINT dpi = (fn && window) ? fn(window) : 0;
+        return dpi ? static_cast<int>(dpi) : 96;
     }
 
-    struct Px { BYTE b, g, r, a; };
-    bool Red(const Px& p, int margin) { return p.r > p.g + margin && p.r > p.b + margin; }
-
-    BITMAPINFO TopDown32(int w, int h)
+    // An IPictureDisp that owns a bitmap of these pixels.
+    IDispatch* PictureOf(const std::vector<Pixel>& px, int size)
     {
         BITMAPINFO bi{};
         bi.bmiHeader.biSize = sizeof(bi.bmiHeader);
-        bi.bmiHeader.biWidth = w;
-        bi.bmiHeader.biHeight = -h;
+        bi.bmiHeader.biWidth = size;
+        bi.bmiHeader.biHeight = -size;                  // top-down
         bi.bmiHeader.biPlanes = 1;
         bi.bmiHeader.biBitCount = 32;
-        return bi;
-    }
-
-    // An IPictureDisp over premultiplied pixels; it owns the bitmap.
-    IDispatch* PictureOf(const std::vector<Px>& px, int w, int h)
-    {
-        const BITMAPINFO bi = TopDown32(w, h);
         void* bits = nullptr;
         HDC dc = GetDC(nullptr);
-        HBITMAP made = CreateDIBSection(dc, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
+        HBITMAP bitmap = CreateDIBSection(dc, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
         ReleaseDC(nullptr, dc);
-        if (!made || !bits) { if (made) DeleteObject(made); return nullptr; }
-        memcpy(bits, px.data(), px.size() * sizeof(Px));
+        if (!bitmap || !bits) { if (bitmap) DeleteObject(bitmap); return nullptr; }
+        memcpy(bits, px.data(), px.size() * sizeof(Pixel));
 
         PICTDESC desc{};
         desc.cbSizeofstruct = sizeof(desc);
         desc.picType = PICTYPE_BITMAP;
-        desc.bmp.hbitmap = made;
-        IDispatch* out = nullptr;
-        if (FAILED(OleCreatePictureIndirect(&desc, IID_IDispatch, TRUE, reinterpret_cast<void**>(&out))) || !out)
+        desc.bmp.hbitmap = bitmap;
+        IDispatch* picture = nullptr;
+        if (FAILED(OleCreatePictureIndirect(&desc, IID_IDispatch, TRUE, reinterpret_cast<void**>(&picture))))
         {
-            DeleteObject(made);
+            DeleteObject(bitmap);
             return nullptr;
         }
-        return out;
+        return picture;
     }
 
-    enum class Mark { Record, Stop, FollowEnd };
-
-    // The mark at (du, dv) from the badge's centre, or null for none. `side` is the square's side;
-    // the triangle's corners reach as far out as the square's, and it is centred by its centroid.
-    const Px* MarkAt(Mark m, double du, double dv, double side, const Px& ink, const Px& green, const Px& red)
+    IDispatch* Picture(const Icon& icon, HWND dpiOf)
     {
-        switch (m)
-        {
-        case Mark::Record:
-            return (du * du + dv * dv <= side * side / 4) ? &red : nullptr;
-        case Mark::Stop:
-            return (std::fabs(du) <= side / 2 && std::fabs(dv) <= side / 2) ? &ink : nullptr;
-        case Mark::FollowEnd:
-        {
-            const double b = side * 1.2247, height = b * 0.8660;        // equilateral, pointing down
-            const double top = -height / 3, apex = 2 * height / 3;
-            if (dv < top || dv > apex) return nullptr;
-            return (std::fabs(du) <= (b / 2) * (apex - dv) / height) ? &green : nullptr;
-        }
-        }
-        return nullptr;
-    }
-
-    // Office's MacroRecord pixels, premultiplied, repainted in place: dark ink on a near-white sheet,
-    // and its badge redrawn 20% bigger around our mark. False when there is no badge to replace.
-    bool Paint(std::vector<Px>& px, int w, int h, Mark m)
-    {
-        const auto at = [&](int x, int y) -> Px& { return px[static_cast<size_t>(y) * w + x]; };
-        const Px ink{ 0x38, 0x3A, 0x3A, 0xFF }, mark{ 0x74, 0x77, 0x79, 0xFF }, sheet{ 0xFA, 0xFA, 0xFA, 0xFF };
-        const Px green{ 0x41, 0x7C, 0x10, 0xFF };        // Excel's green, #107C41
-        const Px clear{ 0, 0, 0, 0 };
-
-        // Outside the drawing: whatever clear pixels the border can reach.
-        std::vector<char> outside(px.size(), 0);
-        std::vector<int> todo;
-        const auto visit = [&](int x, int y) {
-            if (x < 0 || y < 0 || x >= w || y >= h) return;
-            const size_t i = static_cast<size_t>(y) * w + x;
-            if (outside[i] || px[i].a >= 0x80) return;
-            outside[i] = 1; todo.push_back(static_cast<int>(i)); };
-        for (int x = 0; x < w; ++x) { visit(x, 0); visit(x, h - 1); }
-        for (int y = 0; y < h; ++y) { visit(0, y); visit(w - 1, y); }
-        while (!todo.empty())
-        {
-            const int i = todo.back(); todo.pop_back();
-            visit(i % w + 1, i / w); visit(i % w - 1, i / w); visit(i % w, i / w + 1); visit(i % w, i / w - 1);
-        }
-
-        // The red dot: its solid core, and all of it with its soft edge.
-        RECT core{ w, h, -1, -1 }, dot{ w, h, -1, -1 };
-        const auto grow = [](RECT& r, int x, int y) {
-            r.left = min(r.left, static_cast<LONG>(x)); r.right  = max(r.right,  static_cast<LONG>(x));
-            r.top  = min(r.top,  static_cast<LONG>(y)); r.bottom = max(r.bottom, static_cast<LONG>(y)); };
-        for (int y = 0; y < h; ++y)
-            for (int x = 0; x < w; ++x)
-            {
-                if (Red(at(x, y), 90) && at(x, y).a >= 0xF0) grow(core, x, y);
-                if (Red(at(x, y), 25) && at(x, y).a > 0)     grow(dot, x, y);
-            }
-        if (core.right < 0) return false;
-        const Px red = at((core.left + core.right) / 2, (core.top + core.bottom) / 2);
-
-        // Office's badge: centred on the dot, its ring the last solid pixel right of it on that row.
-        const double cx = (dot.left + dot.right + 1) / 2.0, cy = (dot.top + dot.bottom + 1) / 2.0;
-        int edge = -1;
-        for (int x = dot.right + 1; x < w; ++x) if (at(x, static_cast<int>(cy)).a >= 0x40) edge = x;
-        if (edge < 0) return false;
-        const double r0 = edge + 1 - cx;
-        // 20% bigger, growing up and left so its right and bottom edges stay where Office's were.
-        const double r1 = r0 * 1.2, nx = cx - (r1 - r0), ny = cy - (r1 - r0);
-        const double ring = w / 30.0, gap = w / 32.0;
-        const double side = (core.right - core.left + 1) * 1.2;
-
-        // The page recoloured, without the old dot.
-        std::vector<Px> page(px.size());
-        for (int y = 0; y < h; ++y)
-            for (int x = 0; x < w; ++x)
-            {
-                const size_t i = static_cast<size_t>(y) * w + x;
-                const Px& p = px[i];
-                const Px base = p.r < 0xB8 ? mark : ink;      // list marks are the darker grey here
-                const int a = Red(p, 25) ? 0 : p.a;
-                // premultiplied outside the drawing, as a 32-bit bitmap's alpha is read; opaque on the sheet
-                page[i] = outside[i]
-                    ? Px{ static_cast<BYTE>(base.b * a / 255), static_cast<BYTE>(base.g * a / 255),
-                          static_cast<BYTE>(base.r * a / 255), static_cast<BYTE>(a) }
-                    : Px{ static_cast<BYTE>((base.b * a + sheet.b * (255 - a)) / 255),
-                          static_cast<BYTE>((base.g * a + sheet.g * (255 - a)) / 255),
-                          static_cast<BYTE>((base.r * a + sheet.r * (255 - a)) / 255), 255 };
-            }
-
-        // The new badge over it, sampled 4x4: a ring of ink, the sheet inside it holding the mark, and a
-        // clear gap around it, as Office's has. What is left of Office's badge outside it is cleared.
-        for (int y = 0; y < h; ++y)
-            for (int x = 0; x < w; ++x)
-            {
-                const size_t i = static_cast<size_t>(y) * w + x;
-                const double px0 = x + 0.5, py0 = y + 0.5;
-                if (std::hypot(px0 - nx, py0 - ny) > r1 + gap + 1 && std::hypot(px0 - cx, py0 - cy) > r0 + 1)
-                {
-                    px[i] = page[i];
-                    continue;
-                }
-                int sb = 0, sg = 0, sr = 0, sa = 0;
-                for (int sy = 0; sy < 4; ++sy)
-                    for (int sx = 0; sx < 4; ++sx)
-                    {
-                        const double u = x + (sx + 0.5) / 4, v = y + (sy + 0.5) / 4;
-                        const double rn = std::hypot(u - nx, v - ny);
-                        const Px* s;
-                        if (rn <= r1)
-                        {
-                            const Px* mk = MarkAt(m, u - nx, v - ny, side, ink, green, red);
-                            s = rn >= r1 - ring ? &ink : (mk ? mk : &sheet);
-                        }
-                        else if (rn <= r1 + gap || std::hypot(u - cx, v - cy) <= r0 + 0.5) s = &clear;
-                        else s = &page[i];
-                        sb += s->b; sg += s->g; sr += s->r; sa += s->a;
-                    }
-                px[i] = Px{ static_cast<BYTE>(sb / 16), static_cast<BYTE>(sg / 16),
-                            static_cast<BYTE>(sr / 16), static_cast<BYTE>(sa / 16) };
-            }
-        return true;
-    }
-
-    IDispatch* RecordPageWith(Mark m, IDispatch* application, HWND dpiOf)
-    {
-        const int size = MulDiv(32, DpiOf(dpiOf), 96);         // a large button's icon
-        IDispatch* bars = GetObjectProp(application, L"CommandBars");
-        IDispatch* source = ImageMso(bars, L"MacroRecord", size);
-        if (bars) bars->Release();
-        if (!source) return nullptr;
-
-        IPicture* pic = nullptr;
-        OLE_HANDLE handle = 0;
-        if (FAILED(source->QueryInterface(IID_IPicture, reinterpret_cast<void**>(&pic))) || !pic ||
-            FAILED(pic->get_Handle(&handle)) || !handle)
-        {
-            if (pic) pic->Release();
-            source->Release();
-            return nullptr;
-        }
-        HBITMAP src = reinterpret_cast<HBITMAP>(static_cast<UINT_PTR>(handle));
-        BITMAP bm{};
-        GetObjectW(src, sizeof(bm), &bm);
-        const int w = bm.bmWidth, h = bm.bmHeight;
-
-        BITMAPINFO bi = TopDown32(w, h);
-        std::vector<Px> px(static_cast<size_t>(w) * h);
-        HDC dc = GetDC(nullptr);
-        const int got = (w > 0 && h > 0) ? GetDIBits(dc, src, 0, h, px.data(), &bi, DIB_RGB_COLORS) : 0;
-        ReleaseDC(nullptr, dc);
-        pic->Release();
-        source->Release();
-        if (got != h || !Paint(px, w, h, m)) return nullptr;
-        return PictureOf(px, w, h);
+        const int size = MulDiv(32, DpiOf(dpiOf), 96);
+        return PictureOf(Draw(icon, size), size);
     }
 }
 
-IDispatch* ArmPicture(IDispatch* application, HWND dpiOf)    { return RecordPageWith(Mark::Record, application, dpiOf); }
-IDispatch* DisarmPicture(IDispatch* application, HWND dpiOf) { return RecordPageWith(Mark::Stop, application, dpiOf); }
-IDispatch* TailPicture(IDispatch* application, HWND dpiOf)   { return RecordPageWith(Mark::FollowEnd, application, dpiOf); }
+IDispatch* ArmPicture(HWND dpiOf)         { return Picture({ Page::Window,    Mark::Record },   dpiOf); }
+IDispatch* DisarmPicture(HWND dpiOf)      { return Picture({ Page::Window,    Mark::Stop },     dpiOf); }
+IDispatch* TailPicture(HWND dpiOf)        { return Picture({ Page::Window,    Mark::Follow },   dpiOf); }
+IDispatch* PerfettoPicture(HWND dpiOf)    { return Picture({ Page::Window,    Mark::Timeline }, dpiOf); }
+IDispatch* OptionsPicture(HWND dpiOf)     { return Picture({ Page::Checklist, Mark::None },     dpiOf); }
+IDispatch* DiagnosticsPicture(HWND dpiOf) { return Picture({ Page::Paper,     Mark::Equals },   dpiOf); }
 }
 }
 }

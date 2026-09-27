@@ -45,7 +45,7 @@ decisions.
 | **4. VBA tracing** | `src/vba/` — `vbapatch` + `vbathunk.asm` (swap the slots), `vbapcode` + `vbapcode_tables.h` (the walk, and the pinned lengths it walks by), `vbatrace` (the shadow stack) + `vbareport` (its disarm report), `vbaargs`/`vbaretdecode` (read the values), `vbaidentity`/`vbaproctable`/`vbatrailer` (name the procedure) |
 | **5. Safety** | `src/core/crashlog.*`, `src/core/safemem.h`, the SEH guards at every hook body, and `src/core/contained.*` (a fault contained at a command, a worksheet function or the ribbon, logged with its code and `module+offset`) |
 | The output | `src/emit/` — `ring` (the buffer), `rowcsv` and `rowjson` (a row in each format), `csv` (the file, in either); `src/core/` — `valuewriter` (the events a value is described in), `textvalue` and `jsonvalue` (their spellings), `textbuf` (the bounded buffer they write into) |
-| The UI | `src/ui/` — `ribbon` (the COM add-in that serves the ribbon buttons), `ribbonmodel` (its decisions, with no COM in them) and `ribbonart` (Disarm's picture); `optionsdlg` (the Options dialog), `softdraw`, `softtext` and `glyphs` (its anti-aliased shapes, DirectWrite text and page glyphs), `traceactions` (copy and tail the trace file); `src/core/notify` tells it when state changed elsewhere |
+| The UI | `src/ui/` — `ribbon` (the COM add-in that serves the ribbon buttons), `ribbonmodel` (its decisions, with no COM in them) and `ribbonart` (the buttons' pictures); `optionsdlg` (the Options dialog), `softdraw`, `softtext` and `glyphs` (its anti-aliased shapes, DirectWrite text and page glyphs), `traceactions` (copy, tail and open the trace file), `perfettopage` (the Perfetto page written with a trace inside it); `src/core/notify` tells it when state changed elsewhere. The page itself is `perfetto/XRayXL-Perfetto.html` |
 | Vendored | `src/third_party/` — MinHook, and Microsoft's `xlcall.h` |
 
 **`src/xll/` and `src/vba/` do not include each other.** What they share lives in `src/core/`; what drives both lives in `src/app/`. The `xll` folder is deliberately absent from the include path, so a cross-folder include has to be written out and is easy to grep for.
@@ -177,20 +177,46 @@ until something times out, so there is none when Excel has no visible window,
 or under `XRAYXL_NOMESSAGEBOX=1`. The log says which. `XRAYXL_RIBBON=0` skips
 the ribbon entirely.
 
-**The controls.** Five large buttons — Arm, Disarm, Tail, Options, Diagnostics — in a group appended
+**The controls.** Six large buttons — Arm, Disarm, Tail, Perfetto, Options, Diag (Diagnostics) — in a group appended
 to Excel's own Developer tab (`idMso='TabDeveloper'`). The ribbon is not a
 settings surface, so the settings live in a dialog. A built-in id that Office
 does not recognise is not a missing button: the whole customisation is ignored.
 A large button likewise needs a real `imageMso`, and an unrecognised one degrades
-it to small text silently. So every id used is one rendered on real Excel, and
-Disarm's picture is made, not named, through `loadImage` (`src/ui/ribbonart.cpp`):
-Excel's `MacroRecord` art re-inked with a square where the red dot was, so it
-matches Arm at any DPI.
+it to small text silently. So no button names one: all six pictures are drawn by
+the add-in itself and handed over through `loadImage` (`src/ui/ribbonart.cpp`). A
+window holding a list, a folded sheet or a checklist, most with a round badge over
+its lower right holding a red dot, a square, a triangle, three nested bars or two
+red bars. Each is geometry on a 32-unit grid, a large button's icon at 96 DPI,
+scaled to the window's DPI and sampled 4x4 a pixel, so it is as sharp as Office's
+own at any DPI and depends on nothing Office supplies. Options is Office's own
+Options icon redrawn: identical at 100% and 200%. Being bitmaps, the pictures do
+not follow Office's dark themes as built-in images do.
 Beyond that,
 `ribbonmodel_test` checks the XML against the rendered list and the handlers, in
 both directions. The decisions — what each control is, whether it is enabled,
 what a setting reads and writes — are in `src/ui/ribbonmodel.{h,cpp}`, with no
 COM in them, which is what lets a test reach them.
+
+**The Perfetto button.** It is live only after a disarm, when the trace is
+finished. The converter is one HTML page, `perfetto/XRayXL-Perfetto.html`, which
+ships beside the XLL (`tools\deploy.ps1` and `tools\release.ps1` both put it
+there). A page cannot read a file from disk, but it can load a script, so the
+button writes the trace as one beside it, `XRayXL_Trace_<id>_<pid>.trace.js`, a
+call to `XRayXLTrace(name, base64)` (`src/ui/perfettopage.cpp`). It then opens
+the page with that script's `file:` address after the `#`, in the browser
+Windows uses for web links, because an `.html` file may be associated with an
+editor. The page loads only a local `.trace.js` named there, so a link cannot
+make it run anyone else's script. A missing page is reported, not worked round.
+The page converts the trace to Perfetto's protobuf inside the browser and hands
+it to `ui.perfetto.dev` through Perfetto's documented `postMessage` handshake. The
+person clicks *Open Trace in Perfetto*, since a browser opens a new tab only on a
+click. It reads CSV and JSON Lines, and shows a JSON value in the CSV's spelling,
+so a trace reads the same in either format. A browser holds the script's base64
+as one string, so a trace over 256 MB is refused with a message pointing at the
+page itself, which reads a picked or dropped file directly. `perfettopage_test`
+checks that every byte comes back, that the script calls what the shipping page
+defines, and the page's address; `node perfetto/check.mjs <trace>...` checks the
+converter's output against the trace, read by a parser of its own.
 
 **Loading it.** The connect cannot be done from inside `xlAutoOpen` — Excel
 refuses it there — so it is deferred to the first idle turn of the main message

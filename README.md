@@ -125,31 +125,51 @@ return before their answer exists, so there is nothing to measure. Real-time
 data (`=RTD(...)`) is a COM mechanism rather than the XLL C API, and is not
 traced at all.
 
+### See it on a timeline
+
+After **Disarm**, the **Perfetto** button opens the trace in
+[Perfetto UI](https://ui.perfetto.dev), an open-source trace viewer, in your
+browser. Each thread is a track, each call a slice nested under the call that
+made it, and Excel's events are markers. Click a slice for its arguments, its
+result, how long it took and how much of that was XRayXL's own. The trace is
+converted on your machine by `XRayXL-Perfetto.html`, which sits beside the
+add-in, and nothing is uploaded. Perfetto asks whether to trust "An unknown
+origin": that is the page, so answer Yes. The same page takes any trace file,
+CSV or JSON Lines: open it, and press **Input XRayXL Trace** or drop the file on it.
+
+![A trace in Perfetto UI: one thread's calls on a timeline, each nested under the call
+that made it, with a stretch selected and its calls summed by name below](docs/images/Perfetto.png)
+
 Details of the Trace File in [docs/TraceRowModel.md](./docs/TraceRowModel.md).
 
 ## Getting started
 
-**No build required.** `dist/` is committed, so the
-[latest release](../../releases/latest) — or a plain clone — already contains a
-working tool:
+**No build required.** The [latest release](../../releases/latest), or a plain clone
+of this repository, has a working tool in `dist/`:
 
 ```
 dist/
-  XRayXL64.xll               the add-in
-  LICENSE                  GPL-3.0
-  THIRD-PARTY-NOTICES.txt
-  MANIFEST.txt             version, tag, commit and SHA256 of every file here
-  demo/                    two demo add-ins + nine macro-enabled workbooks
+  demo/                     - Two demo add-ins and ten macro-enabled workbooks.
+  docs/                     - These guides, to open in a browser: start with README.html.
+  LICENSE                   - The licence: GPL-3.0.
+  MANIFEST.txt              - The version, tag, commit and SHA256 of every file here.
+  THIRD-PARTY-NOTICES.txt   - The licences of the third-party code in XRayXL.
+  XRayXL-Perfetto.html      - Send your trace file to Perfetto.
+  XRayXL64.xll              - The add-in.
 ```
 
 Point Excel at `dist\XRayXL64.xll`: either add it permanently through
 File → Options → Add-ins → Manage: Excel Add-ins, or drag the `.xll` onto an
-open Excel window to load it for that session only.
+open Excel window to load it for that session only. An **XRayXL** group then
+appears at the far right of the **Developer** tab:
 
-An **XRayXL** group appears at the far right of the **Developer** tab, with five
-buttons: **Arm**, **Disarm**, **Tail** — which follows the trace file in PowerShell
-as rows arrive — **Options**, which opens a dialog holding the capture settings,
-and **Diagnostics**, which shows what is loaded into the Excel process. Two things to know: Excel hides the Developer tab by default
+![The XRayXL group at the far right of Excel's Developer tab, with Arm, Disarm,
+Tail, Perfetto, Options and Diag buttons](docs/images/ribbon.png)
+
+It has six buttons: **Arm**, **Disarm**, **Tail** — which follows the trace file in PowerShell
+as rows arrive — **Perfetto**, which shows the finished trace on a timeline,
+**Options**, which opens a dialog holding the capture settings,
+and **Diag**, which opens Diagnostics: what is loaded into the Excel process. Two things to know: Excel hides the Developer tab by default
 (File → Options → Customize Ribbon, tick *Developer*), and the buttons appear once
 a workbook is open, not on Excel's start screen. Each is also a
 registered command, so a macro — or an Excel that refuses the ribbon — can drive
@@ -157,48 +177,19 @@ it without the buttons; see [Trace something](#trace-something). If the buttons 
 and carries on working; [Before you run it](#before-you-run-it) explains when
 that happens.
 
-[**`dist/demo/`**](docs/DemoWalkthrough.md) is a guided tour in nine workbooks: a first
+[**`dist/demo/`**](docs/DemoWalkthrough.md) is a guided tour in ten workbooks: a first
 trace, argument values, callers, errors, a real VBA yield-curve model, classes and
-objects, the call tree, threads, and an option book built from XLL functions. Load the
+objects, the call tree, threads, an option book built from XLL functions, and a plasma
+painted two ways to read in Perfetto. Load the
 two demo add-ins with File → Open, open a workbook, press **Arm** on the ribbon, do
 what the sheet says, press **Disarm**, and read the trace.
-[`docs/DemoWalkthrough.md`](docs/DemoWalkthrough.md) is the walkthrough.
+[The walkthrough](docs/DemoWalkthrough.md) takes you through them; in the download it is
+`docs\DemoWalkthrough.html`.
 
-`dist/` is written only by `tools\release.ps1`, and only after a full test
-sweep passes, so it holds what a release shipped rather than whatever was last
-compiled. Between releases it lags the source beside it; `MANIFEST.txt` says by
-how much.
+- Traces land in `%TEMP%\XRayXL\TraceFiles\`, one file per arm, named `XRayXL_Trace_<id>_<pid>.csv`.
+- The log lands in `%TEMP%\XRayXL\Logs\XRayXL_<pid>.log`.
 
-The trace lands in: `%TEMP%\XRayXL\TraceFiles\XRayXL_Trace_<id>_<pid>.csv`
-The log lands in: `%TEMP%\XRayXL\Logs\XRayXL_<pid>.log`
-
-## Build
-
-If you want to build it yourself you'll need 64-bit Windows and **Visual Studio Build Tools**
-with the *Desktop development with C++* workload, which brings the MSVC
-toolset (v145), MASM and the Windows SDK.
-
-```powershell
-msbuild XRayXL.sln /p:Configuration=Release /p:Platform=x64
-tools\deploy.ps1        # copies the XLL to build\addin\
-```
-
-That builds into `build\x64\Release\`: the add-in itself, the `TracedAddin` the
-suites need, the two demo add-ins, and the unit tests under `tests\sweep\unit\`. A normal build never
-writes `dist\` — only `tools\release.ps1` does that, after a green sweep.
-
-Each build is stamped with its time (UTC) and the commit it came from, marked `(modified)` when
-`src\` had uncommitted changes. The stamp shows on the About page and in the file's Product version,
-which Explorer shows under Properties › Details.
-
-The output is one native DLL — `build\x64\Release\XRayXL\XRayXL64.xll` — with no
-runtime dependencies beyond Windows itself. No .NET, no installer, and nothing
-to register permanently: Excel serves ribbon controls only to a COM add-in, so the
-XLL is one for as long as the connect takes, then deletes its own registration
-(see [Before you run it](#before-you-run-it)).
-
-
-### Trace something
+## Trace something
 
 Press **Arm** in the XRayXL group on the Developer tab, recalculate or run your
 macros, then press **Disarm**. That is the whole of it, and it is how you will
@@ -221,7 +212,7 @@ the ribbon follows it; change a setting in **Options** and
 they are read once, at arm, so they are refused until you disarm.
 
 
-### Choosing what to capture
+## Choosing what to capture
 
 Registered functions, called through `Application.Run`, decide what is recorded
 and report on the session: `XRayXL_SetTraceParam`, `XRayXL_GetTraceParam`,
@@ -237,7 +228,7 @@ setting, what it costs, when it can be changed, and how to read the log.
 ## Diagnostics: what is actually loaded
 
 When a workbook behaves on one machine and not on another, the difference is
-usually not in the workbook. **Diagnostics** on the ribbon opens a read-only
+usually not in the workbook. **Diag** on the ribbon opens Diagnostics, a read-only
 window onto the Excel process itself, in three pages:
 
 - **Modules** — every module mapped into the process, with its version,
@@ -252,7 +243,7 @@ when you click a heading and resize when you drag between two. Rows are picked
 one at a time, with Ctrl to add one, Shift to take a range, or Ctrl+A for all of
 them, and **right-clicking the list** offers:
 
-| | |
+| On the menu | What it does |
 |---|---|
 | **Select All** | every row the search has left |
 | **Reveal in File Explorer** | opens the folder with that module's file selected; needs exactly one row |
@@ -309,38 +300,18 @@ Honest caveats, in roughly the order they will matter to you.
   update breaks a derivation, the add-in refuses to arm and says so, rather
   than producing a wrong trace.
 
-## Running the tests
-
-The tests drive real Excel through **StretchXL**, a general-purpose Excel test
-manager written for this project and kept independently useful. They need
-64-bit Excel installed and an interactive desktop session.
-
-```powershell
-msbuild XRayXL.sln /p:Configuration=Release /p:Platform=x64
-.\StretchXL\StretchXL.ps1 -Parallel 8 -Path .\tests\sweep -OutDir <any folder>
-```
-
-Every asserted formula lives in a workbook the test **saved, closed and
-reopened** first, and the cases are grouped by *how the calculation was
-triggered* — F9, an edit, a button, opening the file. Neither is fussiness:
-a formula loaded from a file and one assigned in memory are different things
-inside Excel's calculation engine, and so are the ways a recalculation starts.
-[docs/Testing.md](./docs/Testing.md) has the prerequisites, how to read a run,
-and the principles behind that; [tests/sweep/README.md](./tests/sweep/README.md) is the
-inventory of what each suite defends.
-
 ## Where to go next
 
 | Document | What it covers |
 |---|---|
-| [docs/DemoWalkthrough.md](./docs/DemoWalkthrough.md) | A guided tour — demo add-ins and nine workbooks, each showing one part of the trace |
+| [docs/DemoWalkthrough.md](./docs/DemoWalkthrough.md) | A guided tour — demo add-ins and ten workbooks, each showing one part of the trace |
 | [docs/TraceOptions.md](./docs/TraceOptions.md) | Every capture setting, what it costs, and the add-in's log |
-| [docs/Implementation.md](./docs/Implementation.md) | How it works — the vehicle, what is derived, and the two tracers |
 | [docs/VBATracing.md](./docs/VBATracing.md) | A layered walkthrough of VBA tracing — what is patched, the shadow stack, return values and error outcomes, for a general programmer |
 | [docs/TraceRowModel.md](./docs/TraceRowModel.md) | The trace file's contract, in full |
 | [docs/ErrorsInTheTrace.md](./docs/ErrorsInTheTrace.md) | How errors read in a trace — each outcome in a real chain, VBA's error dialog, and the edge cases |
-| [docs/Testing.md](./docs/Testing.md) | How the tests are run, and the principles that decide whether a suite is worth running |
-| [tests/sweep/README.md](./tests/sweep/README.md) | What each suite defends, and how to add a test |
+
+Building XRayXL yourself, running its tests, rebuilding the demo and how it works inside:
+[docs/Developers.md](./docs/Developers.md).
 
 
 ## Acknowledgements

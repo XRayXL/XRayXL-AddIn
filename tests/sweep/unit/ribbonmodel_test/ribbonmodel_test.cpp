@@ -72,7 +72,8 @@ int main()
     }
 
     for (const std::wstring& id : { std::wstring(L"btnArm"), std::wstring(L"btnDisarm"), std::wstring(L"btnTail"),
-                                    std::wstring(L"btnOptions"), std::wstring(L"btnDiagnostics") })
+                                    std::wstring(L"btnPerfetto"), std::wstring(L"btnOptions"),
+                                    std::wstring(L"btnDiagnostics") })
     {
         const size_t at = xml.find(L"id='" + id + L"'");
         const size_t end = xml.find(L"/>", at);
@@ -90,17 +91,18 @@ int main()
           "the button lives on Excel's Developer tab, not a tab of our own");
     Check("no-tab-of-our-own", xml.find(L"<tab id='") == std::wstring::npos,
           "a tab with an id of ours would be a second home for the same thing");
-    // Five items, in the order a person reads them.
+    // Six items, in the order a person reads them.
     const size_t pArm = xml.find(L"id='btnArm'");
     const size_t pDis = xml.find(L"id='btnDisarm'");
     const size_t pTail = xml.find(L"id='btnTail'");
+    const size_t pPerf = xml.find(L"id='btnPerfetto'");
     const size_t pOpt = xml.find(L"id='btnOptions'");
     const size_t pDiag = xml.find(L"id='btnDiagnostics'");
-    Check("menu-has-arm-disarm-tail-options-diagnostics",
+    Check("menu-has-arm-disarm-tail-perfetto-options-diagnostics",
           pArm != std::wstring::npos && pDis != std::wstring::npos && pTail != std::wstring::npos &&
-          pOpt != std::wstring::npos && pDiag != std::wstring::npos &&
-          pArm < pDis && pDis < pTail && pTail < pOpt && pOpt < pDiag,
-          "Arm, Disarm, Tail, Options, Diagnostics -- in that order");
+          pPerf != std::wstring::npos && pOpt != std::wstring::npos && pDiag != std::wstring::npos &&
+          pArm < pDis && pDis < pTail && pTail < pPerf && pPerf < pOpt && pOpt < pDiag,
+          "Arm, Disarm, Tail, Perfetto, Options, Diagnostics -- in that order");
 
     Check("xml-declares-onload", xml.find(L"onLoad='OnRibbonLoad'") != std::wstring::npos,
           "without onLoad there is no IRibbonUI, so nothing can ever be invalidated");
@@ -145,11 +147,12 @@ int main()
               "in the XML but no handler knows it -- the control would do nothing");
     }
     // a bare count: a new control must be given a handler
-    Check("xml-has-every-control", controls.size() == 5,
-          "expected 5: Arm, Disarm, Tail, Options and Diagnostics");
+    Check("xml-has-every-control", controls.size() == 6,
+          "expected 6: Arm, Disarm, Tail, Perfetto, Options and Diagnostics");
 
     // ...and every handled control must be in the XML
-    const wchar_t* kExpected[] = { L"btnArm", L"btnDisarm", L"btnTail", L"btnOptions", L"btnDiagnostics" };
+    const wchar_t* kExpected[] = { L"btnArm", L"btnDisarm", L"btnTail", L"btnPerfetto", L"btnOptions",
+                                   L"btnDiagnostics" };
     for (const wchar_t* id : kExpected)
     {
         bool inXml = false;
@@ -169,6 +172,11 @@ int main()
     Check("tail-greyed-before-any-trace", !M::EnabledFor(L"btnTail", false, false));
     Check("tail-live-while-armed",         M::EnabledFor(L"btnTail", true, true));
     Check("tail-live-after-disarm",        M::EnabledFor(L"btnTail", false, true));
+
+    // Perfetto shows a finished trace: live only after a disarm, never while one is being written.
+    Check("perfetto-greyed-before-any-trace", !M::EnabledFor(L"btnPerfetto", false, false));
+    Check("perfetto-greyed-while-armed",      !M::EnabledFor(L"btnPerfetto", true, true));
+    Check("perfetto-live-after-disarm",        M::EnabledFor(L"btnPerfetto", false, true));
 
     // Options is always live: the dialog greys what cannot be changed.
     // Diagnostics is always live too: it reads, and changes nothing.

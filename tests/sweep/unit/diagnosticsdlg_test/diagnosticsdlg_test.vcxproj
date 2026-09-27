@@ -41,6 +41,7 @@
     <ClCompile Include="$(XRayRoot)src\ui\softtext.cpp" />
     <ClCompile Include="$(XRayRoot)src\ui\glyphs.cpp" />
     <ClCompile Include="$(XRayRoot)src\ui\traceactions.cpp" />
+    <ClCompile Include="$(XRayRoot)src\ui\perfettopage.cpp" />
     <ClCompile Include="$(XRayRoot)src\diag\snapshot.cpp" />
     <ClCompile Include="$(XRayRoot)src\diag\tableout.cpp" />
     <ClCompile Include="$(XRayRoot)src\core\tracemodes.cpp" />

@@ -303,7 +303,8 @@ enum : DISPID {
     DISPID_ONLOAD     = M::CbOnLoad,     DISPID_ONARM     = M::CbOnArm,
     DISPID_ONDISARM   = M::CbOnDisarm,   DISPID_GETENABLED = M::CbGetEnabled,
     DISPID_ONOPTIONS  = M::CbOnOptions,  DISPID_LOADIMAGE = M::CbLoadImage,
-    DISPID_ONDIAGNOSTICS = M::CbOnDiagnostics, DISPID_ONTAIL = M::CbOnTail
+    DISPID_ONDIAGNOSTICS = M::CbOnDiagnostics, DISPID_ONTAIL = M::CbOnTail,
+    DISPID_ONPERFETTO = M::CbOnPerfetto
 };
 
 // defined with the connect plumbing below
@@ -502,19 +503,22 @@ private:
         if (id == DISPID_LOADIMAGE)
         {
             // loadImage(imageId): asked once per image id and cached by Office.
-            // From the window chain, not the add-in object: the ribbon owns no lifetime state.
+            namespace art = ui::ribbon::art;
             const VARIANT* which = Arg(dp, 0);
             const wchar_t* name = (which && which->vt == VT_BSTR && which->bstrVal) ? which->bstrVal : L"";
-            std::ostringstream om;
-            IDispatch* app = core::excelom::AcquireApplication(om);
+            const HWND dpiOf = MainWindow();
             IDispatch* pic = nullptr;
-            std::string what = "an unknown image's";
-            if      (_wcsicmp(name, L"arm") == 0)    { pic = ui::ribbon::art::ArmPicture(app, MainWindow());    what = "Arm's"; }
-            else if (_wcsicmp(name, L"disarm") == 0) { pic = ui::ribbon::art::DisarmPicture(app, MainWindow()); what = "Disarm's"; }
-            else if (_wcsicmp(name, L"tail") == 0)   { pic = ui::ribbon::art::TailPicture(app, MainWindow());   what = "Tail's"; }
-            if (app) app->Release();
-            if (!pic) core::Log::Warning("ribbon: " + what + " picture could not be made; the button shows no icon");
-            else      core::Log::Debug("ribbon: " + what + " picture made");
+            if      (_wcsicmp(name, L"arm") == 0)         pic = art::ArmPicture(dpiOf);
+            else if (_wcsicmp(name, L"disarm") == 0)      pic = art::DisarmPicture(dpiOf);
+            else if (_wcsicmp(name, L"tail") == 0)        pic = art::TailPicture(dpiOf);
+            else if (_wcsicmp(name, L"perfetto") == 0)    pic = art::PerfettoPicture(dpiOf);
+            else if (_wcsicmp(name, L"options") == 0)     pic = art::OptionsPicture(dpiOf);
+            else if (_wcsicmp(name, L"diagnostics") == 0) pic = art::DiagnosticsPicture(dpiOf);
+            char line[128];
+            _snprintf_s(line, _TRUNCATE, "ribbon: picture '%ls' %s", name,
+                        pic ? "made" : "could not be made; the button shows no icon");
+            if (pic) core::Log::Debug(line);
+            else     core::Log::Warning(line);
             if (result && pic) { result->vt = VT_DISPATCH; result->pdispVal = pic; }
             else if (pic) pic->Release();
             return S_OK;
@@ -568,6 +572,18 @@ private:
         {
             core::Log::Note("ribbon: Tail pressed");
             const ui::trace::Result r = ui::trace::TailInPowerShell(emit::csv::Path());
+            if (r != ui::trace::Result::Ok)
+                MessageBoxW(MainWindow(), ui::trace::Explain(r), L"XRayXL", MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND);
+            return S_OK;
+        }
+
+        case DISPID_ONPERFETTO:
+        {
+            core::Log::Note("ribbon: Perfetto pressed");
+            if (app::IsArmed()) return S_OK;
+            HCURSOR was = SetCursor(LoadCursorW(nullptr, IDC_WAIT));    // a large trace takes a moment to write
+            const ui::trace::Result r = ui::trace::OpenInPerfetto(emit::csv::Path());
+            SetCursor(was);
             if (r != ui::trace::Result::Ok)
                 MessageBoxW(MainWindow(), ui::trace::Explain(r), L"XRayXL", MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND);
             return S_OK;

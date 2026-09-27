@@ -1,13 +1,18 @@
 <#
-  Regenerates dist\demo\01..04 and 06..09 *.xlsm; 05_VBACurves.xlsm is hand-built.
+  Regenerates dist\demo\01..04 and 06..10 *.xlsm; 05_VBACurves.xlsm is hand-built.
 
-    .\tools\Build-DemoWorkbooks.ps1
+    .\tools\Build-DemoWorkbooks.ps1              every workbook
+    .\tools\Build-DemoWorkbooks.ps1 -Only 10     just 10_Plasma.xlsm; the others are left as they are
 
   Driving Excel to inject VBA needs "Trust access to the VBA project object model",
   so the .xlsm files are committed and this runs only when the demo content changes.
   XRayXL is driven from its ribbon, so a button appears only where the traced thing
   is itself a macro.
 #>
+param(
+    # workbook numbers to save, such as 10; the rest are built but not saved
+    [string[]]$Only = @()
+)
 $ErrorActionPreference = 'Stop'
 
 $root  = Split-Path $PSScriptRoot -Parent
@@ -112,18 +117,25 @@ try {
         Clear-ComRef @($b, $cell)
     }
 
+    # Saves over dist\demo\<leaf>, unless -Only leaves it out.
+    function Save-As($demo, [string]$leaf) {
+        $demo.Sheet.Range('A1').Select() | Out-Null
+        if ($Only.Count -eq 0 -or ($Only | Where-Object { $leaf.StartsWith($_) })) {
+            $path = Join-Path $wbOut $leaf
+            Remove-Item $path -ErrorAction SilentlyContinue
+            $demo.Book.SaveAs($path, 52)      # 52 = xlOpenXMLWorkbookMacroEnabled (.xlsm)
+            Write-Host "  workbook -> $leaf"
+        }
+        $demo.Book.Close($false)
+        Clear-ComRef @($demo.Project, $demo.Sheet, $demo.Book)
+    }
+
     function Save-Book($demo, [string]$leaf) {
         $ws = $demo.Sheet
         $ws.Columns('A').ColumnWidth = 44
         $ws.Columns('B:I').ColumnWidth = 11
         $ws.Columns('J').ColumnWidth = 70
-        $ws.Range('A1').Select() | Out-Null
-        $path = Join-Path $wbOut $leaf
-        Remove-Item $path -ErrorAction SilentlyContinue
-        $demo.Book.SaveAs($path, 52)      # 52 = xlOpenXMLWorkbookMacroEnabled (.xlsm)
-        $demo.Book.Close($false)
-        Write-Host "  workbook -> $leaf"
-        Clear-ComRef @($demo.Project, $ws, $demo.Book)
+        Save-As $demo $leaf
     }
 
     $armStep     = 'Developer tab > XRayXL > Arm.'
@@ -643,13 +655,218 @@ End Function
     $ws.Columns('A').ColumnWidth = 34
     $ws.Columns('B:H').ColumnWidth = 11
     $ws.Columns('J').ColumnWidth = 90
-    $ws.Range('A1').Select() | Out-Null
-    $path = Join-Path $wbOut '09_XLLPricing.xlsm'
-    Remove-Item $path -ErrorAction SilentlyContinue
-    $d.Book.SaveAs($path, 52)
-    $d.Book.Close($false)
-    Write-Host '  workbook -> 09_XLLPricing.xlsm'
-    Clear-ComRef @($d.Project, $ws, $d.Book)
+    Save-As $d '09_XLLPricing.xlsm'
+
+    # ===== 10 -- a plasma, painted two ways, for Perfetto =========================
+    $d = New-DemoBook 'Plasma'
+    Add-Module $d.Project 'Plasma' @'
+Option Explicit
+
+' A plasma, painted two ways. Act 1 sets each cell's colour, one call to Excel per cell. Act 2
+' writes every cell's value in one call, and the sheet's colour scale paints them. Same maths.
+
+Private Const GRID_ROWS As Long = 54
+Private Const GRID_COLS As Long = 96
+Private Const ACT_SECONDS As Double = 10
+
+' The colour scale's three colours, so both acts look alike.
+Private Const DEEP As Long = &H501014        ' RGB(20, 16, 80)
+Private Const PINK As Long = &H8C32D6        ' RGB(214, 50, 140)
+Private Const GOLD As Long = &H5AD6FF        ' RGB(255, 214, 90)
+
+' Shared, not passed: an argument this size would be copied into every traced call's row.
+Private field(1 To GRID_ROWS, 1 To GRID_COLS) As Double
+Private grid As Range
+
+Private running As Boolean, stopping As Boolean
+Private showStart As Double, actStart As Double, actEnd As Double, lastTick As Double
+Private actTitle As String, actFrames As Long
+
+' The Start button.
+Public Sub StartShow()
+    If running Then Exit Sub
+    running = True
+    stopping = False
+    On Error GoTo Finish
+    Set grid = Range("Canvas")
+    grid.ClearContents
+    grid.Interior.ColorIndex = xlNone
+    showStart = Clock()
+    Dim act1 As Long, act2 As Long
+    act1 = RunAct(1, "Act 1: one call to Excel per cell")
+    If Not stopping Then act2 = RunAct(2, "Act 2: every cell in one call")
+    Range("Countdown").Value2 = 0
+    Range("Status").Value2 = IIf(stopping, "Stopped. ", "") & "Act 1 drew " & act1 & " frames, act 2 drew " & _
+                             act2 & ". Same maths, same cells."
+Finish:
+    If Err.Number <> 0 Then Range("Status").Value2 = "Stopped by an error: " & Err.Description
+    running = False
+End Sub
+
+' The Stop button.
+Public Sub StopShow()
+    stopping = True
+End Sub
+
+' Frames until the act's time is up; returns how many were drawn.
+Private Function RunAct(ByVal act As Long, ByVal title As String) As Long
+    actTitle = title
+    actFrames = 0
+    actStart = Clock()
+    actEnd = actStart + ACT_SECONDS
+    lastTick = 0
+    If act = 2 Then grid.Interior.ColorIndex = xlNone
+    Do While Clock() < actEnd And Not stopping
+        ComputeField Clock() - showStart
+        If act = 1 Then PaintOneCellAtATime Else PaintInOneCall
+        actFrames = actFrames + 1
+        Tick
+    Loop
+    RunAct = actFrames
+End Function
+
+' Every cell's colour for time t, 0 to 1.
+Private Sub ComputeField(ByVal t As Double)
+    Dim y As Long
+    For y = 1 To GRID_ROWS
+        PlasmaRow y, t
+    Next
+End Sub
+
+' Four sine waves added together, one travelling in circles, then wrapped so the colours cycle.
+Private Sub PlasmaRow(ByVal y As Long, ByVal t As Double)
+    Dim x As Long, v As Double, cx As Double, cy As Double
+    cy = y / GRID_ROWS - 0.5 + 0.35 * Cos(t / 3)
+    For x = 1 To GRID_COLS
+        cx = x / GRID_COLS - 0.5 + 0.35 * Sin(t / 2)
+        v = Sin(x * 0.11 + t) + Sin((y * 0.13 + t) * 0.7) + Sin((x * 0.06 + y * 0.09 + t) * 0.9) _
+          + Sin(Sqr(80 * (cx * cx + cy * cy) + 1) * 3 - t * 1.5)
+        v = (v + 4) / 8 + t * 0.03
+        v = v - Int(v)
+        field(y, x) = Abs(2 * v - 1)            ' a triangle wave, so the cycle has no seam
+    Next
+End Sub
+
+' Act 1: one call to Excel for every cell.
+Private Sub PaintOneCellAtATime()
+    Dim y As Long, x As Long
+    For y = 1 To GRID_ROWS
+        For x = 1 To GRID_COLS
+            SetPixel y, x
+        Next
+        Tick
+        If Clock() >= actEnd Or stopping Then Exit Sub
+    Next
+End Sub
+
+Private Sub SetPixel(ByVal y As Long, ByVal x As Long)
+    grid.Cells(y, x).Interior.Color = Palette(field(y, x))
+End Sub
+
+Private Function Palette(ByVal v As Double) As Long
+    If v < 0.5 Then Palette = Mix(DEEP, PINK, v * 2) Else Palette = Mix(PINK, GOLD, v * 2 - 1)
+End Function
+
+' Part way from one colour to another, channel by channel.
+Private Function Mix(ByVal a As Long, ByVal b As Long, ByVal f As Double) As Long
+    Dim i As Long, part As Long, fromA As Long, toB As Long
+    For i = 0 To 2
+        part = 256 ^ i
+        fromA = (a \ part) And &HFF
+        toB = (b \ part) And &HFF
+        Mix = Mix + CLng(fromA + (toB - fromA) * f) * part
+    Next
+End Function
+
+' Act 2: every value in one call; the colour scale does the colouring.
+Private Sub PaintInOneCall()
+    grid.Value2 = field
+End Sub
+
+' The countdown and the frame rate, at most four times a second, then let Excel draw.
+Private Sub Tick()
+    Dim at As Double, secondsLeft As Long
+    at = Clock()
+    If at - lastTick >= 0.25 Then
+        lastTick = at
+        secondsLeft = -Int(-(showStart + 2 * ACT_SECONDS - at))
+        If secondsLeft < 0 Then secondsLeft = 0
+        If Range("Countdown").Value2 <> secondsLeft Then Range("Countdown").Value2 = secondsLeft
+        Range("Status").Value2 = actTitle & ":  " & Format(actFrames / (at - actStart + 0.000001), "0.0") & _
+                                 " frames a second"
+    End If
+    DoEvents
+End Sub
+
+' Seconds, from a clock that does not go back to 0 at midnight as Timer does.
+Private Function Clock() As Double
+    Clock = CDbl(Date) * 86400# + Timer
+End Function
+'@
+    $ws = $d.Sheet
+    $xl.ActiveWindow.Zoom = 100
+    # Every cell 10 pixels square: 7.5 points high, and as many characters wide as measures 7.5 points.
+    $ws.Cells.RowHeight = 7.5
+    $cw = 0.3
+    $ws.Columns(1).ColumnWidth = $cw
+    while ($ws.Columns(1).Width -lt 7.49 -and $cw -lt 3) { $cw += 0.01; $ws.Columns(1).ColumnWidth = $cw }
+    $ws.Cells.ColumnWidth = $cw
+
+    # The plasma: 96 by 54 cells, values hidden, coloured by a three-colour scale from 0 to 1.
+    $grid = $ws.Range('B14').Resize(54, 96)
+    $grid.Name = 'Canvas'
+    $grid.NumberFormat = ';;;'
+    $scale = $grid.FormatConditions.AddColorScale(3)
+    $stops = @(@(0, 0x501014), @(0.5, 0x8C32D6), @(1, 0x5AD6FF))
+    for ($i = 0; $i -lt 3; $i++) {
+        $c = $scale.ColorScaleCriteria.Item($i + 1)
+        $c.Type = 0                                 # xlConditionValueNumber
+        # a Variant property: set through InvokeMember, as Set-Table does, since the binder refuses a number
+        [void][System.__ComObject].InvokeMember('Value', [Reflection.BindingFlags]::SetProperty, $null, $c,
+                                                [object[]]@([double]$stops[$i][0]))
+        $c.FormatColor.Color = $stops[$i][1]
+        Clear-ComRef @($c)
+    }
+
+    # Above it: the countdown, a status line, and the two buttons.
+    # named by their top-left cells: a merged range's Value2 is an array
+    $cd = $ws.Range('B2:K11'); $cd.Merge(); $ws.Range('B2').Name = 'Countdown'; $cd.Value2 = 20
+    $cd.Font.Size = 40; $cd.Font.Bold = $true; $cd.HorizontalAlignment = -4108; $cd.VerticalAlignment = -4108
+    $st = $ws.Range('M2:CS6'); $st.Merge(); $ws.Range('M2').Name = 'Status'
+    $st.Value2 = 'Press Start the show. It runs for 20 seconds.'
+    $st.Font.Size = 14; $st.Font.Bold = $true; $st.VerticalAlignment = -4108
+    Add-Button $ws 'StartTheShow' 'Start the show' 'StartShow' 'M8'
+    Add-Button $ws 'StopTheShow' 'Stop' 'StopShow' 'AC8'
+
+    # Beside it: what to do, and what to look for in Perfetto.
+    $guide = $ws.Shapes.AddTextbox(1, $ws.Range('CU2').Left, $ws.Range('CU2').Top, 380, 650)
+    $guide.Line.Visible = 0
+    $text = $guide.TextFrame2.TextRange
+    $text.Text = (@(
+        '10  A plasma, painted two ways',
+        'The same VBA maths drawn twice: first one call to Excel per cell, then every cell in one call. Perfetto shows where the time goes.',
+        '',
+        'Try it',
+        '1.  Developer tab > XRayXL > Arm.',
+        '2.  Press Start the show, and watch for 20 seconds. Stop ends it early.',
+        '3.  Developer tab > XRayXL > Disarm.',
+        '4.  Press Perfetto, then Open Trace in Perfetto, and answer Yes.',
+        '',
+        'Look for this in Perfetto',
+        '-  StartShow, holding one RunAct for each act.',
+        '-  Act 1: each frame is a wide PaintOneCellAtATime, a comb of SetPixel calls, each calling Palette and then Mix. ComputeField beside it is a sliver.',
+        '-  Act 2: the frames are thin: ComputeField with its 54 PlasmaRow calls, then one PaintInOneCall.',
+        '-  Excel''s SheetChange events, marking each write.',
+        '-  Click a SetPixel: most of its time is its own, spent in Excel colouring one cell.'
+    ) -join "`r")
+    $text.Font.Size = 10
+    $text.Font.Name = 'Segoe UI'
+    $text.Paragraphs(1).Font.Size = 16; $text.Paragraphs(1).Font.Bold = -1
+    $text.Paragraphs(2).Font.Italic = -1
+    $text.Paragraphs(4).Font.Bold = -1
+    $text.Paragraphs(10).Font.Bold = -1
+    Clear-ComRef @($text, $guide, $st, $cd, $scale, $grid)
+    Save-As $d '10_Plasma.xlsm'
 }
 finally {
     # dropping the variable releases nothing: Excel is a ref-counted COM server

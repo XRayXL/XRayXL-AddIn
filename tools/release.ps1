@@ -58,7 +58,7 @@ $built   = Join-Path $Root 'build\x64\Release'
 # WHAT COUNTS AS A MODIFIED TREE. dist\ is excluded on purpose: this script
 # writes it, so it is always modified by the time anyone could look.
 # Uncompiled files count too: LICENSE and README ship, and the .sln decides what builds.
-$srcPaths = @('src', 'StretchXL', 'tests', 'tools',
+$srcPaths = @('src', 'perfetto', 'StretchXL', 'tests', 'tools',
               'docs', 'version.props', 'LICENSE', 'THIRD-PARTY-NOTICES.txt', 'README.md', 'XRayXL.sln')
 function Test-TreeDirty { [bool](Invoke-Tool git -C $Root status --porcelain -- @srcPaths) }
 
@@ -230,19 +230,16 @@ Copy-Item (Join-Path $built 'DemoFinance\DemoFinance64.xll')     $stageDemo -For
 Copy-Item (Join-Path $built 'DemoBehaviors\DemoBehaviors64.xll') $stageDemo -Force
 Copy-Item (Join-Path $Root 'LICENSE')          $stage -Force
 Copy-Item (Join-Path $Root 'THIRD-PARTY-NOTICES.txt') $stage -Force
-Copy-Item (Join-Path $Root 'docs\DemoWalkthrough.md') (Join-Path $stageDemo 'README.md') -Force
+# the page the Perfetto button opens, beside the XLL, which also takes any trace file
+Copy-Item (Join-Path $Root 'perfetto\XRayXL-Perfetto.html') $stage -Force
 
-# The walkthrough shows the ribbon and the Options dialog, and ships as demo\README.md,
-# so its images have to travel with it at the same relative path or the links break.
-$stageImages = Join-Path $stageDemo 'images'
-New-Item -ItemType Directory -Force $stageImages | Out-Null
-$docImages = @(Get-ChildItem (Join-Path $Root 'docs\images\*.png') -ErrorAction SilentlyContinue)
-if (-not $docImages) { throw "no images in docs\images\ -- demo\README.md references them" }
-$docImages | Copy-Item -Destination $stageImages -Force
+# The user docs as web pages, with their images: someone who downloads the zip has a browser,
+# not a Markdown viewer. Their links are checked as they are written.
+& (Join-Path $PSScriptRoot 'Build-Docs.ps1') -Out (Join-Path $stage 'docs') -Root $Root
 
 # LF before hashing: git stores these LF, so a CRLF copy would fail its own manifest
 foreach ($textFile in @((Join-Path $stage 'LICENSE'), (Join-Path $stage 'THIRD-PARTY-NOTICES.txt'),
-                         (Join-Path $stageDemo 'README.md'))) {
+                         (Join-Path $stage 'XRayXL-Perfetto.html'))) {
     $raw = [System.IO.File]::ReadAllText($textFile)
     if ($raw.Contains("`r`n")) {
         [System.IO.File]::WriteAllText($textFile, ($raw -replace "`r`n", "`n"),

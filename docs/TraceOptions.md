@@ -18,7 +18,7 @@ reachable from a macro through the functions below, which is what a script shoul
 **Tail**, between Disarm and Options, opens PowerShell on the current trace file and follows
 it as rows are written. It is live from the first arm, and after a disarm follows the last trace.
 
-The group's last button, **Diagnostics**, sets nothing: it shows the modules
+The group's last button, **Diag** (Diagnostics), sets nothing: it shows the modules
 loaded into the process, the environment and the process counters, and is
 described in the [README](../README.md#diagnostics-what-is-actually-loaded).
 
@@ -201,7 +201,7 @@ one caused by its presence.
 
 ## Where the files go
 
-| | |
+| File | Where |
 |---|---|
 | Trace | `%TEMP%\XRayXL\TraceFiles\XRayXL_Trace_<id>_<pid>.csv` — one per arm |
 | Log | `%TEMP%\XRayXL\Logs\XRayXL_<pid>.log` |

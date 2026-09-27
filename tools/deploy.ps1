@@ -43,6 +43,8 @@ if (Test-Path (Join-Path $Target $leaf)) {
 
 New-Item -ItemType Directory -Force $Target | Out-Null
 Copy-Item $xll $Target -Force
+# the Perfetto button opens the page that sits beside the add-in
+Copy-Item (Join-Path $Root 'perfetto\XRayXL-Perfetto.html') $Target -Force
 
 $installed = Join-Path $Target $leaf
 $ver = [Diagnostics.FileVersionInfo]::GetVersionInfo($installed).FileVersion

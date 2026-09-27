@@ -8,7 +8,7 @@ namespace ui
 {
 namespace trace
 {
-    enum class Result { Ok = 0, NoTraceFile, ClipboardFailed, LaunchFailed };
+    enum class Result { Ok = 0, NoTraceFile, ClipboardFailed, LaunchFailed, TooLarge, PageMissing, ScriptFailed };
 
     Result CopyText(void* ownerHwnd, const std::wstring& text);
     Result OpenFolder(const std::wstring& folder);
@@ -16,6 +16,9 @@ namespace trace
 
     // A PowerShell window following `file`, so lines appear as they are written.
     Result TailInPowerShell(const std::wstring& file);
+
+    // The trace in the default browser, on the Perfetto page that ships beside the add-in.
+    Result OpenInPerfetto(const std::wstring& file);
 
     // What to tell a person, for any result. Never null.
     const wchar_t* Explain(Result r);

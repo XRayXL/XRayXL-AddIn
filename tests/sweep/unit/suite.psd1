@@ -16,6 +16,7 @@
         '..\..\..\build\x64\Release\unit\pcode_scan_guard_test.exe' = @('..\..\..\src', 'pcode_scan_guard_test')
         '..\..\..\build\x64\Release\unit\pcode_label_test.exe' = @('..\..\..\src', 'pcode_label_test')
         '..\..\..\build\x64\Release\unit\pcode_callsite_test.exe' = @('..\..\..\src', 'pcode_callsite_test')
+        '..\..\..\build\x64\Release\unit\perfettopage_test.exe' = @('..\..\..\src', '..\..\..\perfetto\XRayXL-Perfetto.html', 'perfettopage_test')
         '..\..\..\build\x64\Release\unit\proctable_test.exe' = @('..\..\..\src', 'proctable_test')
         '..\..\..\build\x64\Release\unit\ribbonmodel_test.exe' = @('..\..\..\src', 'ribbonmodel_test')
         '..\..\..\build\x64\Release\unit\ring_stress.exe' = @('..\..\..\src', 'ring_stress')

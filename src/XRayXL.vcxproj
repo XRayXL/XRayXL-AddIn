@@ -116,6 +116,7 @@
     <ClCompile Include="ui\ribbonart.cpp" />
     <ClCompile Include="ui\glyphs.cpp" />
     <ClCompile Include="ui\traceactions.cpp" />
+    <ClCompile Include="ui\perfettopage.cpp" />
     <ClCompile Include="ui\optionsdlg.cpp" />
     <ClCompile Include="ui\eventpane.cpp" />
     <ClCompile Include="ui\diagnosticsdlg.cpp" />

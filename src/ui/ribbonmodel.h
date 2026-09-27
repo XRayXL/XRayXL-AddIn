@@ -16,7 +16,7 @@ namespace model
     {
         CbUnknown = 0,
         CbOnLoad = 1, CbOnArm, CbOnDisarm, CbGetEnabled, CbOnOptions, CbOnDiagnostics,
-        CbLoadImage, CbOnTail
+        CbLoadImage, CbOnTail, CbOnPerfetto
     };
     Callback CallbackForName(const wchar_t* name);   // case-insensitive, as Office asks
 
@@ -24,7 +24,8 @@ namespace model
     bool KnownControl(const wchar_t* id);
 
     // The setters' rule: refused while armed. Says what may be pressed; enforces nothing.
-    // `traced`: a trace file has been named this session, so Tail has something to follow.
+    // `traced`: a trace file has been named this session, so Tail has something to follow, and
+    // once disarmed, Perfetto has something to show.
     bool EnabledFor(const wchar_t* id, bool armed, bool traced);
 
     // ---- the settings, read and written by the Options dialog; the ids are the setting keys ----

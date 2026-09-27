@@ -9,6 +9,8 @@
         '..\..\build\addin\XRayXL64.xll' = '..\..\build\x64\Release\XRayXL\XRayXL64.xll'
         # A failed build leaves the previous binary for the deploy to copy.
         '..\..\build\x64\Release\XRayXL\XRayXL64.xll' = '..\..\src'
+        # The page the Perfetto button opens, copied beside the add-in by the same step.
+        '..\..\build\addin\XRayXL-Perfetto.html' = '..\..\perfetto\XRayXL-Perfetto.html'
         # The add-in the XLL suites trace: built from its own folder and the shared XLL header.
         '..\..\build\x64\Release\TracedAddin\TracedAddin64.xll' = @('..\fixtures\TracedAddin', '..\fixtures\xll_common')
     }

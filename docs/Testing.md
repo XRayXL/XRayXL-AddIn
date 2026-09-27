@@ -4,7 +4,7 @@ The front door: what a test run needs, how to run one, how to read the result,
 and the principles that decide whether a suite is worth having. Nothing here is
 repeated from the documents it points at.
 
-| | |
+| Document | What it is |
 |---|---|
 | [`tests/sweep/README.md`](../tests/sweep/README.md) | **The suites.** Layout and conventions, the inventory of what each suite defends, and the rules every driver keeps. Read before writing a test. |
 | [`StretchXL/StretchXL.md`](../StretchXL/StretchXL.md) | **The manager.** Excel lifecycles, session modes, deadlines, the dialog watchdog, measured close, dumps and exit codes. Read before touching the harness. |
@@ -87,7 +87,7 @@ exits `1` — so CI can gate on it without parsing anything.
 
 Where things land:
 
-| | |
+| Output | What it holds |
 |---|---|
 | `<OutDir>\results-<timestamp>.jsonl` | One JSON line per result, with the test's captured output. The **first line records the whole configuration**, so a result set explains how it was produced |
 | `<OutDir>\work\session_w<worker>_<n>\` | Each session's add-in output — its log, trace files and diagnostics — redirected there by `XRAYXL_OUTPUT_DIR`, never under a pid that `%TEMP%` will reuse |

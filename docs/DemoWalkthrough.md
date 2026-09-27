@@ -1,6 +1,6 @@
 # XRayXL — Demo
 
-Nine workbooks that tour XRayXL a feature at a time. Each one tells you, on the sheet,
+Ten workbooks that tour XRayXL a feature at a time. Each one tells you, on the sheet,
 what to press and what to look for in the trace. This page walks through the same
 tour with real rows from a real run.
 
@@ -10,20 +10,27 @@ tour with real rows from a real run.
 
 ```
 dist/
-  XRayXL64.xll             the tracer
   demo/
-    DemoFinance64.xll      a demo add-in: BlackScholes, PresentValue, CompoundReturn, SlowSum, Fibonacci,
-                           NetPresentValue, DiscountCurve, WeightedAverage, RangeSize, QuoteLookup
-    DemoBehaviors64.xll    a demo add-in: ReverseText, MakeSeries, MightDivide, SafeDivide, ThreadSafeSquare, CallCounter
-    01_FirstTrace.xlsm     VBA and XLL functions in one recalculation, and how to read a row
-    02_Values.xlsm         ranges, arrays, Variants and their types
-    03_Callers.xlsm        what started each call: a cell, an array formula, an event, a button, a timer
-    04_Errors.xlsm         how calls end: threw, unwound, handled, unhandled -- and error values
-    05_VBACurves.xlsm      a real VBA model, a yield-curve bootstrap, traced end to end
-    06_Objects.xlsm        a class module's members, and a Range, Worksheet and Workbook as arguments
-    07_CallTree.xlsm       recursion, a ByRef argument changing, and End
-    08_Threads.xlsm        a thread-safe XLL on several calculation threads; VBA on one
-    09_XLLPricing.xlsm     an option book built from XLL functions: text, ranges, arrays and references
+    01_FirstTrace.xlsm      - VBA and XLL functions in one recalculation, and how to read a row.
+    02_Values.xlsm          - Ranges, arrays, Variants and their types.
+    03_Callers.xlsm         - What started each call: a cell, an array formula, an event, a button, a timer.
+    04_Errors.xlsm          - How calls end: threw, unwound, handled and unhandled, and error values.
+    05_VBACurves.xlsm       - A real VBA model, a yield-curve bootstrap, traced end to end.
+    06_Objects.xlsm         - A class module's members, and a Range, Worksheet and Workbook as arguments.
+    07_CallTree.xlsm        - Recursion, a ByRef argument changing, and End.
+    08_Threads.xlsm         - A thread-safe XLL on several calculation threads, and VBA on one.
+    09_XLLPricing.xlsm      - An option book built from XLL functions: text, ranges, arrays and references.
+    10_Plasma.xlsm          - A plasma painted two ways, cell by cell and in one call, to read in Perfetto.
+    DemoBehaviors64.xll     - A demo add-in: ReverseText, MakeSeries, MightDivide, SafeDivide, ThreadSafeSquare,
+                              CallCounter.
+    DemoFinance64.xll       - A demo add-in: BlackScholes, PresentValue, CompoundReturn, SlowSum, Fibonacci,
+                              NetPresentValue, DiscountCurve, WeightedAverage, RangeSize, QuoteLookup.
+  docs/                     - This walkthrough and the other guides, to open in a browser.
+  LICENSE                   - The licence: GPL-3.0.
+  MANIFEST.txt              - The version, tag, commit and SHA256 of every file here.
+  THIRD-PARTY-NOTICES.txt   - The licences of the third-party code in XRayXL.
+  XRayXL-Perfetto.html      - Send your trace file to Perfetto.
+  XRayXL64.xll              - The add-in.
 ```
 
 The two demo add-ins are ordinary XLLs that know nothing of XRayXL. They are what you
@@ -39,20 +46,21 @@ point the tracer at.
    and tick *Developer*. XRayXL's group is on that tab.
 3. **Open a workbook** and enable macros.
 
-The **XRayXL** group on the Developer tab has five buttons:
+The **XRayXL** group on the Developer tab has six buttons:
 
 ![The XRayXL group at the far right of Excel's Developer tab, with Arm, Disarm,
-Options and Diagnostics buttons](images/ribbon.png)
+Tail, Perfetto, Options and Diag buttons](images/ribbon.png)
 
-*`Disarm` is greyed until a recording is running.*
+*`Disarm` is greyed until a recording is running, and `Perfetto` until one has finished.*
 
 | Button | What it does |
 |---|---|
 | **Arm** | Starts a recording. Every XLL function and VBA procedure that runs from now on writes rows to a new trace file |
 | **Disarm** | Stops the recording and closes the file |
 | **Tail** | Opens PowerShell on the trace file and shows each row as it is written. Live from the first arm |
+| **Perfetto** | Shows the last trace on a timeline, in Perfetto UI in your browser. Live after Disarm. See [On a timeline](#on-a-timeline) |
 | **Options** | The settings: what to capture, where the trace goes and in what format, the buffer and the log |
-| **Diagnostics** | What is loaded into this Excel: its modules and their versions, the environment and the process. Read-only |
+| **Diag** | Diagnostics: what is loaded into this Excel: its modules and their versions, the environment and the process. Read-only |
 
 The buttons appear once a workbook is open. Expect your antivirus to take an interest in
 `XRayXL64.xll`: it hooks Excel's internals, which is what it is for.
@@ -65,7 +73,8 @@ Every demo is the same four steps:
 2. Do the thing the sheet says: recalculate, edit a cell, or press a button.
 3. **Disarm**.
 4. Read the trace. Open **Options ▸ Output**, right-click **Trace file** and choose
-   **Reveal in File Explorer**. It is a CSV, so Excel opens it.
+   **Reveal in File Explorer**. It is a CSV, so Excel opens it. Or press **Perfetto**
+   to see it on a timeline.
 
 To watch rows arrive while you work, press **Tail** on the ribbon after step 1.
 
@@ -159,6 +168,7 @@ argument and return values, and for VBA a tickbox for describing objects](images
 | Page | What is on it |
 |---|---|
 | **Capture** | For XLL and VBA separately: the **depth** (off, the top-level call only, or everything), whether to capture **argument** and **return** values, and for VBA whether to **describe objects** such as a Range |
+| **Events** | Which of Excel's own events to record, each with its own tick box, or a preset: None, Calc, Selection, Calc & Selection, All. **Calc** is the default. Demo 03 shows them |
 | **Output** | The **format** (CSV or JSON Lines), the output folder, and the current trace file |
 | **Advanced** | The **buffer** between Excel and the file, what to do when it fills, and the **log level** and log file |
 | **About**, **Notices** | The version, the build time and commit, the licence and third-party notices |
@@ -166,6 +176,37 @@ argument and return values, and for VBA a tickbox for describing objects](images
 Settings are read when a recording starts, so they are locked while you are armed.
 Everything is on by default. To get the most accurate timings, turn off argument and
 return values: capturing them is work done inside the call being timed.
+
+### On a timeline
+
+After **Disarm**, press **Perfetto**. Your browser opens `XRayXL-Perfetto.html`, the page
+that sits beside `XRayXL64.xll`, and it has already read the trace: it shows how many
+calls, threads and errors it holds, and anything to watch for, such as dropped rows.
+Press **Open Trace in Perfetto**. Perfetto opens in a new tab and asks whether to trust
+"An unknown origin". That is the page, so answer **Yes**.
+
+![The page the Perfetto button opens, here holding demo 10's trace: the file, a summary
+of what is in it, and the buttons to open it in Perfetto or download it](images/SendToPerfetto.png)
+
+In Perfetto ([demo 10](#10--a-plasma-painted-two-ways) has a picture of it):
+
+- **Each thread is a track**, and **each call is a bar**, as long as the call took,
+  under the call that made it. `WeightFor` sits under `RiskWeighted`. OptionBook's
+  `BlackScholes` sits under `OptionBook`, which the rows could only show by their order.
+- **Click a bar** for its row's details: the arguments, the result, `outcome`, `ticks`,
+  and two times worked out from them. **XRayXL time** is what the tracer itself spent
+  inside the call: reading arguments, asking for the calling cell, writing rows. **Own
+  time** is the rest, which is what the call would have taken with nothing watching.
+- **The page's summary** adds up XRayXL's time over the top-level calls, so you can see
+  how much the recording cost. It is highest for many small VBA functions with
+  argument and return values on.
+- **Excel's events**, and the arm and disarm, are markers on the thread that raised them.
+- **Nothing is uploaded.** The page converts the trace on your machine, and Perfetto
+  keeps it in your browser, with sharing turned off.
+
+Opened on its own, the same page takes any trace file, CSV or JSON Lines: press
+**Input XRayXL Trace**, or drop the file on it. That is also the way for a trace over
+256 MB, which the button refuses.
 
 ---
 
@@ -204,8 +245,15 @@ the element type
   The blank cell reads `Empty`, and the `#N/A` cell reads `#N/A`.
 - **Numbers in a Variant.** A `Double` is written bare (`2.5`). Every other type names
   itself: `Integer(1)`, `Long(3)`, `Currency(1.5000)`, `Date(46284)`, where 46284 is
-  Excel's serial number for 19 September 2026. Text is quoted, and Booleans are
-  `TRUE`/`FALSE`.
+  Excel's serial number for 19 September 2026. Booleans are `TRUE`/`FALSE`.
+- **Text is always in quotes**, so a number and text that look alike never read the
+  same: `Integer(1)` is the number 1 and `"1"` is the text, `#N/A` is Excel's error and
+  `"#N/A"` is text, `Empty` is an empty Variant and `""` an empty string. A quote or a
+  backslash inside the text is escaped as `\"` or `\\`, and a character outside plain
+  ASCII as `\uNNNN`.
+- **In the file itself the quotes are doubled**, because that is how CSV writes a quote
+  inside a field: `a1:Variant="1"` is stored as `"a1:Variant=""1"""`. Excel, and anything
+  else that reads CSV, shows it as `a1:Variant="1"`.
 - **In a typed array** such as `Long[...]`, the elements are bare, because the header
   already says what they are.
 - **An XLL array** reads like a VBA one. `MakeSeries(4)` returned one row of four
@@ -223,10 +271,10 @@ recognised the array from its own descriptor, which names its element type (`Dou
 and bounds (`1..5`).
 
 A type after `a1:` is **declared** when VBA's compiled code names it, and **recognised**
-when the tracer worked it out from the value itself, under strict checks. A `?` means
-there was no declared type at all. Demo 05 shows one. [Declared or inferred: how far to
-trust a VBA argument](TraceRowModel.md#declared-or-inferred-how-far-to-trust-a-vba-argument)
-explains each form and how far to trust it.
+when the tracer worked it out from the value itself, under strict checks. Most of the time
+XRayXL finds a parameter's type: every argument in demo 05's recalculation has one. A `?`
+marks the rare one it could not. [How XRayXL knows a VBA argument's
+type](TraceRowModel.md#how-xrayxl-knows-a-vba-arguments-type) explains each form.
 
 ---
 
@@ -278,6 +326,51 @@ What to notice:
   separate top-level calls.
 - **`Helper`** is the same procedure called from three places. Its `parent` says which
   one called it each time, and its `a1:String` argument says so too.
+
+### Excel's own events
+
+Between the calls, the trace also records the events Excel raises, one `event` row
+each. These are the rows from the recalculation and the edit, with the first calls left
+out:
+
+```
+seq kind  source function          callerref                      args
+1   event XRayXL arm                                             qpcFrequency=10000000 utc="2026-09-27T10:04:45.5364303Z" pid=5976 XLL_DEPTH="ALL" ...
+6   entry XLL    CallCounter       ...!B13
+7   exit  XLL    CallCounter
+8   event Excel  SheetCalculate    [03_Callers.xlsm]Callers       Sh:Object=Worksheet@0x27B83E35C80([03_Callers.xlsm]Callers)
+9   event Excel  AfterCalculate
+10  entry XLL    CallCounter       ...!B13                        <- the edit's recalculation
+11  exit  XLL    CallCounter
+12  event Excel  SheetCalculate    [03_Callers.xlsm]Callers       Sh:Object=Worksheet@0x27B83E35C80(...)
+13  event Excel  AfterCalculate
+14  entry VBA    Worksheet_Change  ref                            a1:Object=Range@0x27B83E34FB0([03_Callers.xlsm]Callers!B14)=7
+15  entry VBA    Helper            ref                            a1:String="change event"
+16  exit  VBA    Helper
+17  exit  VBA    Worksheet_Change
+18  event Excel  SheetChange       [03_Callers.xlsm]Callers!B14   Sh:Object=Worksheet@0x27B83E35C80(...) Target:Range=Range@0x27B83E34FB0([03_Callers.xlsm]Callers!B14)=7
+19  event XRayXL disarm                                          rowsDropped=0 pauses=0 ... eventsRecorded=5 eventsLost=0
+```
+
+- **An event is not a call.** It has one row, not two, and its `span`, `parent` and
+  `depth` are `0`. `callerref` is the most specific place it names: the sheet for
+  `SheetCalculate`, the edited cell for `SheetChange`. `args` names each parameter,
+  and `Target` carries the new value, `7`.
+- **The order is Excel's.** Typing into B14 reads `SheetCalculate`, `AfterCalculate`,
+  and only then the change: Excel recalculates before it tells anyone a cell changed.
+  The sheet's own `Worksheet_Change` handler runs before the application hears of it,
+  so its rows come before `SheetChange`. Both saw the same `Range`, at the same address.
+- **Arm and disarm are events too.** The `arm` row lists every setting in force, and
+  the `disarm` row the session's totals.
+- **Which events** is the **Events** page in Options. The default, **Calc**, is these
+  three and the other calculation events, such as a table or PivotTable updating.
+  **Selection** is where you are and what you click: `SheetSelectionChange`, activating
+  a sheet, workbook or window, double- and right-clicks, and following a hyperlink.
+  **All** records everything Excel's `Application` object raises. Events that fire often
+  are marked ⚡.
+
+In [Perfetto](#on-a-timeline), events are markers on the thread that raised them, among
+the calls.
 
 ---
 
@@ -387,22 +480,6 @@ calls  function
   `LoadInstruments` passes it on and hands back the rows marked `Y` through a `ByRef`
   argument. Its exit row shows that argument changing, `a2:Variant&=Variant[1..20,1..6]{...}`.
   An exit row carries `args` only for a `ByRef` argument that changed.
-
-### `?none=Double[0..400]`
-
-Some arguments read like this:
-
-```
-BootstrapCash   a6:?none=Double[0..400]{0,0,0,0,0,...}
-InterpDF        a1:Ref&=Double[0..400]{0,0.0191780821917808,0.0876712328767123,...}
-```
-
-These are the model's pillar arrays, 401 Doubles indexed 0 to 400, filled a few entries
-at a time as the curve is built. The rest are still zero. `?none` means the compiled VBA
-touched that parameter only with instructions that carry no type, so there was no
-declared type to read. The tracer recognised the value as an array of Double from the
-array's own descriptor, which names its element type and bounds. [Declared or inferred](TraceRowModel.md#declared-or-inferred-how-far-to-trust-a-vba-argument)
-explains this, and how far to trust it.
 
 ### The same trace as JSON Lines
 
@@ -586,6 +663,55 @@ What to notice:
   is a result, as in demo 04.
 
 ---
+
+## 10 — A plasma, painted two ways
+
+**Try it:** Arm, press **Start the show** and watch for 20 seconds, then Disarm and
+press **Perfetto**.
+
+Every cell on this sheet is 10 pixels square, and the 96 × 54 block in the middle is a
+canvas. The show draws a plasma on it, four sine waves added together with the colours
+cycling, for two acts of ten seconds each, with a countdown at the top left:
+
+- **Act 1** colours each cell with its own call to Excel, `Interior.Color`, 5,184 calls a
+  frame. You can watch each frame sweep down the canvas.
+- **Act 2** writes all 5,184 values in one call, `Range.Value2 = field`, and the canvas's
+  colour scale does the colouring.
+
+![Demo 10 after the show: the plasma on its canvas, the countdown at 0, and the status
+line saying act 1 drew 4 frames and act 2 drew 287](images/Plasma.png)
+
+The maths is the same in both acts, and so are the cells. On the traced run in Perfetto
+below, act 1 drew 4 frames in its ten seconds, the last cut short when time ran out, and act
+2 drew 245, fewer than the 287 above because the tracer was recording every call: about
+2.5 seconds a frame against 40 milliseconds. Each call across to Excel costs far more than
+the VBA around it, and act 1 makes 5,184 of them a frame where act 2 makes one.
+
+### In Perfetto
+
+![Demo 10's trace in Perfetto UI: StartShow over two RunAct slices, act 1's wide frames
+and act 2's thin ones, with part of act 1 selected and its calls summed by name below](images/Perfetto.png)
+
+Here 1.75 seconds of act 1 is selected, and the Pivot Table below sums it by name: 3,002
+`SetPixel` calls took 1.5 seconds between them, and the colour maths inside them, `Palette`
+with `Mix` beneath it, 72 milliseconds of that. The rest is Excel colouring cells.
+
+- **`StartShow`** spans the whole show, with one **`RunAct`** under it for each act.
+- **Act 1's frames are wide.** Each is a sliver of `ComputeField`, its 54 `PlasmaRow`
+  calls, then `PaintOneCellAtATime`: a dense comb of `SetPixel` calls, each with `Palette`
+  and `Mix` beneath it. Zoom into one `SetPixel` and click it: most of its time is its
+  own, spent in Excel colouring one cell.
+- **Act 2's frames are thin and close together**: `ComputeField`, then one
+  `PaintInOneCall`.
+- **Drag across a second of each act**, as above, and compare the two Pivot Tables.
+- **Excel's events** are markers on the same track: a `SheetChange` for each write to the
+  sheet, and the `AfterCalculate` that follows it.
+- **What tracing cost.** The page's summary adds up XRayXL's own time. On the run above
+  it was 7.6% of act 1, whose many small calls each carry the tracer's cost, and 2.1% of
+  act 2. The trace was 21.6 MB, most of it act 1's 17,760 calls each to `SetPixel`,
+  `Palette` and `Mix`.
+
+---
 ## More
 
 - **Tracing one part of your code.** The buttons are how you will normally arm and
@@ -607,20 +733,3 @@ What to notice:
 - **Crash report.** If Excel crashes with XRayXL loaded, a short text report,
   `Logs\XRayXL_crash_<pid>.txt`, records registers and module names. It contains no
   workbook content.
-
-## Rebuilding the demo
-
-```powershell
-msbuild XRayXL.sln /p:Configuration=Release /p:Platform=x64   # the add-ins -> build\x64\Release\
-.\tools\Build-DemoWorkbooks.ps1                               # workbooks 01-04 and 06-09 -> dist\demo\
-```
-
-The add-ins are ordinary MSBuild projects, with source in `src\demo\`. The workbooks
-01–04 and 06–09 are generated by driving Excel over COM and injecting VBA, so regenerating them
-needs Excel, with **Trust access to the VBA project object model** turned on (Trust
-Center ▸ Macro Settings). That is why the finished `.xlsm` files are committed. Opening
-and using them needs only ordinary macro-enabling. `05_VBACurves.xlsm` is built by hand
-and committed as it is.
-
-`dist\` is assembled only by `tools\release.ps1`, so between releases it holds the last
-released binaries. `dist\MANIFEST.txt` records which.
