@@ -72,12 +72,16 @@ holds what a release shipped rather than whatever was last compiled. Between rel
 the source beside it; `dist\MANIFEST.txt` records which build it holds.
 
 ```powershell
-.\tools\release.ps1                          # a dry run: build, sweep, and a preview of dist\
-.\tools\release.ps1 -Publish -Remote origin  # the release: writes dist\, commits, tags, pushes
+.\tools\release.ps1                          # a dry run: build, sweep, and a preview of dist\ and its zip
+.\tools\release.ps1 -Publish -Remote origin  # the release: writes dist\, commits, tags, pushes, releases
 ```
 
-The dry run leaves `dist\` alone and assembles what would ship in a preview folder, whose
-path it prints. A release needs a committed working tree and a version in `version.props`
+The release carries `dist\` twice: committed, for a clone, and as `XRayXL-<version>.zip`
+attached to the GitHub release, for a download. The zip holds `dist\`'s files at its root and
+is checked against `dist\MANIFEST.txt` file by file before anything is committed.
+
+The dry run leaves `dist\` alone and assembles what would ship in a preview folder, zip and
+all, whose path it prints. A release needs a committed working tree and a version in `version.props`
 that has no tag yet, and Excel's *Require Application Add-ins to be signed by Trusted
 Publisher* turned off for its sweep.
 

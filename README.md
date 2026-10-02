@@ -144,8 +144,9 @@ Details of the Trace File in [docs/TraceRowModel.md](./docs/TraceRowModel.md).
 
 ## Getting started
 
-**No build required.** The [latest release](../../releases/latest), or a plain clone
-of this repository, has a working tool in `dist/`:
+**No build required.** Download `XRayXL-<version>.zip` from the
+[latest release](../../releases/latest), or clone this repository: either way you have a
+working tool. The zip holds exactly what a clone has in `dist/`:
 
 ```
 dist/
@@ -158,7 +159,12 @@ dist/
   XRayXL64.xll              - The add-in.
 ```
 
-Point Excel at `dist\XRayXL64.xll`: either add it permanently through
+> **Unblock the zip before you extract it.** Windows marks a downloaded file as coming from
+> the internet, extracting it passes the mark to every file inside, and Excel will neither
+> load an add-in that carries it nor run the demo workbooks' macros. Right-click the zip,
+> choose **Properties**, tick **Unblock**, press **OK**, then extract. A clone carries no mark.
+
+Point Excel at `XRayXL64.xll`: either add it permanently through
 File → Options → Add-ins → Manage: Excel Add-ins, or drag the `.xll` onto an
 open Excel window to load it for that session only. An **XRayXL** group then
 appears at the far right of the **Developer** tab:

@@ -38,8 +38,9 @@ point the tracer at.
 
 ## Setting up
 
-1. **Load the add-ins.** Use **File ▸ Open** on `XRayXL64.xll` in `dist\`, then on
-   `DemoFinance64.xll` and `DemoBehaviors64.xll` in `dist\demo\`. Opening an `.xll`
+1. **Load the add-ins.** Use **File ▸ Open** on `XRayXL64.xll` — in `dist\` of a clone, or
+   where you extracted the zip — then on `DemoFinance64.xll` and `DemoBehaviors64.xll` in
+   `demo\` beside it. Opening an `.xll`
    loads it for this Excel session. To load them every time Excel starts, add them
    through **File ▸ Options ▸ Add-ins ▸ Manage: Excel Add-ins ▸ Go ▸ Browse** instead.
 2. **Show the Developer tab** if it is hidden: **File ▸ Options ▸ Customize Ribbon**,

@@ -1,11 +1,11 @@
 # Assemble dist\, the committed, downloadable build, and optionally publish it.
 #
-# dist\ is what someone gets by cloning or from GitHub's "Source code" archive of a tag: a
-# working tool and a runnable demo with no compiler, so the release needs no uploaded assets.
+# dist\ is what someone gets by cloning: a working tool and a runnable demo with no compiler.
+# The release also carries it as XRayXL-<version>.zip, for anyone who would rather not clone.
 # Only this script writes dist\; the suites load from build\addin\ and build\x64\Release\.
 # MANIFEST.txt says how far dist\ lags the working tree.
 #
-#      .\tools\release.ps1                          build, sweep, assemble dist\  (stops there)
+#      .\tools\release.ps1                          build, sweep, assemble dist\ and its zip  (stops there)
 #      .\tools\release.ps1 -Publish -Remote <name>  ...then commit, tag, push to <name>, release there
 #      ... -SymbolArchive <dir>                     ...and first keep the PDBs under <dir>\<tag>\
 #
@@ -24,6 +24,7 @@ $ErrorActionPreference = "Stop"
 
 . (Join-Path $PSScriptRoot '_version.ps1')
 . (Join-Path $PSScriptRoot '_symbols.ps1')
+. (Join-Path $PSScriptRoot '_package.ps1')
 
 function Write-Step($n, $what) { Write-Host "`n[$n] $what" -ForegroundColor Cyan }
 
@@ -299,10 +300,17 @@ Get-ChildItem $stage -Recurse -File | Sort-Object FullName | ForEach-Object {
     Write-Host ("  {0,-34} {1,9:N0} B" -f $_.FullName.Substring($stage.Length + 1), $_.Length)
 }
 
+# The zip the release carries, checked file by file against the manifest. Made before
+# anything is committed, so a zip that is wrong stops the release while nothing is out.
+$package = New-XRayPackage -Dist $stage -Version $version `
+    -Out $(if ($staging) { $sweepOut } else { Join-Path $Root 'build\release' })
+Write-Host ("`n  {0}  {1:N0} B, every file matching the manifest" -f $package, (Get-Item -LiteralPath $package).Length)
+
 if ($staging) {
     Write-Host "`nDRY RUN for $version -- dist\ was NOT touched." -ForegroundColor Green
     Write-Host "What a release would ship is staged for inspection at:"
     Write-Host "  $stage"
+    Write-Host "  $package"
     Write-Host "Commit your changes, then re-run with -Publish to write dist\ for real."
     return
 }
@@ -324,8 +332,7 @@ if ($SymbolArchive) {
 }
 
 # ---------------------------------------------------------------------------
-# 8. Publish. Commit dist\, tag, and let GitHub generate the source archives --
-#    which now CONTAIN the binaries, so there are no assets to upload.
+# 8. Publish. Commit dist\, tag, push, and release the tag with the zip attached.
 # ---------------------------------------------------------------------------
 Write-Step 8 "Publish"
 if (-not (Get-Command gh -ErrorAction SilentlyContinue)) { throw "gh CLI not found" }
@@ -358,9 +365,8 @@ if ($LASTEXITCODE -ne 0) { throw "tag $tag failed -- dist\ is committed but noth
 Invoke-Tool git -C $Root push $Remote HEAD --follow-tags
 if ($LASTEXITCODE -ne 0) { throw "push failed" }
 
-# No assets: dist\ is in the tree, so GitHub's generated source archives already
-# contain the built tool and a runnable demo.
-Invoke-Tool gh release create $tag --repo $($dest.Repo) --title "XRayXL $version" --generate-notes
-if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }
+# the zip, so the Download buttons' link, releases/download/<tag>/XRayXL-<version>.zip, resolves
+Invoke-Tool gh release create $tag $package --repo $($dest.Repo) --title "XRayXL $version" --generate-notes
+if ($LASTEXITCODE -ne 0) { throw "gh release create failed -- $tag is pushed; attach $package with gh release upload" }
 
 Write-Host "`npublished $tag" -ForegroundColor Green
