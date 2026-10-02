@@ -1,6 +1,7 @@
 <#
   Turns the user docs into the web pages dist\docs\ ships: the Markdown GitHub shows, in
-  xrayxl.com's look, readable from a folder with nothing but a browser.
+  xrayxl.com's look, readable from a folder with nothing but a browser. xrayxl.com serves
+  the same pages in the same layout, so every link works from either.
 
     .\tools\Build-Docs.ps1 -Out build\docs     a preview: open build\docs\README.html
 
@@ -17,14 +18,14 @@ if (-not $Out) { throw 'Build-Docs.ps1 needs -Out <folder>' }
 . (Join-Path $PSScriptRoot '_version.ps1')
 . (Join-Path $PSScriptRoot '_markdig.ps1')
 
-# The pages, in the order the navigation lists them.
+# The pages, in the order the menu lists them and Previous and Next step through them.
 $pages = @(
-    @{ Source = 'README.md';               Page = 'README.html';           Nav = 'Start' }
-    @{ Source = 'docs/DemoWalkthrough.md'; Page = 'DemoWalkthrough.html';  Nav = 'Walkthrough' }
-    @{ Source = 'docs/TraceOptions.md';    Page = 'TraceOptions.html';     Nav = 'Trace options' }
-    @{ Source = 'docs/TraceRowModel.md';   Page = 'TraceRowModel.html';    Nav = 'Trace rows' }
-    @{ Source = 'docs/ErrorsInTheTrace.md';Page = 'ErrorsInTheTrace.html'; Nav = 'Errors' }
-    @{ Source = 'docs/VBATracing.md';      Page = 'VBATracing.html';       Nav = 'VBA tracing' }
+    @{ Source = 'README.md';               Page = 'README.html';           Nav = 'Start';         Blurb = 'What XRayXL is, and getting it running' }
+    @{ Source = 'docs/DemoWalkthrough.md'; Page = 'DemoWalkthrough.html';  Nav = 'Walkthrough';   Blurb = 'Ten demo workbooks, a feature at a time' }
+    @{ Source = 'docs/TraceOptions.md';    Page = 'TraceOptions.html';     Nav = 'Trace options'; Blurb = 'Every capture setting, and the log' }
+    @{ Source = 'docs/TraceRowModel.md';   Page = 'TraceRowModel.html';    Nav = 'Trace rows';    Blurb = 'The trace file, column by column' }
+    @{ Source = 'docs/ErrorsInTheTrace.md';Page = 'ErrorsInTheTrace.html'; Nav = 'Errors';        Blurb = 'How an error reads in a trace' }
+    @{ Source = 'docs/VBATracing.md';      Page = 'VBATracing.html';       Nav = 'VBA tracing';   Blurb = 'How the VBA tracer works, in layers' }
 )
 # Files at dist\'s root, one folder up from the pages.
 $shippedAtRoot = @('LICENSE', 'THIRD-PARTY-NOTICES.txt')
@@ -71,6 +72,7 @@ $template = @'
     --mono:"IBM Plex Mono",ui-monospace,"Cascadia Mono","Consolas",monospace;
   }
   *{box-sizing:border-box}
+  html{scroll-padding-top:76px}
   body{
     margin:0; background:var(--ground); color:var(--ink);
     font-family:var(--body); font-size:16px; line-height:1.6;
@@ -79,25 +81,52 @@ $template = @'
   :focus-visible{outline:2px solid var(--signal); outline-offset:3px; border-radius:2px}
   .wrap{max-width:900px; margin-inline:auto; padding-inline:clamp(16px,5vw,48px)}
 
-  /* ---------- heading and navigation, on the site's grid paper ---------- */
-  .masthead{
-    border-bottom:1px solid var(--rule);
-    background:
+  /* ---------- the bar along the top, on the site's grid paper, and its menu ---------- */
+  .topbar{
+    position:sticky; top:0; z-index:20; border-bottom:1px solid var(--rule);
+    background-color:var(--ground);
+    background-image:
       repeating-linear-gradient(to right, var(--grid-line) 0 1px, transparent 1px 88px),
       repeating-linear-gradient(to bottom, var(--grid-line) 0 1px, transparent 1px 30px);
   }
-  .masthead .wrap{padding-block:22px 18px}
-  .brandline{display:flex; align-items:center; gap:14px; margin-bottom:14px}
-  .brand{font-family:var(--display); font-weight:800; font-size:24px; letter-spacing:-.035em; line-height:1}
+  .topbar .wrap{display:flex; align-items:center; gap:14px; min-height:60px}
+  .brand{font-family:var(--display); font-weight:800; font-size:22px; letter-spacing:-.035em; line-height:1; color:var(--ink); text-decoration:none}
   .brand span{color:var(--signal)}
   .tag{
-    font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+    font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; white-space:nowrap;
     color:var(--signal); border:1px solid var(--signal); border-radius:2px; padding:3px 10px; line-height:1.3;
   }
-  nav{display:flex; flex-wrap:wrap; gap:4px 22px; font-size:14.5px}
-  nav a{color:var(--ink-2); text-decoration:none; padding-bottom:3px; border-bottom:2px solid transparent}
-  nav a:hover{color:var(--signal)}
-  nav a[aria-current]{color:var(--ink); font-weight:600; border-bottom-color:var(--signal)}
+  .menu{margin-left:auto; position:relative}
+  .menu summary{
+    list-style:none; cursor:pointer; display:flex; align-items:center; gap:10px; min-height:38px;
+    padding:0 14px; background:var(--surface); border:1px solid var(--rule-strong); border-radius:3px;
+    font-size:14px; font-weight:600; color:var(--ink);
+  }
+  .menu summary::-webkit-details-marker{display:none}
+  .menu summary:hover,.menu[open] summary{border-color:var(--signal); color:var(--signal)}
+  .bars,.bars::before,.bars::after{display:block; width:16px; height:2px; background:currentColor; transition:transform .15s, background-color .15s}
+  .bars{position:relative}
+  .bars::before,.bars::after{content:""; position:absolute; left:0}
+  .bars::before{transform:translateY(-5px)}
+  .bars::after{transform:translateY(5px)}
+  .menu[open] .bars{background:transparent}
+  .menu[open] .bars::before{transform:rotate(45deg)}
+  .menu[open] .bars::after{transform:rotate(-45deg)}
+  .menu-panel{
+    position:absolute; right:0; top:calc(100% + 8px); width:min(330px, calc(100vw - 32px));
+    max-height:calc(100vh - 84px); overflow-y:auto; padding:6px;
+    background:var(--surface); border:1px solid var(--rule-strong); border-radius:4px;
+    box-shadow:0 14px 34px rgba(20,24,29,.16);
+  }
+  .menu-head{
+    font-family:var(--mono); font-size:10.5px; letter-spacing:.14em; text-transform:uppercase;
+    color:var(--ink-3); padding:12px 12px 4px; border-top:1px solid var(--rule); margin-top:6px;
+  }
+  .menu-panel a{display:block; padding:7px 12px; border-radius:3px; text-decoration:none; color:var(--ink); font-size:14.5px; font-weight:600; line-height:1.35}
+  .menu-panel a small{display:block; font-size:12.5px; font-weight:400; color:var(--ink-3)}
+  .menu-panel a:hover{background:var(--surface-2); color:var(--signal)}
+  .menu-panel a[aria-current]{background:var(--surface-2); box-shadow:inset 3px 0 0 var(--signal)}
+  @media (prefers-reduced-motion:reduce){.bars,.bars::before,.bars::after{transition:none}}
 
   /* ---------- the page ---------- */
   .doc{padding-block:34px 20px}
@@ -131,23 +160,56 @@ $template = @'
   .doc details{margin:0 0 18px; padding:10px 16px; background:var(--surface); border:1px solid var(--rule); border-radius:3px}
   .doc summary{cursor:pointer; font-weight:600}
 
+  /* ---------- Previous and Next ---------- */
+  .pager{display:grid; grid-template-columns:1fr 1fr; gap:12px; padding-block:30px 34px}
+  .pager a{
+    display:block; padding:13px 18px; background:var(--surface); border:1px solid var(--rule-strong); border-radius:3px;
+    text-decoration:none; color:var(--ink); font-weight:600; line-height:1.35;
+    transition:border-color .15s, color .15s;
+  }
+  .pager a:hover{border-color:var(--signal); color:var(--signal)}
+  .pager small{display:block; font-family:var(--mono); font-size:10.5px; font-weight:500; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-3); margin-bottom:3px}
+  .pager .next{grid-column:2; text-align:right}
+  @media (max-width:560px){.pager{grid-template-columns:1fr} .pager .next{grid-column:auto}}
+
   footer{padding-block:18px 44px; border-top:1px solid var(--rule); font-size:13px; color:var(--ink-3)}
   footer a{color:var(--ink-3)}
 </style>
 </head>
 <body>
-<header class="masthead">
+<header class="topbar">
   <div class="wrap">
-    <div class="brandline"><span class="brand">XRay<span>XL</span></span><span class="tag">Docs &middot; {{VERSION}}</span></div>
-    <nav>
+    <a class="brand" href="https://xrayxl.com/">XRay<span>XL</span></a><span class="tag">Docs &middot; {{VERSION}}</span>
+    <details class="menu">
+      <summary><span class="bars" aria-hidden="true"></span>Menu</summary>
+      <nav class="menu-panel" aria-label="Pages">
+        <a href="https://xrayxl.com/">Home<small>xrayxl.com</small></a>
+        <div class="menu-head">Guides</div>
 {{NAV}}
-    </nav>
+        <div class="menu-head">Get it</div>
+        <a href="https://github.com/XRayXL/XRayXL-AddIn/releases/download/v{{VERSION}}/XRayXL-{{VERSION}}.zip">Download<small>XRayXL-{{VERSION}}.zip</small></a>
+        <a href="https://github.com/XRayXL/XRayXL-AddIn">View on GitHub<small>The source, and every release</small></a>
+      </nav>
+    </details>
   </div>
 </header>
 <main class="wrap doc">
 {{BODY}}
 </main>
+<nav class="wrap pager" aria-label="Previous and next">
+{{PAGER}}
+</nav>
 <footer class="wrap">XRayXL {{VERSION}} &middot; this page on GitHub: <a href="{{GITHUB}}">{{SOURCE}}</a></footer>
+<script>
+  // the menu also closes on Escape, or on a click outside it
+  (function () {
+    var menu = document.querySelector('.menu');
+    document.addEventListener('click', function (e) { if (menu.open && !menu.contains(e.target)) menu.open = false; });
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && menu.open) { menu.open = false; menu.querySelector('summary').focus(); }
+    });
+  })();
+</script>
 </body>
 </html>
 '@
@@ -156,7 +218,8 @@ $pipeline = Import-Markdig -Root $Root
 New-Item -ItemType Directory -Force $Out | Out-Null
 $utf8 = New-Object System.Text.UTF8Encoding($false)
 
-foreach ($p in $pages) {
+for ($i = 0; $i -lt $pages.Count; $i++) {
+    $p = $pages[$i]
     $markdown = [IO.File]::ReadAllText((Join-Path $Root $p.Source))
     $body = [Markdig.Markdown]::ToHtml($markdown, $pipeline)
     # a wide table scrolls inside its frame, and a narrow one still fills it
@@ -170,11 +233,14 @@ foreach ($p in $pages) {
     $title = if ($h1.Success) { [Net.WebUtility]::HtmlDecode(($h1.Groups[1].Value -replace '<[^>]+>', '')) } else { $p.Nav }
     $nav = ($pages | ForEach-Object {
         $current = if ($_.Page -eq $p.Page) { ' aria-current="page"' } else { '' }
-        '      <a href="{0}"{1}>{2}</a>' -f $_.Page, $current, $_.Nav
+        '        <a href="{0}"{1}>{2}<small>{3}</small></a>' -f $_.Page, $current, $_.Nav, $_.Blurb
     }) -join "`n"
+    $pager = @()
+    if ($i -gt 0) { $pager += '  <a class="prev" href="{0}"><small>&larr; Previous</small>{1}</a>' -f $pages[$i - 1].Page, $pages[$i - 1].Nav }
+    if ($i -lt $pages.Count - 1) { $pager += '  <a class="next" href="{0}"><small>Next &rarr;</small>{1}</a>' -f $pages[$i + 1].Page, $pages[$i + 1].Nav }
     $html = $template.Replace('{{TITLE}}', [Net.WebUtility]::HtmlEncode($title)).Replace('{{VERSION}}', $version).
-        Replace('{{NAV}}', $nav).Replace('{{GITHUB}}', $github + $p.Source).Replace('{{SOURCE}}', $p.Source).
-        Replace('{{BODY}}', $body.TrimEnd())
+        Replace('{{NAV}}', $nav).Replace('{{PAGER}}', ($pager -join "`n")).Replace('{{GITHUB}}', $github + $p.Source).
+        Replace('{{SOURCE}}', $p.Source).Replace('{{BODY}}', $body.TrimEnd())
     [IO.File]::WriteAllText((Join-Path $Out $p.Page), ($html -replace "`r`n", "`n"), $utf8)
 }
 
